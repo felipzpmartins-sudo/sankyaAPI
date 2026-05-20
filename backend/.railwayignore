@@ -1,0 +1,8 @@
+frontend/
+doc/
+legacy-python/
+.git/
+.gitignore
+README.md
+node_modules/
+dist/
