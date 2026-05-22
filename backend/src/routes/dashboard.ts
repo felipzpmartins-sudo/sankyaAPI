@@ -25,16 +25,18 @@ export const dashboardRouter = Router();
 const faturamentoQuery = z.object({
   empresa: empresaParam,
   vendedor: vendedorParam,
+  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 const faturamentoPorEmpresaQuery = z.object({
   vendedor: vendedorParam,
+  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 dashboardRouter.get("/empresa/faturamento", (req, res, next) => {
   try {
-    const { empresa, vendedor } = faturamentoQuery.parse(req.query);
-    res.json(faturamentoConsolidado(empresa, vendedor));
+    const { empresa, vendedor, data } = faturamentoQuery.parse(req.query);
+    res.json(faturamentoConsolidado(empresa, vendedor, data));
   } catch (err) {
     next(err);
   }
@@ -42,8 +44,8 @@ dashboardRouter.get("/empresa/faturamento", (req, res, next) => {
 
 dashboardRouter.get("/empresa/faturamento-por-empresa", (req, res, next) => {
   try {
-    const { vendedor } = faturamentoPorEmpresaQuery.parse(req.query);
-    res.json(faturamentoPorEmpresa(vendedor));
+    const { vendedor, data } = faturamentoPorEmpresaQuery.parse(req.query);
+    res.json(faturamentoPorEmpresa(vendedor, data));
   } catch (err) {
     next(err);
   }

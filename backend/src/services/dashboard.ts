@@ -124,6 +124,18 @@ function snapshotPedidosAt(): string | null {
   return row?.last_synced_at ?? null;
 }
 
+function todayLocalIso(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function normalizeReferenceDate(data?: string): string {
+  return data && /^\d{4}-\d{2}-\d{2}$/.test(data) ? data : todayLocalIso();
+}
+
 export function listarEmpresas(): Empresa[] {
   return getDb()
     .prepare(
@@ -277,7 +289,10 @@ export function vendedoresRanking(): {
 export function faturamentoConsolidado(
   empresa: EmpresaFiltro,
   vendedor: VendedorFiltro = { modo: "todos" },
+  dataReferencia?: string,
 ): FaturamentoConsolidado {
+  const refDate = normalizeReferenceDate(dataReferencia);
+  const refYear = refDate.slice(0, 4);
   const empresaSql = empresaToSqlClause(empresa);
   const vendedorSql = vendedorToSqlClause(vendedor);
   const whereExtras = [empresaSql.clause, vendedorSql.clause]
@@ -293,15 +308,15 @@ export function faturamentoConsolidado(
         AND strftime('%Y', DTFATUR) = ?
     )
     SELECT
-      COALESCE((SELECT SUM(VLRNOTA) FROM base WHERE DTFATUR = date('now')), 0) AS dia,
-      COALESCE((SELECT SUM(VLRNOTA) FROM base WHERE DTFATUR >= date('now', '-6 days')), 0) AS semana_7d,
-      COALESCE((SELECT SUM(VLRNOTA) FROM base WHERE strftime('%Y-%m', DTFATUR) = strftime('%Y-%m', 'now')), 0) AS mes_atual,
+      COALESCE((SELECT SUM(VLRNOTA) FROM base WHERE DTFATUR = date(?)), 0) AS dia,
+      COALESCE((SELECT SUM(VLRNOTA) FROM base WHERE DTFATUR >= date(?, '-6 days') AND DTFATUR <= date(?)), 0) AS semana_7d,
+      COALESCE((SELECT SUM(VLRNOTA) FROM base WHERE strftime('%Y-%m', DTFATUR) = strftime('%Y-%m', ?)), 0) AS mes_atual,
       COALESCE((SELECT SUM(VLRNOTA) FROM base), 0) AS ano_atual
   `;
 
   const row = getDb()
     .prepare(sql)
-    .get(...empresaSql.params, ...vendedorSql.params, ANO_EXIBICAO_FATURAMENTO) as {
+    .get(...empresaSql.params, ...vendedorSql.params, refYear, refDate, refDate, refDate, refDate) as {
     dia: number;
     semana_7d: number;
     mes_atual: number;
@@ -329,12 +344,15 @@ export function faturamentoConsolidado(
  */
 export function faturamentoPorEmpresa(
   vendedor: VendedorFiltro = { modo: "todos" },
+  dataReferencia?: string,
 ): {
   periodo: string;
   total: number;
   snapshot_at: string | null;
   empresas: FaturamentoEmpresa[];
 } {
+  const refDate = normalizeReferenceDate(dataReferencia);
+  const refYear = refDate.slice(0, 4);
   const vendedorSql = vendedorToSqlClause(vendedor, "p.CODVEND");
   const vendedorJoin = vendedorSql.clause ? ` AND ${vendedorSql.clause}` : "";
 
@@ -353,7 +371,7 @@ export function faturamentoPorEmpresa(
        GROUP BY e.CODEMP, e.NOMEFANTASIA
        ORDER BY faturamento DESC`,
     )
-    .all(ANO_EXIBICAO_FATURAMENTO, ...vendedorSql.params) as {
+    .all(refYear, ...vendedorSql.params) as {
       CODEMP: number;
       NOMEFANTASIA: string;
       faturamento: number;
@@ -369,7 +387,7 @@ export function faturamentoPorEmpresa(
   }));
 
   return {
-    periodo: `ano:${ANO_EXIBICAO_FATURAMENTO}`,
+    periodo: `ano:${refYear}`,
     total: round2(total),
     snapshot_at: snapshotPedidosAt(),
     empresas,

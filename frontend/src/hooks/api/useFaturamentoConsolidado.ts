@@ -10,24 +10,34 @@ export { empresaKey };
 type Args = {
   empresa: EmpresaSeleção;
   vendedor?: VendedorSeleção;
+  data?: string;
 };
 
-async function fetchFaturamento({ empresa, vendedor = "todos" }: Args): Promise<FaturamentoConsolidadoDto> {
+async function fetchFaturamento({
+  empresa,
+  vendedor = "todos",
+  data,
+}: Args): Promise<FaturamentoConsolidadoDto> {
   return apiJson<FaturamentoConsolidadoDto>("/api/dashboard/empresa/faturamento", {
     query: {
       empresa: empresaQueryValue(empresa),
       vendedor: vendedorQueryValue(vendedor),
+      data,
     },
   });
 }
 
-export function useFaturamentoConsolidado(empresa: EmpresaSeleção, vendedor: VendedorSeleção = "todos") {
+export function useFaturamentoConsolidado(
+  empresa: EmpresaSeleção,
+  vendedor: VendedorSeleção = "todos",
+  data?: string,
+) {
   return useQuery({
     queryKey: [
       "faturamentoConsolidado",
-      { empresaKey: empresaKey(empresa), vendedorKey: vendedorKey(vendedor) },
+      { empresaKey: empresaKey(empresa), vendedorKey: vendedorKey(vendedor), data },
     ] as const,
-    queryFn: () => fetchFaturamento({ empresa, vendedor }),
+    queryFn: () => fetchFaturamento({ empresa, vendedor, data }),
     staleTime: 30_000,
   });
 }

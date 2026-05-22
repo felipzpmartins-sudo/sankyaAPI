@@ -1159,16 +1159,38 @@ function ChartPlaceholder({ message }: { message: string }) {
   );
 }
 
+function localDateInputValue(date = new Date()): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function offsetDateInputValue(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return localDateInputValue(date);
+}
+
+function formatDatePt(date: string): string {
+  const [yyyy, mm, dd] = date.split("-");
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 function EmpresasDashboardSection() {
   const queryClient = useQueryClient();
   const [empresa, setEmpresa] = useState<EmpresaSeleção>("todas");
   const [vendedor, setVendedor] = useState<VendedorSeleção>("todos");
+  const [dataReferencia, setDataReferencia] = useState(() => localDateInputValue());
   const [t2, setT2] = useState<"donut" | "bar">("donut");
+  const hoje = localDateInputValue();
+  const ontem = offsetDateInputValue(-1);
+  const anoReferencia = dataReferencia.slice(0, 4);
 
   const qEmp = useEmpresas();
   const qVend = useVendedores();
-  const qFat = useFaturamentoConsolidado(empresa, vendedor);
-  const qMix = useFaturamentoPorEmpresa(vendedor);
+  const qFat = useFaturamentoConsolidado(empresa, vendedor, dataReferencia);
+  const qMix = useFaturamentoPorEmpresa(vendedor, dataReferencia);
 
   const listaEmpresas = useMemo(() => {
     const raw = qEmp.data?.empresas ?? [];
@@ -1230,11 +1252,11 @@ function EmpresasDashboardSection() {
             { label: "Faturamento 1 Dia", value: "Aguardando sync", color: C.gold },
             { label: "Faturamento 1 Semana", value: "Aguardando sync", color: C.green },
             { label: "Faturamento 1 Mês", value: "Aguardando sync", color: C.blue },
-            { label: "Total 2026", value: "Aguardando sync", color: C.amber },
+            { label: `Total ${anoReferencia}`, value: "Aguardando sync", color: C.amber },
           ]
         : []
       : [
-          { label: "Faturamento 1 Dia", value: formatBRLCompact(qFat.data.dia), color: C.gold },
+          { label: "Faturamento Dia", value: formatBRLCompact(qFat.data.dia), color: C.gold },
           {
             label: "Faturamento 1 Semana",
             value: formatBRLCompact(qFat.data.semana_7d),
@@ -1246,7 +1268,7 @@ function EmpresasDashboardSection() {
             color: C.blue,
           },
           {
-            label: "Total 2026",
+            label: `Total ${anoReferencia}`,
             value: formatBRLCompact(qFat.data.ano_atual),
             color: C.amber,
           },
@@ -1335,7 +1357,7 @@ function EmpresasDashboardSection() {
           </span>
         </div>
         <div className="font-geist text-[12px]" style={{ color: C.mutedStrong }}>
-          {path}
+          {path} · Base: {formatDatePt(dataReferencia)}
         </div>
       </div>
 
@@ -1352,6 +1374,50 @@ function EmpresasDashboardSection() {
           onChange={setVendedor}
           disabled={vendedoresDisabled}
         />
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-col gap-2">
+            <div
+              className="font-geist text-[10px] uppercase tracking-[0.2em]"
+              style={{ color: C.muted }}
+            >
+              Data base
+            </div>
+            <Input
+              type="date"
+              value={dataReferencia}
+              min={`${anoReferencia}-01-01`}
+              max={hoje}
+              onChange={(event) => {
+                if (event.target.value) setDataReferencia(event.target.value);
+              }}
+              className="h-11 w-[180px] bg-[#09090B] font-geist text-[12px] uppercase tracking-[0.08em] text-white"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setDataReferencia(hoje)}
+            className="h-11 rounded px-3 font-geist text-[11px] uppercase tracking-[0.12em]"
+            style={{
+              border: `1px solid ${dataReferencia === hoje ? C.gold : C.border}`,
+              background: dataReferencia === hoje ? C.goldSoft : "rgba(255,255,255,0.03)",
+              color: dataReferencia === hoje ? C.gold : C.mutedStrong,
+            }}
+          >
+            Hoje
+          </button>
+          <button
+            type="button"
+            onClick={() => setDataReferencia(ontem)}
+            className="h-11 rounded px-3 font-geist text-[11px] uppercase tracking-[0.12em]"
+            style={{
+              border: `1px solid ${dataReferencia === ontem ? C.gold : C.border}`,
+              background: dataReferencia === ontem ? C.goldSoft : "rgba(255,255,255,0.03)",
+              color: dataReferencia === ontem ? C.gold : C.mutedStrong,
+            }}
+          >
+            Ontem
+          </button>
+        </div>
       </div>
 
       {qFat.error && (
@@ -1411,11 +1477,11 @@ function EmpresasDashboardSection() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
         <Card>
-          <SectionHead title="Faturamento por Empresa" sub="DISTRIBUIÇÃO 2026" />
+          <SectionHead title="Faturamento por Empresa" sub={`DISTRIBUIÇÃO ${anoReferencia}`} />
           {!qMix.data && qMix.isPending ? (
             <ChartPlaceholder message="Carregando gráfico…" />
           ) : mixRows.length === 0 ? (
-            <ChartPlaceholder message="Sem dados para 2026 ou aguardando sincronização." />
+            <ChartPlaceholder message={`Sem dados para ${anoReferencia} ou aguardando sincronização.`} />
           ) : (
             <div style={{ height: 240 }}>
               <ResponsiveContainer>
@@ -1453,7 +1519,7 @@ function EmpresasDashboardSection() {
           {!qMix.data && qMix.isPending ? (
             <ChartPlaceholder message="Carregando gráfico…" />
           ) : mixRows.length === 0 ? (
-            <ChartPlaceholder message="Sem dados para 2026 ou aguardando sincronização." />
+            <ChartPlaceholder message={`Sem dados para ${anoReferencia} ou aguardando sincronização.`} />
           ) : (
             <>
               <div className="relative" style={{ height: 240 }}>
