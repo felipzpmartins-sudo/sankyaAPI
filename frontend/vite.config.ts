@@ -12,6 +12,11 @@ import { nitro } from "nitro/vite";
 
 export default defineConfig({
   cloudflare: false,
+  vite: {
+    nitro: {
+      preset: "vercel",
+    },
+  },
   tanstackStart: {
     server: { entry: "server" },
   },
