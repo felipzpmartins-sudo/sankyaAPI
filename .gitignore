@@ -12,6 +12,7 @@ dist/
 build/
 .next/
 out/
+.vercel/
 
 # Environment variables
 .env
