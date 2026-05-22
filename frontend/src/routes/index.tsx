@@ -1166,12 +1166,6 @@ function localDateInputValue(date = new Date()): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function offsetDateInputValue(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return localDateInputValue(date);
-}
-
 function formatDatePt(date: string): string {
   const [yyyy, mm, dd] = date.split("-");
   return `${dd}/${mm}/${yyyy}`;
@@ -2592,16 +2586,10 @@ function VendedoresSection() {
   const [search, setSearch] = useState("");
   const [selectedVendor, setSelectedVendor] = useState<VendedorSeleção>("todos");
   const [dataReferencia, setDataReferencia] = useState(() => localDateInputValue());
-  const [periodoVendas, setPeriodoVendas] = useState<VendedoresPeriodo>("dia");
   const hoje = localDateInputValue();
-  const ontem = offsetDateInputValue(-1);
   const anoReferencia = dataReferencia.slice(0, 4);
-  const periodoLabel =
-    periodoVendas === "dia"
-      ? `Dia ${formatDatePt(dataReferencia)}`
-      : periodoVendas === "mes"
-        ? `Mês ${dataReferencia.slice(5, 7)}/${anoReferencia}`
-        : `Ano ${anoReferencia}`;
+  const periodoVendas: VendedoresPeriodo = "dia";
+  const periodoLabel = `Dia ${formatDatePt(dataReferencia)}`;
   const qVendedores = useVendedores();
   const qRanking = useVendedoresRanking(dataReferencia, periodoVendas);
   const qVendedoresHoje = useVendedoresLancamentosHoje(selectedVendor, dataReferencia);
@@ -2691,68 +2679,23 @@ function VendedoresSection() {
                   onChange={setSelectedVendor}
                   disabled={qVendedores.isLoading || !!qVendedores.error}
                 />
-                <div className="grid gap-3 md:grid-cols-[auto_1fr] md:items-end">
-                  <div className="flex flex-col gap-2">
-                    <div
-                      className="font-geist text-[10px] uppercase tracking-[0.2em]"
-                      style={{ color: C.muted }}
-                    >
-                      Data base
-                    </div>
-                    <Input
-                      type="date"
-                      value={dataReferencia}
-                      min={`${anoReferencia}-01-01`}
-                      max={hoje}
-                      onChange={(event) => {
-                        if (event.target.value) setDataReferencia(event.target.value);
-                      }}
-                      className="h-11 w-[180px] bg-[#09090B] font-geist text-[12px] uppercase tracking-[0.08em] text-white"
-                    />
+                <div className="flex flex-col gap-2">
+                  <div
+                    className="font-geist text-[10px] uppercase tracking-[0.2em]"
+                    style={{ color: C.muted }}
+                  >
+                    Selecione a data
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setDataReferencia(hoje)}
-                      className="h-11 rounded px-3 font-geist text-[11px] uppercase tracking-[0.12em]"
-                      style={{
-                        border: `1px solid ${dataReferencia === hoje ? C.gold : C.border}`,
-                        background: dataReferencia === hoje ? C.goldSoft : "rgba(255,255,255,0.03)",
-                        color: dataReferencia === hoje ? C.gold : C.mutedStrong,
-                      }}
-                    >
-                      Hoje
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDataReferencia(ontem)}
-                      className="h-11 rounded px-3 font-geist text-[11px] uppercase tracking-[0.12em]"
-                      style={{
-                        border: `1px solid ${dataReferencia === ontem ? C.gold : C.border}`,
-                        background: dataReferencia === ontem ? C.goldSoft : "rgba(255,255,255,0.03)",
-                        color: dataReferencia === ontem ? C.gold : C.mutedStrong,
-                      }}
-                    >
-                      Ontem
-                    </button>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {(["dia", "mes", "ano"] as const).map((periodo) => (
-                    <button
-                      key={periodo}
-                      type="button"
-                      onClick={() => setPeriodoVendas(periodo)}
-                      className="h-10 rounded px-3 font-geist text-[11px] uppercase tracking-[0.12em]"
-                      style={{
-                        border: `1px solid ${periodoVendas === periodo ? C.gold : C.border}`,
-                        background: periodoVendas === periodo ? C.goldSoft : "rgba(255,255,255,0.03)",
-                        color: periodoVendas === periodo ? C.gold : C.mutedStrong,
-                      }}
-                    >
-                      {periodo === "dia" ? "Dia" : periodo === "mes" ? "Mês" : "Ano"}
-                    </button>
-                  ))}
+                  <Input
+                    type="date"
+                    value={dataReferencia}
+                    min={`${anoReferencia}-01-01`}
+                    max={hoje}
+                    onChange={(event) => {
+                      if (event.target.value) setDataReferencia(event.target.value);
+                    }}
+                    className="h-11 w-[210px] bg-[#09090B] font-geist text-[12px] uppercase tracking-[0.08em] text-white"
+                  />
                 </div>
                 {qVendedores.error && (
                   <div className="text-sm font-geist" style={{ color: C.red }}>
