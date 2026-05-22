@@ -12,8 +12,13 @@ function normalizeStockValue(value: string | number | null | undefined): number 
 }
 
 function parseLocation(value: string | number | null | undefined): number {
-  const parsed = parseIntOrNull(value as string | null | undefined);
+  const parsed = parseIntOrNull(value == null ? null : String(value));
   return parsed ?? 0;
+}
+
+function sankhyaValue(value: unknown): string | number | null {
+  if (typeof value === "string" || typeof value === "number") return value;
+  return null;
 }
 
 async function loadStockFromEstoque(): Promise<unknown[]> {
@@ -62,13 +67,14 @@ export async function syncEstoque(): Promise<void> {
     let inserted = 0;
     const tx = db.transaction(() => {
       for (const row of records) {
-        const codprod = parseIntOrNull((row as Record<string, unknown>).CODPROD);
+        const record = row as Record<string, unknown>;
+        const codprod = parseIntOrNull(sankhyaValue(record.CODPROD)?.toString() ?? null);
         if (codprod == null) continue;
 
-        const codLocalOrig = parseLocation((row as Record<string, unknown>).CODLOCAL);
-        const estoque = normalizeStockValue((row as Record<string, unknown>).ESTOQUE);
-        const estMin = normalizeStockValue((row as Record<string, unknown>).ESTMIN);
-        const estMax = normalizeStockValue((row as Record<string, unknown>).ESTMAX);
+        const codLocalOrig = parseLocation(sankhyaValue(record.CODLOCAL));
+        const estoque = normalizeStockValue(sankhyaValue(record.ESTOQUE));
+        const estMin = normalizeStockValue(sankhyaValue(record.ESTMIN));
+        const estMax = normalizeStockValue(sankhyaValue(record.ESTMAX));
 
         upsert.run({
           CODPROD: codprod,

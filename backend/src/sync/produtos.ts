@@ -1,6 +1,6 @@
 import { getDb } from "../db/connection.js";
 import { loadAllRecords } from "../sankhya/crud.js";
-import { parseDecimal, parseIntOrNull } from "../utils/numbers.js";
+import { parseIntOrNull } from "../utils/numbers.js";
 import { recordSyncError, recordSyncSuccess } from "./state.js";
 
 const FIELDS_CORE = [
@@ -13,8 +13,6 @@ const FIELDS_CORE = [
   "ATIVO",
 ];
 
-const FIELDS_WITH_STOCK = ["ESTOQUE", "ESTMIN", "ESTMAX"];
-
 function parseAtivo(value: string | null | undefined): 0 | 1 {
   if (value == null) return 0;
   const text = String(value).trim().toUpperCase();
@@ -22,10 +20,10 @@ function parseAtivo(value: string | null | undefined): 0 | 1 {
   return 0;
 }
 
-function normalizeStockValue(value: string | number | null | undefined): number {
-  if (value == null) return 0;
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  return parseDecimal(String(value));
+function sankhyaText(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  return null;
 }
 
 async function loadProducts(): Promise<unknown[]> {
@@ -59,17 +57,18 @@ export async function syncProdutos(): Promise<void> {
     let inserted = 0;
     const tx = db.transaction(() => {
       for (const row of records) {
-        const codprod = parseIntOrNull((row as Record<string, unknown>).CODPROD);
+        const record = row as Record<string, unknown>;
+        const codprod = parseIntOrNull(sankhyaText(record.CODPROD));
         if (codprod == null) continue;
 
         upsert.run({
           CODPROD: codprod,
-          DESCRPROD: String((row as Record<string, unknown>).DESCRPROD ?? ""),
-          REFERENCIA: (row as Record<string, unknown>).REFERENCIA ?? null,
-          CODGRUPOPROD: parseIntOrNull((row as Record<string, unknown>).CODGRUPOPROD),
-          GRUPO_DESCR: (row as Record<string, unknown>).GRUPODESCPROD ?? null,
-          UNIDADE: (row as Record<string, unknown>).UNIDADE ?? null,
-          ativo: parseAtivo((row as Record<string, unknown>).ATIVO),
+          DESCRPROD: sankhyaText(record.DESCRPROD) ?? "",
+          REFERENCIA: sankhyaText(record.REFERENCIA),
+          CODGRUPOPROD: parseIntOrNull(sankhyaText(record.CODGRUPOPROD)),
+          GRUPO_DESCR: sankhyaText(record.GRUPODESCPROD),
+          UNIDADE: sankhyaText(record.UNIDADE),
+          ativo: parseAtivo(sankhyaText(record.ATIVO)),
           synced_at: now,
         });
         inserted += 1;

@@ -25,17 +25,23 @@ No painel do Railway, configure:
 
 ```
 # Sankhya API Credentials
-SANKHYA_API_URL=<sua-url>
-SANKHYA_USER=<seu-usuario>
-SANKHYA_PASSWORD=<sua-senha>
-SANKHYA_APP_NAME=<seu-app>
+SANKHYA_BASE_URL=<sua-url-base-do-sankhya>
+SANKHYA_CLIENT_ID=<seu-client-id>
+SANKHYA_CLIENT_SECRET=<seu-client-secret>
+SANKHYA_TOKEN=<seu-token>
 
 # Database
-DATABASE_URL=sqlite:./data/db.sqlite
+DATABASE_PATH=./data/snapshot.db
 NODE_ENV=production
 
 # CORS
-ALLOWED_ORIGINS=https://seu-dominio.com.br,https://www.seu-dominio.com.br
+CORS_ORIGINS=https://seu-dominio.com.br,https://www.seu-dominio.com.br
+
+# Runtime
+LOG_LEVEL=info
+SYNC_ENABLED=true
+SYNC_INTERVAL_MS=300000
+SYNC_INTERVAL_SLOW_MS=1800000
 ```
 
 ### Deploy
@@ -63,7 +69,7 @@ ALLOWED_ORIGINS=https://seu-dominio.com.br,https://www.seu-dominio.com.br
 Na seção "Environment Variables", configure:
 
 ```
-VITE_API_URL=https://cip-backend-prod.railway.app
+VITE_API_URL=https://sua-url-do-backend.up.railway.app
 ```
 
 (Substitua pela URL real do seu backend no Railway)
@@ -159,7 +165,7 @@ npm run start  # Testa se roda
 ### Frontend não consegue acessar backend
 
 - Verificar `VITE_API_URL` no Vercel
-- Verificar CORS no backend (`ALLOWED_ORIGINS`)
+- Verificar CORS no backend (`CORS_ORIGINS`)
 - Testar URL diretamente no navegador
 
 ### Backend não inicia no Railway
