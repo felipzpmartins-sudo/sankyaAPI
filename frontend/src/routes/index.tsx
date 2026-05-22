@@ -59,7 +59,7 @@ import { ApiError } from "@/lib/api/client";
 import { formatBRL, formatBRLCompact, formatMesAnoPt } from "@/lib/format";
 import { useEmpresas } from "@/hooks/api/useEmpresas";
 import { useVendedores } from "@/hooks/api/useVendedores";
-import { useVendedoresRanking } from "@/hooks/api/useVendedoresRanking";
+import { useVendedoresRanking, type VendedoresPeriodo } from "@/hooks/api/useVendedoresRanking";
 import { useVendedoresLancamentosHoje } from "@/hooks/api/useVendedoresLancamentosHoje";
 import { useFaturamentoConsolidado } from "@/hooks/api/useFaturamentoConsolidado";
 import { useFaturamentoPorEmpresa } from "@/hooks/api/useFaturamentoPorEmpresa";
@@ -1181,16 +1181,12 @@ function EmpresasDashboardSection() {
   const queryClient = useQueryClient();
   const [empresa, setEmpresa] = useState<EmpresaSeleção>("todas");
   const [vendedor, setVendedor] = useState<VendedorSeleção>("todos");
-  const [dataReferencia, setDataReferencia] = useState(() => localDateInputValue());
   const [t2, setT2] = useState<"donut" | "bar">("donut");
-  const hoje = localDateInputValue();
-  const ontem = offsetDateInputValue(-1);
-  const anoReferencia = dataReferencia.slice(0, 4);
 
   const qEmp = useEmpresas();
   const qVend = useVendedores();
-  const qFat = useFaturamentoConsolidado(empresa, vendedor, dataReferencia);
-  const qMix = useFaturamentoPorEmpresa(vendedor, dataReferencia);
+  const qFat = useFaturamentoConsolidado(empresa, vendedor);
+  const qMix = useFaturamentoPorEmpresa(vendedor);
 
   const listaEmpresas = useMemo(() => {
     const raw = qEmp.data?.empresas ?? [];
@@ -1252,7 +1248,7 @@ function EmpresasDashboardSection() {
             { label: "Faturamento 1 Dia", value: "Aguardando sync", color: C.gold },
             { label: "Faturamento 1 Semana", value: "Aguardando sync", color: C.green },
             { label: "Faturamento 1 Mês", value: "Aguardando sync", color: C.blue },
-            { label: `Total ${anoReferencia}`, value: "Aguardando sync", color: C.amber },
+            { label: "Total 2026", value: "Aguardando sync", color: C.amber },
           ]
         : []
       : [
@@ -1268,7 +1264,7 @@ function EmpresasDashboardSection() {
             color: C.blue,
           },
           {
-            label: `Total ${anoReferencia}`,
+            label: "Total 2026",
             value: formatBRLCompact(qFat.data.ano_atual),
             color: C.amber,
           },
@@ -1357,7 +1353,7 @@ function EmpresasDashboardSection() {
           </span>
         </div>
         <div className="font-geist text-[12px]" style={{ color: C.mutedStrong }}>
-          {path} · Base: {formatDatePt(dataReferencia)}
+          {path}
         </div>
       </div>
 
@@ -1374,50 +1370,6 @@ function EmpresasDashboardSection() {
           onChange={setVendedor}
           disabled={vendedoresDisabled}
         />
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="flex flex-col gap-2">
-            <div
-              className="font-geist text-[10px] uppercase tracking-[0.2em]"
-              style={{ color: C.muted }}
-            >
-              Data base
-            </div>
-            <Input
-              type="date"
-              value={dataReferencia}
-              min={`${anoReferencia}-01-01`}
-              max={hoje}
-              onChange={(event) => {
-                if (event.target.value) setDataReferencia(event.target.value);
-              }}
-              className="h-11 w-[180px] bg-[#09090B] font-geist text-[12px] uppercase tracking-[0.08em] text-white"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => setDataReferencia(hoje)}
-            className="h-11 rounded px-3 font-geist text-[11px] uppercase tracking-[0.12em]"
-            style={{
-              border: `1px solid ${dataReferencia === hoje ? C.gold : C.border}`,
-              background: dataReferencia === hoje ? C.goldSoft : "rgba(255,255,255,0.03)",
-              color: dataReferencia === hoje ? C.gold : C.mutedStrong,
-            }}
-          >
-            Hoje
-          </button>
-          <button
-            type="button"
-            onClick={() => setDataReferencia(ontem)}
-            className="h-11 rounded px-3 font-geist text-[11px] uppercase tracking-[0.12em]"
-            style={{
-              border: `1px solid ${dataReferencia === ontem ? C.gold : C.border}`,
-              background: dataReferencia === ontem ? C.goldSoft : "rgba(255,255,255,0.03)",
-              color: dataReferencia === ontem ? C.gold : C.mutedStrong,
-            }}
-          >
-            Ontem
-          </button>
-        </div>
       </div>
 
       {qFat.error && (
@@ -1477,11 +1429,11 @@ function EmpresasDashboardSection() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
         <Card>
-          <SectionHead title="Faturamento por Empresa" sub={`DISTRIBUIÇÃO ${anoReferencia}`} />
+          <SectionHead title="Faturamento por Empresa" sub="DISTRIBUIÇÃO 2026" />
           {!qMix.data && qMix.isPending ? (
             <ChartPlaceholder message="Carregando gráfico…" />
           ) : mixRows.length === 0 ? (
-            <ChartPlaceholder message={`Sem dados para ${anoReferencia} ou aguardando sincronização.`} />
+            <ChartPlaceholder message="Sem dados para 2026 ou aguardando sincronização." />
           ) : (
             <div style={{ height: 240 }}>
               <ResponsiveContainer>
@@ -1519,7 +1471,7 @@ function EmpresasDashboardSection() {
           {!qMix.data && qMix.isPending ? (
             <ChartPlaceholder message="Carregando gráfico…" />
           ) : mixRows.length === 0 ? (
-            <ChartPlaceholder message={`Sem dados para ${anoReferencia} ou aguardando sincronização.`} />
+            <ChartPlaceholder message="Sem dados para 2026 ou aguardando sincronização." />
           ) : (
             <>
               <div className="relative" style={{ height: 240 }}>
@@ -2639,11 +2591,22 @@ function ProdutosSection() {
 function VendedoresSection() {
   const [search, setSearch] = useState("");
   const [selectedVendor, setSelectedVendor] = useState<VendedorSeleção>("todos");
+  const [dataReferencia, setDataReferencia] = useState(() => localDateInputValue());
+  const [periodoVendas, setPeriodoVendas] = useState<VendedoresPeriodo>("dia");
+  const hoje = localDateInputValue();
+  const ontem = offsetDateInputValue(-1);
+  const anoReferencia = dataReferencia.slice(0, 4);
+  const periodoLabel =
+    periodoVendas === "dia"
+      ? `Dia ${formatDatePt(dataReferencia)}`
+      : periodoVendas === "mes"
+        ? `Mês ${dataReferencia.slice(5, 7)}/${anoReferencia}`
+        : `Ano ${anoReferencia}`;
   const qVendedores = useVendedores();
-  const qRanking = useVendedoresRanking();
-  const qVendedoresHoje = useVendedoresLancamentosHoje(selectedVendor);
-  const qKpis = useFaturamentoConsolidado("todas", selectedVendor);
-  const qPorEmpresa = useFaturamentoPorEmpresa(selectedVendor);
+  const qRanking = useVendedoresRanking(dataReferencia, periodoVendas);
+  const qVendedoresHoje = useVendedoresLancamentosHoje(selectedVendor, dataReferencia);
+  const qKpis = useFaturamentoConsolidado("todas", selectedVendor, dataReferencia);
+  const qPorEmpresa = useFaturamentoPorEmpresa(selectedVendor, dataReferencia, periodoVendas);
 
   const vendors = qVendedores.data?.vendedores ?? [];
   const ranking = qRanking.data?.ranking ?? [];
@@ -2666,7 +2629,7 @@ function VendedoresSection() {
 
   const kpis = [
     {
-      label: "Hoje",
+      label: "Dia selecionado",
       value: formatBRL(qKpis.data?.dia ?? 0),
       up: true,
       color: C.gold,
@@ -2678,13 +2641,13 @@ function VendedoresSection() {
       color: C.green,
     },
     {
-      label: "Mês atual",
+      label: "Mês selecionado",
       value: formatBRL(qKpis.data?.mes_atual ?? 0),
       up: true,
       color: C.blue,
     },
     {
-      label: "Ano 2026",
+      label: `Ano ${anoReferencia}`,
       value: formatBRLCompact(qKpis.data?.ano_atual ?? 0),
       up: true,
       color: C.gold,
@@ -2696,11 +2659,11 @@ function VendedoresSection() {
       <Card>
         <SectionHead
           title="Vendedores"
-          sub="Ranking e performance de vendas 2026"
+          sub={`Ranking e performance · ${periodoLabel}`}
           actions={
             qRanking.data ? (
               <div className="font-geist text-[11px] uppercase tracking-[0.15em]" style={{ color: C.muted }}>
-                {qRanking.data.periodo}
+                {periodoLabel}
               </div>
             ) : null
           }
@@ -2728,6 +2691,69 @@ function VendedoresSection() {
                   onChange={setSelectedVendor}
                   disabled={qVendedores.isLoading || !!qVendedores.error}
                 />
+                <div className="grid gap-3 md:grid-cols-[auto_1fr] md:items-end">
+                  <div className="flex flex-col gap-2">
+                    <div
+                      className="font-geist text-[10px] uppercase tracking-[0.2em]"
+                      style={{ color: C.muted }}
+                    >
+                      Data base
+                    </div>
+                    <Input
+                      type="date"
+                      value={dataReferencia}
+                      min={`${anoReferencia}-01-01`}
+                      max={hoje}
+                      onChange={(event) => {
+                        if (event.target.value) setDataReferencia(event.target.value);
+                      }}
+                      className="h-11 w-[180px] bg-[#09090B] font-geist text-[12px] uppercase tracking-[0.08em] text-white"
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDataReferencia(hoje)}
+                      className="h-11 rounded px-3 font-geist text-[11px] uppercase tracking-[0.12em]"
+                      style={{
+                        border: `1px solid ${dataReferencia === hoje ? C.gold : C.border}`,
+                        background: dataReferencia === hoje ? C.goldSoft : "rgba(255,255,255,0.03)",
+                        color: dataReferencia === hoje ? C.gold : C.mutedStrong,
+                      }}
+                    >
+                      Hoje
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDataReferencia(ontem)}
+                      className="h-11 rounded px-3 font-geist text-[11px] uppercase tracking-[0.12em]"
+                      style={{
+                        border: `1px solid ${dataReferencia === ontem ? C.gold : C.border}`,
+                        background: dataReferencia === ontem ? C.goldSoft : "rgba(255,255,255,0.03)",
+                        color: dataReferencia === ontem ? C.gold : C.mutedStrong,
+                      }}
+                    >
+                      Ontem
+                    </button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(["dia", "mes", "ano"] as const).map((periodo) => (
+                    <button
+                      key={periodo}
+                      type="button"
+                      onClick={() => setPeriodoVendas(periodo)}
+                      className="h-10 rounded px-3 font-geist text-[11px] uppercase tracking-[0.12em]"
+                      style={{
+                        border: `1px solid ${periodoVendas === periodo ? C.gold : C.border}`,
+                        background: periodoVendas === periodo ? C.goldSoft : "rgba(255,255,255,0.03)",
+                        color: periodoVendas === periodo ? C.gold : C.mutedStrong,
+                      }}
+                    >
+                      {periodo === "dia" ? "Dia" : periodo === "mes" ? "Mês" : "Ano"}
+                    </button>
+                  ))}
+                </div>
                 {qVendedores.error && (
                   <div className="text-sm font-geist" style={{ color: C.red }}>
                     Erro ao carregar lista de vendedores.
@@ -2765,9 +2791,9 @@ function VendedoresSection() {
                 <div className="mt-3 flex flex-wrap gap-2 text-[12px]" style={{ color: C.mutedStrong }}>
                   <span>{selectedPosition ? `Posição #${selectedPosition}` : "Posição —"}</span>
                   <span>•</span>
-                  <span>Receita 2026</span>
+                  <span>{periodoLabel}</span>
                   <span className="font-semibold" style={{ color: C.text }}>
-                    {formatBRL(qKpis.data?.ano_atual ?? 0)}
+                    {formatBRL(qPorEmpresa.data?.total ?? 0)}
                   </span>
                 </div>
               </div>
@@ -2779,7 +2805,7 @@ function VendedoresSection() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.45fr_1fr]">
         <Card>
-          <SectionHead title="Vendas por Empresa" sub="Distribuição de receita 2026" />
+          <SectionHead title="Vendas por Empresa" sub={`Distribuição de receita · ${periodoLabel}`} />
           <div className="mb-3 text-sm" style={{ color: C.muted }}>
             Exibindo {selectedLabel.toLowerCase()}.
           </div>
@@ -2811,7 +2837,7 @@ function VendedoresSection() {
         </Card>
 
         <Card>
-          <SectionHead title="Ranking de Vendedores" sub="Top 20 por faturamento" />
+          <SectionHead title="Ranking de Vendedores" sub={`Top 20 por faturamento · ${periodoLabel}`} />
           <div className="overflow-x-auto">
             <table className="w-full font-geist text-[12px]">
               <thead>
@@ -2872,14 +2898,14 @@ function VendedoresSection() {
       </div>
 
       <Card>
-        <SectionHead title="Lançamentos de Hoje" sub="Quem lançou e o que vendeu hoje" />
+        <SectionHead title="Lançamentos do Dia" sub={`Quem lançou e o que vendeu em ${formatDatePt(dataReferencia)}`} />
         {qVendedoresHoje.isLoading ? (
           <div className="rounded-3xl border border-white/10 bg-[#09090B] p-6 text-sm font-geist" style={{ color: C.muted }}>
-            Carregando lançamentos de hoje...
+            Carregando lançamentos do dia...
           </div>
         ) : qVendedoresHoje.isError ? (
           <div className="rounded-3xl border border-red-500/20 bg-red-500/10 p-6 font-geist text-sm" style={{ color: C.red }}>
-            Erro ao carregar lançamentos de hoje.
+            Erro ao carregar lançamentos do dia.
           </div>
         ) : qVendedoresHoje.data?.lancamentos.length ? (
           <div className="grid gap-3">
@@ -2915,7 +2941,7 @@ function VendedoresSection() {
           </div>
         ) : (
           <div className="rounded-3xl border border-white/10 bg-[#09090B] p-6 text-sm font-geist" style={{ color: C.muted }}>
-            Nenhum lançamento de faturamento encontrado para hoje.
+            Nenhum lançamento de faturamento encontrado para a data selecionada.
           </div>
         )}
       </Card>

@@ -31,6 +31,7 @@ const faturamentoQuery = z.object({
 const faturamentoPorEmpresaQuery = z.object({
   vendedor: vendedorParam,
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  periodo: z.enum(["dia", "mes", "ano"]).default("ano"),
 });
 
 dashboardRouter.get("/empresa/faturamento", (req, res, next) => {
@@ -44,8 +45,8 @@ dashboardRouter.get("/empresa/faturamento", (req, res, next) => {
 
 dashboardRouter.get("/empresa/faturamento-por-empresa", (req, res, next) => {
   try {
-    const { vendedor, data } = faturamentoPorEmpresaQuery.parse(req.query);
-    res.json(faturamentoPorEmpresa(vendedor, data));
+    const { vendedor, data, periodo } = faturamentoPorEmpresaQuery.parse(req.query);
+    res.json(faturamentoPorEmpresa(vendedor, data, periodo));
   } catch (err) {
     next(err);
   }
@@ -60,9 +61,16 @@ dashboardRouter.get("/empresa/comodato", (req, res, next) => {
   }
 });
 
-dashboardRouter.get("/vendedores/ranking", (_req, res, next) => {
+const vendedoresPeriodoQuery = z.object({
+  vendedor: vendedorParam,
+  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  periodo: z.enum(["dia", "mes", "ano"]).default("ano"),
+});
+
+dashboardRouter.get("/vendedores/ranking", (req, res, next) => {
   try {
-    res.json(vendedoresRanking());
+    const { data, periodo } = vendedoresPeriodoQuery.parse(req.query);
+    res.json(vendedoresRanking(data, periodo));
   } catch (err) {
     next(err);
   }
@@ -70,8 +78,8 @@ dashboardRouter.get("/vendedores/ranking", (_req, res, next) => {
 
 dashboardRouter.get("/vendedores/hoje", (req, res, next) => {
   try {
-    const { vendedor } = faturamentoPorEmpresaQuery.parse(req.query);
-    res.json(lancamentosHoje(vendedor));
+    const { vendedor, data } = vendedoresPeriodoQuery.parse(req.query);
+    res.json(lancamentosHoje(vendedor, data));
   } catch (err) {
     next(err);
   }

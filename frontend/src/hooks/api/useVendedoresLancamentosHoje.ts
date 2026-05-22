@@ -6,18 +6,20 @@ import { vendedorQueryValue } from "@/lib/vendedorSelecao";
 
 async function fetchVendedoresLancamentosHoje(
   vendedor: VendedorSeleção,
+  data?: string,
 ): Promise<LancamentosHojeResponse> {
   return apiJson<LancamentosHojeResponse>("/api/dashboard/vendedores/hoje", {
     query: {
       vendedor: vendedorQueryValue(vendedor),
+      data,
     },
   });
 }
 
-export function useVendedoresLancamentosHoje(vendedor: VendedorSeleção = "todos") {
+export function useVendedoresLancamentosHoje(vendedor: VendedorSeleção = "todos", data?: string) {
   return useQuery({
-    queryKey: ["vendedoresLancamentosHoje", vendedor],
-    queryFn: () => fetchVendedoresLancamentosHoje(vendedor),
+    queryKey: ["vendedoresLancamentosHoje", { vendedor, data }],
+    queryFn: () => fetchVendedoresLancamentosHoje(vendedor, data),
     staleTime: 30_000,
   });
 }

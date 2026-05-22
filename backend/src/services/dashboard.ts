@@ -136,6 +136,12 @@ function normalizeReferenceDate(data?: string): string {
   return data && /^\d{4}-\d{2}-\d{2}$/.test(data) ? data : todayLocalIso();
 }
 
+function vendasPeriodoClause(coluna: string, periodo: PeriodoVendas): string {
+  if (periodo === "dia") return `${coluna} = date(?)`;
+  if (periodo === "mes") return `strftime('%Y-%m', ${coluna}) = strftime('%Y-%m', ?)`;
+  return `strftime('%Y', ${coluna}) = strftime('%Y', ?)`;
+}
+
 export function listarEmpresas(): Empresa[] {
   return getDb()
     .prepare(
@@ -165,6 +171,8 @@ export type VendedorRankingLinha = {
   percentual: number;
 };
 
+export type PeriodoVendas = "dia" | "mes" | "ano";
+
 export type LancamentoHojeLinha = {
   NUNOTA: number;
   NUMNOTA: number | null;
@@ -178,12 +186,14 @@ export type LancamentoHojeLinha = {
 
 export function lancamentosHoje(
   vendedor: VendedorFiltro = { modo: "todos" },
+  dataReferencia?: string,
 ): {
   periodo: string;
   total: number;
   snapshot_at: string | null;
   lancamentos: LancamentoHojeLinha[];
 } {
+  const refDate = normalizeReferenceDate(dataReferencia);
   const vendedorSql = vendedorToSqlClause(vendedor, "p.CODVEND");
   const vendedorJoin = vendedorSql.clause ? ` AND ${vendedorSql.clause}` : "";
 
@@ -207,12 +217,12 @@ export function lancamentosHoje(
        LEFT JOIN pedido_itens pi ON pi.NUNOTA = p.NUNOTA
        LEFT JOIN produtos pr ON pr.CODPROD = pi.CODPROD
        WHERE ${WHERE_FATURAMENTO}
-         AND DTFATUR = date('now')${vendedorJoin}
+         AND DTFATUR = date(?)${vendedorJoin}
        GROUP BY p.NUNOTA, p.NUMNOTA, p.SERIENOTA, e.NOMEFANTASIA, p.CODVEND, v.APELIDO, p.VLRNOTA
        ORDER BY p.DTFATUR DESC, p.NUNOTA DESC
        LIMIT 5`,
     )
-    .all(...vendedorSql.params) as {
+    .all(refDate, ...vendedorSql.params) as {
       NUNOTA: number;
       NUMNOTA: number | null;
       SERIENOTA: string | null;
@@ -226,7 +236,7 @@ export function lancamentosHoje(
   const total = rows.reduce((acc, row) => acc + row.valor, 0);
 
   return {
-    periodo: "hoje",
+    periodo: `dia:${refDate}`,
     total: round2(total),
     snapshot_at: snapshotPedidosAt(),
     lancamentos: rows.map((row) => ({
@@ -242,12 +252,16 @@ export function lancamentosHoje(
   };
 }
 
-export function vendedoresRanking(): {
+export function vendedoresRanking(
+  dataReferencia?: string,
+  periodo: PeriodoVendas = "ano",
+): {
   periodo: string;
   total: number;
   snapshot_at: string | null;
   ranking: VendedorRankingLinha[];
 } {
+  const refDate = normalizeReferenceDate(dataReferencia);
   const rows = getDb()
     .prepare(
       `SELECT
@@ -259,11 +273,11 @@ export function vendedoresRanking(): {
        LEFT JOIN pedidos p
          ON p.CODVEND = v.CODVEND
          AND ${JOIN_PEDIDO_FATURAMENTO}
-         AND strftime('%Y', p.DTFATUR) = ?
+         AND ${vendasPeriodoClause("p.DTFATUR", periodo)}
        GROUP BY v.CODVEND, v.APELIDO, v.ativo
        ORDER BY faturamento DESC, v.APELIDO`,
     )
-    .all(ANO_EXIBICAO_FATURAMENTO) as {
+    .all(refDate) as {
     CODVEND: number;
     APELIDO: string;
     ativo: 0 | 1;
@@ -273,7 +287,7 @@ export function vendedoresRanking(): {
   const total = rows.reduce((acc, row) => acc + row.faturamento, 0);
 
   return {
-    periodo: `ano:${ANO_EXIBICAO_FATURAMENTO}`,
+    periodo: `${periodo}:${refDate}`,
     total: round2(total),
     snapshot_at: snapshotPedidosAt(),
     ranking: rows.map((row) => ({
@@ -345,6 +359,7 @@ export function faturamentoConsolidado(
 export function faturamentoPorEmpresa(
   vendedor: VendedorFiltro = { modo: "todos" },
   dataReferencia?: string,
+  periodo: PeriodoVendas = "ano",
 ): {
   periodo: string;
   total: number;
@@ -352,7 +367,6 @@ export function faturamentoPorEmpresa(
   empresas: FaturamentoEmpresa[];
 } {
   const refDate = normalizeReferenceDate(dataReferencia);
-  const refYear = refDate.slice(0, 4);
   const vendedorSql = vendedorToSqlClause(vendedor, "p.CODVEND");
   const vendedorJoin = vendedorSql.clause ? ` AND ${vendedorSql.clause}` : "";
 
@@ -366,12 +380,12 @@ export function faturamentoPorEmpresa(
        LEFT JOIN pedidos p
          ON p.CODEMP = e.CODEMP
          AND ${JOIN_PEDIDO_FATURAMENTO}
-         AND strftime('%Y', p.DTFATUR) = ?${vendedorJoin}
+         AND ${vendasPeriodoClause("p.DTFATUR", periodo)}${vendedorJoin}
        WHERE e.${WHERE_EMPRESA_VISIVEL}
        GROUP BY e.CODEMP, e.NOMEFANTASIA
        ORDER BY faturamento DESC`,
     )
-    .all(refYear, ...vendedorSql.params) as {
+    .all(refDate, ...vendedorSql.params) as {
       CODEMP: number;
       NOMEFANTASIA: string;
       faturamento: number;
@@ -387,7 +401,7 @@ export function faturamentoPorEmpresa(
   }));
 
   return {
-    periodo: `ano:${refYear}`,
+    periodo: `${periodo}:${refDate}`,
     total: round2(total),
     snapshot_at: snapshotPedidosAt(),
     empresas,
