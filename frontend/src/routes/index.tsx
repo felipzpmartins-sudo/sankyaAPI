@@ -595,6 +595,7 @@ const tooltipStyle = {
     color: C.text,
   },
   labelStyle: { color: C.mutedStrong, fontSize: 10, textTransform: "uppercase" as const },
+  itemStyle: { color: C.text },
   cursor: { fill: "rgba(255,255,255,0.03)" },
 };
 
