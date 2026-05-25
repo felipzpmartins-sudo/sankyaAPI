@@ -7,6 +7,7 @@ import {
   listarContasAbertas,
 } from "../services/dashboard-financeiro.js";
 import { clientesBI, rhBI } from "../services/dashboard-clientes-rh.js";
+import { entregasBI } from "../services/dashboard-entregas.js";
 import {
   comodatoConsolidado,
   faturamentoConsolidado,
@@ -176,6 +177,14 @@ dashboardRouter.get("/clientes", (_req, res, next) => {
 dashboardRouter.get("/rh", (_req, res, next) => {
   try {
     res.json(rhBI());
+  } catch (err) {
+    next(err);
+  }
+});
+
+dashboardRouter.get("/entregas", (_req, res, next) => {
+  try {
+    res.json(entregasBI());
   } catch (err) {
     next(err);
   }

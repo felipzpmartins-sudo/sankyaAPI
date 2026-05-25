@@ -74,6 +74,7 @@ import { useEstoque } from "@/hooks/api/useEstoque";
 import { useProdutos } from "@/hooks/api/useProdutos";
 import { useClientesBI } from "@/hooks/api/useClientesBI";
 import { useRhBI } from "@/hooks/api/useRhBI";
+import { useEntregasBI } from "@/hooks/api/useEntregasBI";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -2422,6 +2423,219 @@ function EntregasSection() {
   );
 }
 
+function EntregasApiSection() {
+  const qEntregas = useEntregasBI();
+  const [chartMode, setChartMode] = useState<"sbar" | "line" | "area">("sbar");
+  const [search, setSearch] = useState("");
+  const data = qEntregas.data;
+  const historico = data?.historico ?? [];
+  const transportadoras = data?.transportadoras ?? [];
+  const recentes = data?.recentes ?? [];
+  const series = [
+    { key: "prazo", color: C.green },
+    { key: "atrasado", color: C.red },
+    { key: "transito", color: C.amber },
+  ];
+
+  const filteredRecentes = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const list = term
+      ? recentes.filter((row) =>
+          [row.cliente, row.empresa, row.transportadora, String(row.NUNOTA), String(row.NUMNOTA ?? "")]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(term)),
+        )
+      : recentes;
+    return list.slice(0, 30);
+  }, [recentes, search]);
+
+  const kpis: Kpi[] = data
+    ? [
+        { label: "Notas logisticas", value: String(data.total_notas), color: C.gold },
+        { label: "No prazo", value: `${data.on_time_pct.toFixed(1)}%`, color: C.green },
+        {
+          label: "Atrasadas",
+          value: String(data.atrasadas),
+          color: data.atrasadas > 0 ? C.red : C.green,
+          alert: data.atrasadas > 0,
+        },
+        { label: "Frete total", value: formatBRLCompact(data.frete_total), color: C.blue },
+      ]
+    : DATA.entregas.kpis;
+
+  return (
+    <div className="flex flex-col gap-4">
+      {qEntregas.error && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-geist text-[11px]"
+          style={{ border: `1px solid ${C.red}55`, background: `${C.red}12`, color: C.red }}
+        >
+          <span>{qEntregas.error instanceof ApiError ? qEntregas.error.message : "Erro ao carregar entregas."}</span>
+          <button
+            type="button"
+            className="rounded px-2 py-1 uppercase tracking-[0.12em]"
+            style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
+            onClick={() => void qEntregas.refetch()}
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
+
+      <KpiRow items={kpis} />
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.45fr_1fr]">
+        <Card>
+          <SectionHead
+            title="Performance de Entregas"
+            sub={data ? `Ano ${data.ano} · SLA ${data.sla_dias} dias · prazo medio ${data.prazo_medio_dias} dias` : "Carregando"}
+            actions={<ChartSwitcher value={chartMode} onChange={setChartMode} options={["sbar", "line", "area"]} />}
+          />
+          <div style={{ height: 280 }}>
+            <ResponsiveContainer key={chartMode}>
+              {chartMode === "sbar" ? (
+                <BarChart data={historico} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+                  <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
+                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
+                  <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
+                  {series.map((s) => (
+                    <Bar key={s.key} dataKey={s.key} stackId="a" fill={s.color} />
+                  ))}
+                </BarChart>
+              ) : chartMode === "line" ? (
+                <LineChart data={historico} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+                  <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
+                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
+                  <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
+                  {series.map((s) => (
+                    <Line key={s.key} type="monotone" dataKey={s.key} stroke={s.color} strokeWidth={2} dot={false} />
+                  ))}
+                </LineChart>
+              ) : (
+                <AreaChart data={historico} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+                  <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
+                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
+                  <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
+                  {series.map((s) => (
+                    <Area
+                      key={s.key}
+                      type="monotone"
+                      dataKey={s.key}
+                      stackId="a"
+                      stroke={s.color}
+                      fill={s.color}
+                      fillOpacity={0.12}
+                    />
+                  ))}
+                </AreaChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card>
+          <SectionHead title="Transportadoras" sub={`Volumes ${data?.volumes ?? 0}`} />
+          <div className="flex flex-col gap-3">
+            {transportadoras.map((row) => {
+              const tone = row.on_time_pct >= 90 ? C.green : row.on_time_pct >= 75 ? C.amber : C.red;
+              return (
+                <div key={row.nome}>
+                  <div className="mb-1.5 flex justify-between gap-3 font-geist text-[11px]">
+                    <span className="truncate" style={{ color: C.text }}>
+                      {row.nome}
+                    </span>
+                    <span className="tabular-nums" style={{ color: tone }}>
+                      {row.on_time_pct.toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="h-1.5" style={{ background: "rgba(255,255,255,0.05)" }}>
+                    <div className="h-full" style={{ width: `${Math.min(row.on_time_pct, 100)}%`, background: tone }} />
+                  </div>
+                  <div className="mt-1 flex justify-between text-[10px]" style={{ color: C.muted }}>
+                    <span>{row.total} notas</span>
+                    <span>{formatBRLCompact(row.frete)} frete</span>
+                  </div>
+                </div>
+              );
+            })}
+            {transportadoras.length === 0 && (
+              <div className="py-4 text-center font-geist text-sm" style={{ color: C.muted }}>
+                Sem transportadoras carregadas.
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      <Card>
+        <SectionHead title="Notas Recentes" sub="Cliente, prazo e frete" />
+        <Input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Buscar por nota, cliente, empresa ou transportadora"
+          className="mb-3 bg-[#09090B] text-white"
+        />
+        <div className="overflow-x-auto">
+          <table className="w-full font-geist text-[12px]">
+            <thead>
+              <tr style={{ color: C.muted, fontSize: 10 }}>
+                <th className="py-2 text-left font-normal uppercase tracking-wider">Nota</th>
+                <th className="py-2 text-left font-normal uppercase tracking-wider">Cliente</th>
+                <th className="py-2 text-right font-normal uppercase tracking-wider">Prazo</th>
+                <th className="py-2 text-right font-normal uppercase tracking-wider">Valor</th>
+                <th className="py-2 text-right font-normal uppercase tracking-wider">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRecentes.map((row) => {
+                const tone = row.status === "prazo" ? C.green : row.status === "atrasado" ? C.red : C.amber;
+                return (
+                  <tr key={row.NUNOTA} style={{ borderTop: `1px solid ${C.border}` }}>
+                    <td className="py-2.5" style={{ color: C.text }}>
+                      <div>{row.NUMNOTA ?? row.NUNOTA}</div>
+                      <div className="mt-1 text-[10px]" style={{ color: C.muted }}>
+                        {row.empresa} · {row.DTNEG}
+                      </div>
+                    </td>
+                    <td className="max-w-[420px] py-2.5" style={{ color: C.text }}>
+                      <div className="truncate">{row.cliente}</div>
+                      <div className="mt-1 text-[10px]" style={{ color: C.muted }}>
+                        {row.transportadora}
+                      </div>
+                    </td>
+                    <td className="py-2.5 text-right tabular-nums" style={{ color: C.mutedStrong }}>
+                      {row.prazo_dias == null ? "-" : `${row.prazo_dias}d`}
+                    </td>
+                    <td className="py-2.5 text-right tabular-nums" style={{ color: C.gold }}>
+                      {formatBRLCompact(row.valor)}
+                    </td>
+                    <td className="py-2.5 text-right">
+                      <span className="inline-flex items-center gap-2" style={{ color: tone }}>
+                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: tone }} />
+                        {row.status === "prazo" ? "No prazo" : row.status === "atrasado" ? "Atrasada" : "Transito"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filteredRecentes.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-4 text-center" style={{ color: C.muted }}>
+                    Nenhuma nota encontrada.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function ClientesSection() {
   const d = DATA.clientes;
   const [t1, setT1] = useState<"bar" | "line" | "area">("bar");
@@ -4095,7 +4309,7 @@ function Dashboard() {
     vendedores: <VendedoresSection />,
     compras: <ComprasSection />,
     estoque: <EstoqueSection />,
-    entregas: <EntregasSection />,
+    entregas: <EntregasApiSection />,
     clientes: <ClientesApiSection />,
     rh: <RhApiSection />,
   };

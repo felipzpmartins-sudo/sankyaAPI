@@ -15,7 +15,7 @@ import { recordSyncError, recordSyncSuccess } from "./state.js";
  *
  * Reincluir gradualmente cada um após validar individualmente.
  */
-const FIELDS = [
+const FIELDS_BASE = [
   "NUNOTA",
   "CODEMP",
   "CODPARC",
@@ -28,6 +28,16 @@ const FIELDS = [
   "STATUSNOTA",
   "VLRNOTA",
   "VLRFRETE",
+];
+
+const FIELDS = [
+  ...FIELDS_BASE.slice(0, 5),
+  "CODPARCTRANSP",
+  ...FIELDS_BASE.slice(5, 9),
+  "DTENTSAI",
+  "CIF_FOB",
+  "QTDVOL",
+  ...FIELDS_BASE.slice(9),
 ];
 
 const DATA_INICIO = "01/01/2025";
@@ -56,6 +66,19 @@ function upsertEmpresaStub(codemp: number): void {
     .run(codemp, `EMPRESA ${codemp}`, new Date().toISOString());
 }
 
+async function loadPedidosSankhya() {
+  const args = {
+    rootEntity: "CabecalhoNota",
+    expression: `this.DTNEG >= TO_DATE('${DATA_INICIO}','DD/MM/YYYY') AND this.STATUSNOTA = 'L'`,
+  };
+
+  try {
+    return await loadAllRecords({ ...args, fields: FIELDS });
+  } catch {
+    return loadAllRecords({ ...args, fields: FIELDS_BASE });
+  }
+}
+
 export async function syncPedidos(): Promise<void> {
   try {
     const tipmovMap = buildTipmovMap();
@@ -65,23 +88,21 @@ export async function syncPedidos(): Promise<void> {
       );
     }
 
-    const rows = await loadAllRecords({
-      rootEntity: "CabecalhoNota",
-      fields: FIELDS,
-      expression: `this.DTNEG >= TO_DATE('${DATA_INICIO}','DD/MM/YYYY') AND this.STATUSNOTA = 'L'`,
-    });
+    const rows = await loadPedidosSankhya();
 
     const db = getDb();
     const now = new Date().toISOString();
 
     const upsert = db.prepare(
-      `INSERT INTO pedidos
+       `INSERT INTO pedidos
          (NUNOTA, CODEMP, CODPARC, CODVEND, CODTIPOPER, TIPMOV,
-          NUMNOTA, SERIENOTA, DTNEG, DTFATUR, DTENTSAI, STATUSNOTA,
+          CODPARCTRANSP, TRANSPORTADORA_NOME, NUMNOTA, SERIENOTA,
+          DTNEG, DTFATUR, DTENTSAI, CIF_FOB, QTDVOL, STATUSNOTA,
           VLRNOTA, VLRDESC, VLRFRETE, AD_OBS, synced_at)
        VALUES
          (@NUNOTA, @CODEMP, @CODPARC, @CODVEND, @CODTIPOPER, @TIPMOV,
-          @NUMNOTA, @SERIENOTA, @DTNEG, @DTFATUR, @DTENTSAI, @STATUSNOTA,
+          @CODPARCTRANSP, @TRANSPORTADORA_NOME, @NUMNOTA, @SERIENOTA,
+          @DTNEG, @DTFATUR, @DTENTSAI, @CIF_FOB, @QTDVOL, @STATUSNOTA,
           @VLRNOTA, @VLRDESC, @VLRFRETE, @AD_OBS, @synced_at)
        ON CONFLICT(NUNOTA) DO UPDATE SET
          CODEMP     = excluded.CODEMP,
@@ -89,11 +110,15 @@ export async function syncPedidos(): Promise<void> {
          CODVEND    = excluded.CODVEND,
          CODTIPOPER = excluded.CODTIPOPER,
          TIPMOV     = excluded.TIPMOV,
+         CODPARCTRANSP = excluded.CODPARCTRANSP,
+         TRANSPORTADORA_NOME = excluded.TRANSPORTADORA_NOME,
          NUMNOTA    = excluded.NUMNOTA,
          SERIENOTA  = excluded.SERIENOTA,
          DTNEG      = excluded.DTNEG,
          DTFATUR    = excluded.DTFATUR,
          DTENTSAI   = excluded.DTENTSAI,
+         CIF_FOB    = excluded.CIF_FOB,
+         QTDVOL     = excluded.QTDVOL,
          STATUSNOTA = excluded.STATUSNOTA,
          VLRNOTA    = excluded.VLRNOTA,
          VLRDESC    = excluded.VLRDESC,
@@ -128,11 +153,15 @@ export async function syncPedidos(): Promise<void> {
           CODVEND: parseIntOrNull(r.CODVEND),
           CODTIPOPER: codtipoper,
           TIPMOV: tipmovMap.get(codtipoper) ?? "?",
+          CODPARCTRANSP: parseIntOrNull(r.CODPARCTRANSP),
+          TRANSPORTADORA_NOME: r.ParceiroTransportadora_NOMEPARC ?? null,
           NUMNOTA: parseIntOrNull(r.NUMNOTA),
           SERIENOTA: r.SERIENOTA ?? null,
           DTNEG: parseDateBR(r.DTNEG),
           DTFATUR: parseDateBR(r.DTFATUR),
-          DTENTSAI: null,
+          DTENTSAI: parseDateBR(r.DTENTSAI),
+          CIF_FOB: r.CIF_FOB ?? null,
+          QTDVOL: parseDecimal(r.QTDVOL),
           STATUSNOTA: r.STATUSNOTA ?? null,
           VLRNOTA: parseDecimal(r.VLRNOTA),
           VLRDESC: 0,

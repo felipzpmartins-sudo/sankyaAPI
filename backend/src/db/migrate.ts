@@ -22,6 +22,7 @@ export function migrate(): MigrateResult {
   db.exec(sql);
   migrateParceirosShape();
   migrateProdutosShape();
+  migratePedidosShape();
   migrateProdutoEstoqueShape();
 
   const versionRow = db
@@ -50,6 +51,23 @@ export function migrate(): MigrateResult {
     tables: counts.tables,
     indexes: counts.indexes,
   };
+}
+
+function migratePedidosShape(): void {
+  const db = getDb();
+  const columns = db.prepare("PRAGMA table_info(pedidos)").all() as Array<{ name: string }>;
+  const names = new Set(columns.map((col) => col.name));
+
+  const additions: Array<[string, string]> = [
+    ["CODPARCTRANSP", "ALTER TABLE pedidos ADD COLUMN CODPARCTRANSP INTEGER"],
+    ["TRANSPORTADORA_NOME", "ALTER TABLE pedidos ADD COLUMN TRANSPORTADORA_NOME TEXT"],
+    ["CIF_FOB", "ALTER TABLE pedidos ADD COLUMN CIF_FOB TEXT"],
+    ["QTDVOL", "ALTER TABLE pedidos ADD COLUMN QTDVOL REAL NOT NULL DEFAULT 0"],
+  ];
+
+  for (const [name, sql] of additions) {
+    if (!names.has(name)) db.exec(sql);
+  }
 }
 
 function migrateParceirosShape(): void {

@@ -267,3 +267,51 @@ export type RhBIResponse = {
   ranking: RhRankingDto[];
   mensal: RhMensalDto[];
 };
+
+export type EntregaHistoricoMesDto = {
+  mes: string;
+  prazo: number;
+  atrasado: number;
+  transito: number;
+};
+
+export type EntregaTransportadoraDto = {
+  nome: string;
+  total: number;
+  no_prazo: number;
+  atrasadas: number;
+  on_time_pct: number;
+  frete: number;
+};
+
+export type EntregaRecenteDto = {
+  NUNOTA: number;
+  NUMNOTA: number | null;
+  empresa: string;
+  cliente: string;
+  transportadora: string;
+  DTNEG: string;
+  DTFATUR: string | null;
+  DTENTSAI: string | null;
+  prazo_dias: number | null;
+  valor: number;
+  frete: number;
+  status: "prazo" | "atrasado" | "transito";
+};
+
+export type EntregasBIResponse = {
+  ano: string;
+  sla_dias: number;
+  snapshot_at: string | null;
+  total_notas: number;
+  no_prazo: number;
+  atrasadas: number;
+  em_transito: number;
+  on_time_pct: number;
+  prazo_medio_dias: number;
+  frete_total: number;
+  volumes: number;
+  historico: EntregaHistoricoMesDto[];
+  transportadoras: EntregaTransportadoraDto[];
+  recentes: EntregaRecenteDto[];
+};
