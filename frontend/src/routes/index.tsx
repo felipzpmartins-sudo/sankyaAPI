@@ -2114,11 +2114,22 @@ function FinanceiroSection() {
 }
 
 function EstoqueSection() {
-  const qEstoque = useEstoque();
+  const [empresa, setEmpresa] = useState<EmpresaSeleção>("todas");
+  const qEmp = useEmpresas();
+  const qEstoque = useEstoque(empresa);
   const [t1, setT1] = useState<"bar" | "line" | "area">("bar");
   const [range, setRange] = useState<RangeKey>("all");
   const d = qEstoque.data ?? DATA.estoque;
   const niveisData = sliceByRange(d.niveis, range);
+  const locais = "locais" in d ? d.locais : [];
+  const negativos = "negativos" in d ? d.negativos : [];
+  const listaEmpresas = useMemo(() => {
+    const raw = qEmp.data?.empresas ?? [];
+    return [...raw].sort((a, b) => a.ordem - b.ordem || a.CODEMP - b.CODEMP);
+  }, [qEmp.data?.empresas]);
+  const empresaDisabled = qEmp.isPending || !!qEmp.error || listaEmpresas.length === 0;
+  const formatQty = (value: number) =>
+    new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value);
 
   return (
     <div className="flex flex-col gap-4">
@@ -2142,6 +2153,12 @@ function EstoqueSection() {
           </button>
         </div>
       )}
+      <EmpresaSelector
+        lista={listaEmpresas}
+        value={empresa}
+        onChange={setEmpresa}
+        disabled={empresaDisabled}
+      />
       <RangeFilterBar value={range} onChange={setRange} />
       <KpiRow items={d.kpis} />
       <Card>
@@ -2183,6 +2200,82 @@ function EstoqueSection() {
           </ResponsiveContainer>
         </div>
       </Card>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <Card>
+          <SectionHead title="Estoque por Local" sub="EMPRESA · LOCAL · SALDO" />
+          <div className="overflow-x-auto">
+            <table className="w-full font-geist text-[12px]">
+              <thead>
+                <tr style={{ color: C.muted, fontSize: 10 }}>
+                  <th className="py-2 text-left font-normal uppercase tracking-wider">Empresa</th>
+                  <th className="py-2 text-left font-normal uppercase tracking-wider">Local</th>
+                  <th className="py-2 text-right font-normal uppercase tracking-wider">Itens</th>
+                  <th className="py-2 text-right font-normal uppercase tracking-wider">Saldo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {locais.map((row) => (
+                  <tr key={`${row.empresa}-${row.local}`} style={{ borderTop: `1px solid ${C.border}` }}>
+                    <td className="py-2.5" style={{ color: C.text }}>{row.empresa}</td>
+                    <td className="py-2.5" style={{ color: C.mutedStrong }}>{row.local}</td>
+                    <td className="py-2.5 text-right tabular-nums" style={{ color: C.muted }}>{row.linhas}</td>
+                    <td className="py-2.5 text-right tabular-nums" style={{ color: row.estoque < 0 ? C.red : C.gold }}>
+                      {formatQty(row.estoque)}
+                    </td>
+                  </tr>
+                ))}
+                {locais.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-4 text-center" style={{ color: C.muted }}>
+                      Sem dados de local para o filtro atual.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        <Card>
+          <SectionHead title="Saldos Negativos" sub="CONFERÊNCIA DE INVENTÁRIO" />
+          <div className="overflow-x-auto">
+            <table className="w-full font-geist text-[12px]">
+              <thead>
+                <tr style={{ color: C.muted, fontSize: 10 }}>
+                  <th className="py-2 text-left font-normal uppercase tracking-wider">Item</th>
+                  <th className="py-2 text-left font-normal uppercase tracking-wider">Origem</th>
+                  <th className="py-2 text-right font-normal uppercase tracking-wider">Saldo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {negativos.map((row) => (
+                  <tr key={`${row.empresa}-${row.local}-${row.item}`} style={{ borderTop: `1px solid ${C.border}` }}>
+                    <td className="max-w-[320px] py-2.5" style={{ color: C.text }}>
+                      <div className="truncate">{row.item}</div>
+                    </td>
+                    <td className="py-2.5" style={{ color: C.mutedStrong }}>
+                      <div>{row.empresa}</div>
+                      <div className="mt-1 text-[10px]" style={{ color: C.muted }}>
+                        {row.local} · {row.parceiro}
+                      </div>
+                    </td>
+                    <td className="py-2.5 text-right tabular-nums" style={{ color: C.red }}>
+                      {formatQty(row.estoque)}
+                    </td>
+                  </tr>
+                ))}
+                {negativos.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="py-4 text-center" style={{ color: C.muted }}>
+                      Nenhum saldo negativo encontrado para o filtro atual.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
       <Card>
         <SectionHead title="Alertas de Estoque" sub="ITENS CRÍTICOS" />
         <table className="w-full font-geist text-[12px]">
@@ -2200,7 +2293,12 @@ function EstoqueSection() {
               return (
                 <tr key={a.item} style={{ borderTop: `1px solid ${C.border}` }}>
                   <td className="py-2.5" style={{ color: C.text }}>
-                    {a.item}
+                    <div>{a.item}</div>
+                    {(a.empresa || a.local || a.parceiro) && (
+                      <div className="mt-1 text-[10px]" style={{ color: C.muted }}>
+                        {[a.empresa, a.local, a.parceiro].filter(Boolean).join(" · ")}
+                      </div>
+                    )}
                   </td>
                   <td className="py-2.5 text-right tabular-nums" style={{ color: C.mutedStrong }}>
                     {a.atual}

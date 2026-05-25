@@ -135,9 +135,27 @@ export type EstoqueNivelDto = {
 
 export type EstoqueAlertaDto = {
   item: string;
+  empresa: string | null;
+  local: string | null;
+  parceiro: string | null;
   atual: number;
   min: number;
   status: "green" | "amber" | "red";
+};
+
+export type EstoqueLocalDto = {
+  empresa: string;
+  local: string;
+  linhas: number;
+  estoque: number;
+};
+
+export type EstoqueNegativoDto = {
+  item: string;
+  empresa: string;
+  local: string;
+  parceiro: string;
+  estoque: number;
 };
 
 export type EstoqueDto = {
@@ -146,4 +164,6 @@ export type EstoqueDto = {
   kpis: EstoqueKpiDto[];
   niveis: EstoqueNivelDto[];
   alertas: EstoqueAlertaDto[];
+  locais: EstoqueLocalDto[];
+  negativos: EstoqueNegativoDto[];
 };

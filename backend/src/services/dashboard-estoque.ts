@@ -18,9 +18,27 @@ export type EstoqueNivel = {
 
 export type EstoqueAlerta = {
   item: string;
+  empresa: string | null;
+  local: string | null;
+  parceiro: string | null;
   atual: number;
   min: number;
   status: "green" | "amber" | "red";
+};
+
+export type EstoqueLocal = {
+  empresa: string;
+  local: string;
+  linhas: number;
+  estoque: number;
+};
+
+export type EstoqueNegativo = {
+  item: string;
+  empresa: string;
+  local: string;
+  parceiro: string;
+  estoque: number;
 };
 
 export type EstoqueDto = {
@@ -29,6 +47,8 @@ export type EstoqueDto = {
   kpis: EstoqueKpi[];
   niveis: EstoqueNivel[];
   alertas: EstoqueAlerta[];
+  locais: EstoqueLocal[];
+  negativos: EstoqueNegativo[];
 };
 
 function snapshotEstoqueAt(): string | null {
@@ -47,6 +67,10 @@ function statusFromStock(atual: number, minimo: number): "green" | "amber" | "re
   if (atual <= minimo * 0.5) return "red";
   if (atual < minimo) return "amber";
   return "green";
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 export function estoqueVisaoGeral(empresa: EmpresaFiltro): EstoqueDto {
@@ -70,9 +94,10 @@ export function estoqueVisaoGeral(empresa: EmpresaFiltro): EstoqueDto {
       acc.total += row.atual;
       acc.totalMin += row.minimo;
       if (row.minimo > 0 && row.atual < row.minimo) acc.belowMin += 1;
+      if (row.atual < 0) acc.negativeRows += 1;
       return acc;
     },
-    { total: 0, totalMin: 0, belowMin: 0 },
+    { total: 0, totalMin: 0, belowMin: 0, negativeRows: 0 },
   );
 
   const categorySummary = Object.values(
@@ -92,6 +117,9 @@ export function estoqueVisaoGeral(empresa: EmpresaFiltro): EstoqueDto {
   const alertRows = db
     .prepare(
       `SELECT p.DESCRPROD AS item,
+              e.EMPRESA_NOMEFANTASIA AS empresa,
+              e.LOCAL_DESCR AS local,
+              e.PARCEIRO_NOMEPARC AS parceiro,
               COALESCE(e.ESTOQUE, 0) AS atual,
               COALESCE(e.EST_MINIMO, 0) AS minimo
        FROM produto_estoque e
@@ -100,9 +128,59 @@ export function estoqueVisaoGeral(empresa: EmpresaFiltro): EstoqueDto {
          AND e.ESTOQUE < e.EST_MINIMO
          ${empresaWhere}
        ORDER BY (e.EST_MINIMO - e.ESTOQUE) DESC
-       LIMIT 3`,
+       LIMIT 6`,
     )
-    .all(...empresaParams) as Array<{ item: string; atual: number; minimo: number }>;
+    .all(...empresaParams) as Array<{
+      item: string;
+      empresa: string | null;
+      local: string | null;
+      parceiro: string | null;
+      atual: number;
+      minimo: number;
+    }>;
+
+  const localRows = db
+    .prepare(
+      `SELECT COALESCE(e.EMPRESA_NOMEFANTASIA, 'EMPRESA ' || e.CODEMP) AS empresa,
+              COALESCE(e.LOCAL_DESCR, '<SEM LOCAL>') AS local,
+              COUNT(*) AS linhas,
+              COALESCE(SUM(e.ESTOQUE), 0) AS estoque
+       FROM produto_estoque e
+       JOIN produtos p ON p.CODPROD = e.CODPROD
+       WHERE p.ativo = 1${empresaWhere}
+       GROUP BY e.CODEMP, e.CODLOCALORIG
+       ORDER BY ABS(estoque) DESC
+       LIMIT 8`,
+    )
+    .all(...empresaParams) as Array<{
+      empresa: string;
+      local: string;
+      linhas: number;
+      estoque: number;
+    }>;
+
+  const negativeRows = db
+    .prepare(
+      `SELECT p.DESCRPROD AS item,
+              COALESCE(e.EMPRESA_NOMEFANTASIA, 'EMPRESA ' || e.CODEMP) AS empresa,
+              COALESCE(e.LOCAL_DESCR, '<SEM LOCAL>') AS local,
+              COALESCE(e.PARCEIRO_NOMEPARC, '<SEM PARCEIRO>') AS parceiro,
+              COALESCE(e.ESTOQUE, 0) AS estoque
+       FROM produto_estoque e
+       JOIN produtos p ON p.CODPROD = e.CODPROD
+       WHERE p.ativo = 1
+         AND e.ESTOQUE < 0
+         ${empresaWhere}
+       ORDER BY e.ESTOQUE ASC
+       LIMIT 8`,
+    )
+    .all(...empresaParams) as Array<{
+      item: string;
+      empresa: string;
+      local: string;
+      parceiro: string;
+      estoque: number;
+    }>;
 
   return {
     filtro: describeFiltro(empresa),
@@ -110,7 +188,7 @@ export function estoqueVisaoGeral(empresa: EmpresaFiltro): EstoqueDto {
     kpis: [
       {
         label: "Qtde em Estoque",
-        value: `${totals.total.toLocaleString("pt-BR")}`,
+        value: `${round2(totals.total).toLocaleString("pt-BR")}`,
         up: true,
         color: "#F5D547",
       },
@@ -122,11 +200,11 @@ export function estoqueVisaoGeral(empresa: EmpresaFiltro): EstoqueDto {
         alert: totals.belowMin > 0,
       },
       {
-        label: "Giro de Estoque",
-        value:
-          totals.totalMin > 0 ? `${(totals.total / totals.totalMin).toFixed(1)}x` : "N/A",
-        up: true,
-        color: "#2EBD8F",
+        label: "Saldos Negativos",
+        value: String(totals.negativeRows),
+        up: totals.negativeRows === 0,
+        color: totals.negativeRows > 0 ? "#E05555" : "#2EBD8F",
+        alert: totals.negativeRows > 0,
       },
       {
         label: "Cobertura Média",
@@ -138,12 +216,21 @@ export function estoqueVisaoGeral(empresa: EmpresaFiltro): EstoqueDto {
         color: "#4DA3FF",
       },
     ],
-    niveis: categorySummary.map((item) => ({ cat: item.cat, atual: item.atual, min: item.min })),
+    niveis: categorySummary.map((item) => ({
+      cat: item.cat,
+      atual: round2(item.atual),
+      min: round2(item.min),
+    })),
     alertas: alertRows.map((row) => ({
       item: row.item,
-      atual: row.atual,
-      min: row.minimo,
+      empresa: row.empresa,
+      local: row.local,
+      parceiro: row.parceiro,
+      atual: round2(row.atual),
+      min: round2(row.minimo),
       status: statusFromStock(row.atual, row.minimo),
     })),
+    locais: localRows.map((row) => ({ ...row, estoque: round2(row.estoque) })),
+    negativos: negativeRows.map((row) => ({ ...row, estoque: round2(row.estoque) })),
   };
 }
