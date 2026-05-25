@@ -1,7 +1,10 @@
+import { migrate } from "../src/db/migrate.js";
 import { syncEstoque } from "../src/sync/estoque.js";
 import { syncProdutos } from "../src/sync/produtos.js";
 
 async function main(): Promise<void> {
+  migrate();
+
   console.log("Iniciando sync de produtos...");
   await syncProdutos();
   console.log("Sync de produtos concluído.");

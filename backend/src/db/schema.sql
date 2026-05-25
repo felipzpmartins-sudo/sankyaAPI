@@ -82,18 +82,26 @@ CREATE TABLE IF NOT EXISTS produtos (
 -- estoque de produtos (inventário por produto e local)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS produto_estoque (
+  CODEMP        INTEGER NOT NULL DEFAULT 0,
   CODPROD       INTEGER NOT NULL,
   CODLOCALORIG  INTEGER NOT NULL DEFAULT 0,
+  CONTROLE      TEXT NOT NULL DEFAULT '',
+  CODPARC       INTEGER NOT NULL DEFAULT 0,
+  TIPO          TEXT NOT NULL DEFAULT '',
   ESTOQUE       REAL NOT NULL DEFAULT 0,
   EST_MINIMO    REAL NOT NULL DEFAULT 0,
   EST_MAXIMO    REAL NOT NULL DEFAULT 0,
   UNIDADE       TEXT,
+  LOCAL_DESCR   TEXT,
+  EMPRESA_NOMEFANTASIA TEXT,
+  PARCEIRO_NOMEPARC TEXT,
   synced_at     TEXT NOT NULL,
-  PRIMARY KEY (CODPROD, CODLOCALORIG),
+  PRIMARY KEY (CODEMP, CODPROD, CODLOCALORIG, CONTROLE, CODPARC, TIPO),
   FOREIGN KEY (CODPROD) REFERENCES produtos(CODPROD)
 );
 
 CREATE INDEX IF NOT EXISTS idx_produto_estoque_prod ON produto_estoque(CODPROD);
+CREATE INDEX IF NOT EXISTS idx_produto_estoque_emp ON produto_estoque(CODEMP);
 
 -- ----------------------------------------------------------------------------
 -- vendedores

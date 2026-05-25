@@ -1,5 +1,5 @@
 import { getDb } from "../db/connection.js";
-import type { EmpresaFiltro } from "../utils/empresa.js";
+import { empresaToSqlClause, type EmpresaFiltro } from "../utils/empresa.js";
 
 export type EstoqueKpi = {
   label: string;
@@ -51,16 +51,19 @@ function statusFromStock(atual: number, minimo: number): "green" | "amber" | "re
 
 export function estoqueVisaoGeral(empresa: EmpresaFiltro): EstoqueDto {
   const db = getDb();
+  const { clause: empresaClause, params: empresaParams } = empresaToSqlClause(empresa, "e.CODEMP");
+  const empresaWhere = empresaClause ? ` AND ${empresaClause}` : "";
+
   const rows = db
     .prepare(
       `SELECT COALESCE(p.GRUPO_DESCR, 'Outros') AS cat,
               COALESCE(e.ESTOQUE, 0) AS atual,
               COALESCE(e.EST_MINIMO, 0) AS minimo
-       FROM produtos p
-       LEFT JOIN produto_estoque e ON e.CODPROD = p.CODPROD
-       WHERE p.ativo = 1`,
+       FROM produto_estoque e
+       JOIN produtos p ON p.CODPROD = e.CODPROD
+       WHERE p.ativo = 1${empresaWhere}`,
     )
-    .all() as Array<{ cat: string; atual: number; minimo: number }>;
+    .all(...empresaParams) as Array<{ cat: string; atual: number; minimo: number }>;
 
   const totals = rows.reduce(
     (acc, row) => {
@@ -95,10 +98,11 @@ export function estoqueVisaoGeral(empresa: EmpresaFiltro): EstoqueDto {
        JOIN produtos p ON p.CODPROD = e.CODPROD
        WHERE e.EST_MINIMO > 0
          AND e.ESTOQUE < e.EST_MINIMO
+         ${empresaWhere}
        ORDER BY (e.EST_MINIMO - e.ESTOQUE) DESC
        LIMIT 3`,
     )
-    .all() as Array<{ item: string; atual: number; minimo: number }>;
+    .all(...empresaParams) as Array<{ item: string; atual: number; minimo: number }>;
 
   return {
     filtro: describeFiltro(empresa),

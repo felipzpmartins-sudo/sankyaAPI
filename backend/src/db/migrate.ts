@@ -18,7 +18,9 @@ export function migrate(): MigrateResult {
   const db = getDb();
   const sql = readFileSync(SCHEMA_PATH, "utf8");
 
+  preMigrateProdutoEstoqueShape();
   db.exec(sql);
+  migrateProdutoEstoqueShape();
 
   const versionRow = db
     .prepare("SELECT value FROM metadata WHERE key = 'schema_version'")
@@ -46,4 +48,56 @@ export function migrate(): MigrateResult {
     tables: counts.tables,
     indexes: counts.indexes,
   };
+}
+
+function preMigrateProdutoEstoqueShape(): void {
+  const db = getDb();
+  const table = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'produto_estoque'")
+    .get() as { name: string } | undefined;
+
+  if (!table) return;
+
+  const columns = db.prepare("PRAGMA table_info(produto_estoque)").all() as Array<{ name: string }>;
+  const hasCodemp = columns.some((col) => col.name === "CODEMP");
+  const hasControle = columns.some((col) => col.name === "CONTROLE");
+
+  if (hasCodemp && hasControle) return;
+
+  db.exec("DROP TABLE IF EXISTS produto_estoque");
+}
+
+function migrateProdutoEstoqueShape(): void {
+  const db = getDb();
+  const columns = db.prepare("PRAGMA table_info(produto_estoque)").all() as Array<{ name: string }>;
+  const hasCodemp = columns.some((col) => col.name === "CODEMP");
+  const hasControle = columns.some((col) => col.name === "CONTROLE");
+
+  if (hasCodemp && hasControle) return;
+
+  db.exec(`
+    DROP TABLE IF EXISTS produto_estoque;
+
+    CREATE TABLE produto_estoque (
+      CODEMP        INTEGER NOT NULL DEFAULT 0,
+      CODPROD       INTEGER NOT NULL,
+      CODLOCALORIG  INTEGER NOT NULL DEFAULT 0,
+      CONTROLE      TEXT NOT NULL DEFAULT '',
+      CODPARC       INTEGER NOT NULL DEFAULT 0,
+      TIPO          TEXT NOT NULL DEFAULT '',
+      ESTOQUE       REAL NOT NULL DEFAULT 0,
+      EST_MINIMO    REAL NOT NULL DEFAULT 0,
+      EST_MAXIMO    REAL NOT NULL DEFAULT 0,
+      UNIDADE       TEXT,
+      LOCAL_DESCR   TEXT,
+      EMPRESA_NOMEFANTASIA TEXT,
+      PARCEIRO_NOMEPARC TEXT,
+      synced_at     TEXT NOT NULL,
+      PRIMARY KEY (CODEMP, CODPROD, CODLOCALORIG, CONTROLE, CODPARC, TIPO),
+      FOREIGN KEY (CODPROD) REFERENCES produtos(CODPROD)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_produto_estoque_prod ON produto_estoque(CODPROD);
+    CREATE INDEX IF NOT EXISTS idx_produto_estoque_emp ON produto_estoque(CODEMP);
+  `);
 }
