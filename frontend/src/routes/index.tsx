@@ -72,6 +72,8 @@ import { useFluxoCaixa } from "@/hooks/api/useFluxoCaixa";
 import { useContasAbertasResumo } from "@/hooks/api/useContasAbertasResumo";
 import { useEstoque } from "@/hooks/api/useEstoque";
 import { useProdutos } from "@/hooks/api/useProdutos";
+import { useClientesBI } from "@/hooks/api/useClientesBI";
+import { useRhBI } from "@/hooks/api/useRhBI";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -2565,6 +2567,203 @@ function ClientesSection() {
   );
 }
 
+function ClientesApiSection() {
+  const qClientes = useClientesBI();
+  const [chartMode, setChartMode] = useState<"bar" | "line" | "area">("bar");
+  const [segmentMode, setSegmentMode] = useState<"donut" | "bar">("donut");
+  const [search, setSearch] = useState("");
+  const data = qClientes.data;
+  const fluxo = data?.fluxo ?? [];
+  const segmentos = data?.segmentos ?? [];
+  const clientes = data?.top_clientes ?? [];
+  const filteredClientes = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const list = term
+      ? clientes.filter((cliente) =>
+          [cliente.NOMEPARC, cliente.cidade, cliente.uf, String(cliente.CODPARC)]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(term)),
+        )
+      : clientes;
+    return list.slice(0, 30);
+  }, [clientes, search]);
+
+  const kpis: Kpi[] = data
+    ? [
+        { label: "Clientes na base", value: String(data.total_clientes), color: C.gold },
+        { label: "Compraram no ano", value: String(data.compradores_ano), color: C.green },
+        { label: "Receita ano", value: formatBRLCompact(data.receita_ano), color: C.blue },
+        {
+          label: "Receber vencido",
+          value: formatBRLCompact(data.receber_vencido),
+          color: data.receber_vencido > 0 ? C.red : C.green,
+          alert: data.receber_vencido > 0,
+        },
+      ]
+    : DATA.clientes.kpis;
+
+  return (
+    <div className="flex flex-col gap-4">
+      {qClientes.error && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-geist text-[11px]"
+          style={{ border: `1px solid ${C.red}55`, background: `${C.red}12`, color: C.red }}
+        >
+          <span>{qClientes.error instanceof ApiError ? qClientes.error.message : "Erro ao carregar clientes."}</span>
+          <button
+            type="button"
+            className="rounded px-2 py-1 uppercase tracking-[0.12em]"
+            style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
+            onClick={() => void qClientes.refetch()}
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
+
+      <KpiRow items={kpis} />
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
+        <Card>
+          <SectionHead
+            title="Clientes Novos e Recorrentes"
+            sub={data ? `Ano ${data.ano} · Ticket ${formatBRLCompact(data.ticket_medio)}` : "Carregando"}
+            actions={<ChartSwitcher value={chartMode} onChange={setChartMode} options={["bar", "line", "area"]} />}
+          />
+          <div style={{ height: 280 }}>
+            <ResponsiveContainer key={chartMode}>
+              {chartMode === "bar" ? (
+                <BarChart data={fluxo} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+                  <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
+                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
+                  <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
+                  <Bar dataKey="novos" fill={C.green} radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="recorrentes" fill={C.gold} radius={[3, 3, 0, 0]} />
+                </BarChart>
+              ) : chartMode === "line" ? (
+                <LineChart data={fluxo} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+                  <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
+                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
+                  <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
+                  <Line type="monotone" dataKey="novos" stroke={C.green} strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="recorrentes" stroke={C.gold} strokeWidth={2} dot={false} />
+                </LineChart>
+              ) : (
+                <AreaChart data={fluxo} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+                  <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
+                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
+                  <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
+                  <Area type="monotone" dataKey="novos" stroke={C.green} fill={C.green} fillOpacity={0.12} />
+                  <Area type="monotone" dataKey="recorrentes" stroke={C.gold} fill={C.gold} fillOpacity={0.12} />
+                </AreaChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card>
+          <SectionHead
+            title="Segmentacao"
+            sub={`Aberto ${formatBRLCompact(data?.receber_aberto ?? 0)}`}
+            actions={<ChartSwitcher value={segmentMode} onChange={setSegmentMode} options={["donut", "bar"]} />}
+          />
+          <div style={{ height: 220 }}>
+            <ResponsiveContainer key={segmentMode}>
+              {segmentMode === "donut" ? (
+                <PieChart>
+                  <Pie data={segmentos} dataKey="value" innerRadius={58} outerRadius={92} paddingAngle={2} stroke="none">
+                    {segmentos.map((_, i) => (
+                      <Cell key={i} fill={[C.gold, C.blue, C.green, C.red][i % 4]} />
+                    ))}
+                  </Pie>
+                  <Tooltip {...tooltipStyle} />
+                </PieChart>
+              ) : (
+                <BarChart data={segmentos} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+                  <XAxis dataKey="name" tick={axisStyle} axisLine={false} tickLine={false} />
+                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
+                  <Tooltip {...tooltipStyle} />
+                  <Bar dataKey="value" fill={C.blue} radius={[3, 3, 0, 0]} />
+                </BarChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-2 grid gap-1.5 font-geist text-[11px]">
+            {segmentos.map((seg, i) => (
+              <div key={seg.name} className="flex items-center justify-between" style={{ color: C.mutedStrong }}>
+                <span className="flex items-center gap-2">
+                  <span className="h-2 w-2" style={{ background: [C.gold, C.blue, C.green, C.red][i % 4] }} />
+                  {seg.name}
+                </span>
+                <span style={{ color: C.text }}>{seg.value}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      <Card>
+        <SectionHead title="Top Clientes" sub="Receita, ticket e aberto financeiro" />
+        <Input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Buscar por codigo, cliente, cidade ou UF"
+          className="mb-3 bg-[#09090B] text-white"
+        />
+        <div className="overflow-x-auto">
+          <table className="w-full font-geist text-[12px]">
+            <thead>
+              <tr style={{ color: C.muted, fontSize: 10 }}>
+                <th className="py-2 text-left font-normal uppercase tracking-wider">Cliente</th>
+                <th className="py-2 text-right font-normal uppercase tracking-wider">Receita</th>
+                <th className="py-2 text-right font-normal uppercase tracking-wider">Pedidos</th>
+                <th className="py-2 text-right font-normal uppercase tracking-wider">Ticket</th>
+                <th className="py-2 text-right font-normal uppercase tracking-wider">Aberto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredClientes.map((cliente) => (
+                <tr key={cliente.CODPARC} style={{ borderTop: `1px solid ${C.border}` }}>
+                  <td className="max-w-[460px] py-2.5" style={{ color: C.text }}>
+                    <div className="truncate">{cliente.NOMEPARC}</div>
+                    <div className="mt-1 text-[10px]" style={{ color: C.muted }}>
+                      #{cliente.CODPARC}
+                      {cliente.ultima_compra ? ` · ultima compra ${cliente.ultima_compra}` : ""}
+                    </div>
+                  </td>
+                  <td className="py-2.5 text-right tabular-nums" style={{ color: C.gold }}>
+                    {formatBRLCompact(cliente.receita)}
+                  </td>
+                  <td className="py-2.5 text-right tabular-nums" style={{ color: C.mutedStrong }}>
+                    {cliente.pedidos}
+                  </td>
+                  <td className="py-2.5 text-right tabular-nums" style={{ color: C.mutedStrong }}>
+                    {formatBRLCompact(cliente.ticket_medio)}
+                  </td>
+                  <td className="py-2.5 text-right tabular-nums" style={{ color: cliente.receber_aberto > 0 ? C.red : C.green }}>
+                    {formatBRLCompact(cliente.receber_aberto)}
+                  </td>
+                </tr>
+              ))}
+              {filteredClientes.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-4 text-center" style={{ color: C.muted }}>
+                    Nenhum cliente encontrado.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function ProdutosApiSection() {
   const qProdutos = useProdutos();
   const [search, setSearch] = useState("");
@@ -3405,6 +3604,217 @@ function RhSection() {
   );
 }
 
+function RhApiSection() {
+  const qRh = useRhBI();
+  const [teamMode, setTeamMode] = useState<"hbar" | "bar" | "line">("hbar");
+  const [monthMode, setMonthMode] = useState<"line" | "area" | "bar">("line");
+  const [search, setSearch] = useState("");
+  const data = qRh.data;
+  const porEmpresa = data?.por_empresa ?? [];
+  const mensal = data?.mensal ?? [];
+  const ranking = data?.ranking ?? [];
+  const filteredRanking = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const list = term
+      ? ranking.filter((row) =>
+          [row.APELIDO, String(row.CODVEND)]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(term)),
+        )
+      : ranking;
+    return list.slice(0, 30);
+  }, [ranking, search]);
+
+  const kpis: Kpi[] = data
+    ? [
+        { label: "Vendedores ativos", value: String(data.vendedores_ativos), color: C.gold },
+        { label: "Com venda no ano", value: String(data.vendedores_com_venda), color: C.green },
+        { label: "Faturamento ano", value: formatBRLCompact(data.faturamento_ano), color: C.blue },
+        { label: "Media por ativo", value: formatBRLCompact(data.media_por_vendedor_ativo), color: C.gold },
+      ]
+    : DATA.rh.kpis;
+
+  return (
+    <div className="flex flex-col gap-4">
+      {qRh.error && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-geist text-[11px]"
+          style={{ border: `1px solid ${C.red}55`, background: `${C.red}12`, color: C.red }}
+        >
+          <span>{qRh.error instanceof ApiError ? qRh.error.message : "Erro ao carregar RH."}</span>
+          <button
+            type="button"
+            className="rounded px-2 py-1 uppercase tracking-[0.12em]"
+            style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
+            onClick={() => void qRh.refetch()}
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
+
+      <KpiRow items={kpis} />
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
+        <Card>
+          <SectionHead
+            title="Equipe por Empresa"
+            sub={data ? `Ano ${data.ano} · Ticket ${formatBRLCompact(data.ticket_medio)}` : "Carregando"}
+            actions={<ChartSwitcher value={teamMode} onChange={setTeamMode} options={["hbar", "bar", "line"]} />}
+          />
+          <div style={{ height: 280 }}>
+            <ResponsiveContainer key={teamMode}>
+              {teamMode === "hbar" ? (
+                <BarChart layout="vertical" data={porEmpresa} margin={{ top: 8, right: 16, left: 18, bottom: 0 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.04)" horizontal={false} />
+                  <XAxis type="number" tick={axisStyle} axisLine={false} tickLine={false} />
+                  <YAxis dataKey="NOMEFANTASIA" type="category" tick={axisStyle} axisLine={false} tickLine={false} width={120} />
+                  <Tooltip {...tooltipStyle} />
+                  <Bar dataKey="vendedores" fill={C.gold} radius={[0, 3, 3, 0]} />
+                </BarChart>
+              ) : teamMode === "bar" ? (
+                <BarChart data={porEmpresa} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+                  <XAxis dataKey="NOMEFANTASIA" tick={axisStyle} axisLine={false} tickLine={false} />
+                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
+                  <Tooltip {...tooltipStyle} />
+                  <Bar dataKey="vendedores" fill={C.gold} radius={[3, 3, 0, 0]} />
+                </BarChart>
+              ) : (
+                <LineChart data={porEmpresa} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+                  <XAxis dataKey="NOMEFANTASIA" tick={axisStyle} axisLine={false} tickLine={false} />
+                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
+                  <Tooltip {...tooltipStyle} />
+                  <Line type="monotone" dataKey="vendedores" stroke={C.gold} strokeWidth={2} dot={{ fill: C.gold, r: 4 }} />
+                </LineChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card>
+          <SectionHead title="Faturamento por Empresa" sub="Equipe comercial" />
+          <div className="grid gap-2">
+            {porEmpresa.map((row) => (
+              <div
+                key={row.CODEMP}
+                className="grid grid-cols-[1fr_auto] gap-3 rounded px-3 py-2"
+                style={{ background: "rgba(255,255,255,0.03)" }}
+              >
+                <div className="truncate" style={{ color: C.text }}>
+                  {row.NOMEFANTASIA}
+                  <div className="mt-1 text-[10px]" style={{ color: C.muted }}>
+                    {row.vendedores} vendedores
+                  </div>
+                </div>
+                <div className="tabular-nums" style={{ color: C.gold }}>
+                  {formatBRLCompact(row.faturamento)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      <Card>
+        <SectionHead
+          title="Produtividade Mensal"
+          sub="Vendedores, pedidos e faturamento"
+          actions={<ChartSwitcher value={monthMode} onChange={setMonthMode} options={["line", "area", "bar"]} />}
+        />
+        <div style={{ height: 260 }}>
+          <ResponsiveContainer key={monthMode}>
+            {monthMode === "line" ? (
+              <LineChart data={mensal} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+                <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
+                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
+                <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
+                <Line type="monotone" dataKey="vendedores" stroke={C.green} strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="pedidos" stroke={C.gold} strokeWidth={2} dot={false} />
+              </LineChart>
+            ) : monthMode === "area" ? (
+              <AreaChart data={mensal} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+                <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
+                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
+                <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
+                <Area type="monotone" dataKey="vendedores" stroke={C.green} fill={C.green} fillOpacity={0.12} />
+                <Area type="monotone" dataKey="pedidos" stroke={C.gold} fill={C.gold} fillOpacity={0.12} />
+              </AreaChart>
+            ) : (
+              <BarChart data={mensal} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+                <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
+                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
+                <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
+                <Bar dataKey="vendedores" fill={C.green} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="pedidos" fill={C.gold} radius={[3, 3, 0, 0]} />
+              </BarChart>
+            )}
+          </ResponsiveContainer>
+        </div>
+      </Card>
+
+      <Card>
+        <SectionHead title="Ranking da Equipe" sub="Vendas, pedidos e ultima venda" />
+        <Input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Buscar vendedor"
+          className="mb-3 bg-[#09090B] text-white"
+        />
+        <div className="overflow-x-auto">
+          <table className="w-full font-geist text-[12px]">
+            <thead>
+              <tr style={{ color: C.muted, fontSize: 10 }}>
+                <th className="py-2 text-left font-normal uppercase tracking-wider">Vendedor</th>
+                <th className="py-2 text-right font-normal uppercase tracking-wider">Faturamento</th>
+                <th className="py-2 text-right font-normal uppercase tracking-wider">Pedidos</th>
+                <th className="py-2 text-right font-normal uppercase tracking-wider">Ticket</th>
+                <th className="py-2 text-right font-normal uppercase tracking-wider">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRanking.map((row) => (
+                <tr key={row.CODVEND} style={{ borderTop: `1px solid ${C.border}` }}>
+                  <td className="py-2.5" style={{ color: C.text }}>
+                    <div className="truncate">{row.APELIDO}</div>
+                    <div className="mt-1 text-[10px]" style={{ color: C.muted }}>
+                      #{row.CODVEND}
+                      {row.ultima_venda ? ` · ultima venda ${row.ultima_venda}` : ""}
+                    </div>
+                  </td>
+                  <td className="py-2.5 text-right tabular-nums" style={{ color: C.gold }}>
+                    {formatBRLCompact(row.faturamento)}
+                  </td>
+                  <td className="py-2.5 text-right tabular-nums" style={{ color: C.mutedStrong }}>
+                    {row.pedidos}
+                  </td>
+                  <td className="py-2.5 text-right tabular-nums" style={{ color: C.mutedStrong }}>
+                    {formatBRLCompact(row.ticket_medio)}
+                  </td>
+                  <td className="py-2.5 text-right" style={{ color: row.ativo ? C.green : C.muted }}>
+                    {row.ativo ? "Ativo" : "Inativo"}
+                  </td>
+                </tr>
+              ))}
+              {filteredRanking.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-4 text-center" style={{ color: C.muted }}>
+                    Nenhum vendedor encontrado.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 /* ============================================================
  *  SIDEBAR
  * ============================================================ */
@@ -3686,8 +4096,8 @@ function Dashboard() {
     compras: <ComprasSection />,
     estoque: <EstoqueSection />,
     entregas: <EntregasSection />,
-    clientes: <ClientesSection />,
-    rh: <RhSection />,
+    clientes: <ClientesApiSection />,
+    rh: <RhApiSection />,
   };
 
   return (

@@ -188,3 +188,82 @@ export type ProdutoDto = {
 export type ProdutosResponse = {
   produtos: ProdutoDto[];
 };
+
+export type ClienteFluxoMesDto = {
+  mes: string;
+  novos: number;
+  recorrentes: number;
+  receita: number;
+};
+
+export type ClienteSegmentoDto = {
+  name: string;
+  value: number;
+  receita: number;
+};
+
+export type ClienteTopDto = {
+  CODPARC: number;
+  NOMEPARC: string;
+  TIPPESSOA: string | null;
+  cidade: string | null;
+  uf: string | null;
+  receita: number;
+  pedidos: number;
+  ticket_medio: number;
+  ultima_compra: string | null;
+  receber_aberto: number;
+};
+
+export type ClientesBIResponse = {
+  ano: string;
+  snapshot_at: string | null;
+  total_clientes: number;
+  clientes_ativos: number;
+  compradores_ano: number;
+  receita_ano: number;
+  ticket_medio: number;
+  receber_aberto: number;
+  receber_vencido: number;
+  fluxo: ClienteFluxoMesDto[];
+  segmentos: ClienteSegmentoDto[];
+  top_clientes: ClienteTopDto[];
+};
+
+export type RhEmpresaDto = {
+  CODEMP: number;
+  NOMEFANTASIA: string;
+  vendedores: number;
+  faturamento: number;
+};
+
+export type RhRankingDto = {
+  CODVEND: number;
+  APELIDO: string;
+  ativo: 0 | 1;
+  faturamento: number;
+  pedidos: number;
+  ticket_medio: number;
+  ultima_venda: string | null;
+};
+
+export type RhMensalDto = {
+  mes: string;
+  vendedores: number;
+  pedidos: number;
+  faturamento: number;
+};
+
+export type RhBIResponse = {
+  ano: string;
+  snapshot_at: string | null;
+  total_vendedores: number;
+  vendedores_ativos: number;
+  vendedores_com_venda: number;
+  faturamento_ano: number;
+  ticket_medio: number;
+  media_por_vendedor_ativo: number;
+  por_empresa: RhEmpresaDto[];
+  ranking: RhRankingDto[];
+  mensal: RhMensalDto[];
+};

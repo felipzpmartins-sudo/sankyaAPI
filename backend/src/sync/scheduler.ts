@@ -2,6 +2,7 @@ import pino from "pino";
 import { config } from "../config.js";
 import { syncEmpresas } from "./empresas.js";
 import { syncNaturezas } from "./naturezas.js";
+import { syncParceiros } from "./parceiros.js";
 import { syncPedidos } from "./pedidos.js";
 import { syncProdutos } from "./produtos.js";
 import { syncEstoque } from "./estoque.js";
@@ -56,6 +57,7 @@ async function initialSync(): Promise<void> {
     runSync("tipos_operacao", syncTiposOperacao),
     runSync("naturezas", syncNaturezas),
     runSync("tipos_titulo", syncTiposTitulo),
+    runSync("parceiros", syncParceiros),
     runSync("vendedores", syncVendedores),
     runSync("produtos", syncProdutos),
   ]);
@@ -89,6 +91,7 @@ export function startScheduler(): void {
       void runSync("tipos_operacao", syncTiposOperacao);
       void runSync("naturezas", syncNaturezas);
       void runSync("tipos_titulo", syncTiposTitulo);
+      void runSync("parceiros", syncParceiros);
       void runSync("vendedores", syncVendedores);
     }, config.SYNC_INTERVAL_SLOW_MS),
   );

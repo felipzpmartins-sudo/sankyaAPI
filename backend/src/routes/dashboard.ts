@@ -6,6 +6,7 @@ import {
   fluxoCaixa,
   listarContasAbertas,
 } from "../services/dashboard-financeiro.js";
+import { clientesBI, rhBI } from "../services/dashboard-clientes-rh.js";
 import {
   comodatoConsolidado,
   faturamentoConsolidado,
@@ -159,6 +160,22 @@ dashboardRouter.get("/estoque", (req, res, next) => {
 dashboardRouter.get("/produtos", (_req, res, next) => {
   try {
     res.json({ produtos: listarProdutos() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+dashboardRouter.get("/clientes", (_req, res, next) => {
+  try {
+    res.json(clientesBI());
+  } catch (err) {
+    next(err);
+  }
+});
+
+dashboardRouter.get("/rh", (_req, res, next) => {
+  try {
+    res.json(rhBI());
   } catch (err) {
     next(err);
   }
