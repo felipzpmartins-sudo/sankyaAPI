@@ -167,3 +167,24 @@ export type EstoqueDto = {
   locais: EstoqueLocalDto[];
   negativos: EstoqueNegativoDto[];
 };
+
+export type ProdutoDto = {
+  CODPROD: number;
+  DESCRPROD: string;
+  REFERENCIA: string | null;
+  MARCA: string | null;
+  USOPROD: string | null;
+  CODVOL: string | null;
+  CODGRUPOPROD: number | null;
+  GRUPO_DESCR: string | null;
+  UNIDADE: string | null;
+  ativo: 0 | 1;
+  ESTOQUE: number;
+  EST_MINIMO: number;
+  EST_MAXIMO: number;
+  synced_at: string;
+};
+
+export type ProdutosResponse = {
+  produtos: ProdutoDto[];
+};

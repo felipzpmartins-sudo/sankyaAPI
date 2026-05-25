@@ -71,6 +71,7 @@ import { useDistribuicaoDespesas } from "@/hooks/api/useDistribuicaoDespesas";
 import { useFluxoCaixa } from "@/hooks/api/useFluxoCaixa";
 import { useContasAbertasResumo } from "@/hooks/api/useContasAbertasResumo";
 import { useEstoque } from "@/hooks/api/useEstoque";
+import { useProdutos } from "@/hooks/api/useProdutos";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -2564,6 +2565,208 @@ function ClientesSection() {
   );
 }
 
+function ProdutosApiSection() {
+  const qProdutos = useProdutos();
+  const [search, setSearch] = useState("");
+  const [chartMode, setChartMode] = useState<"hbar" | "bar">("hbar");
+  const produtos = qProdutos.data?.produtos ?? [];
+  const ativos = produtos.filter((p) => p.ativo === 1);
+  const comEstoque = produtos.filter((p) => p.ESTOQUE > 0);
+  const saldosNegativos = produtos.filter((p) => p.ESTOQUE < 0);
+  const semMarca = produtos.filter((p) => !p.MARCA).length;
+  const totalEstoque = produtos.reduce((acc, p) => acc + p.ESTOQUE, 0);
+  const formatQty = (value: number) =>
+    new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value);
+
+  const byUso = useMemo(() => {
+    const grouped = produtos.reduce<Record<string, { name: string; value: number; estoque: number }>>(
+      (map, produto) => {
+        const key = produto.USOPROD || "Sem uso";
+        if (!map[key]) map[key] = { name: key, value: 0, estoque: 0 };
+        map[key].value += 1;
+        map[key].estoque += produto.ESTOQUE;
+        return map;
+      },
+      {},
+    );
+    return Object.values(grouped).sort((a, b) => b.value - a.value).slice(0, 8);
+  }, [produtos]);
+
+  const byMarca = useMemo(() => {
+    const grouped = produtos.reduce<Record<string, { name: string; value: number; estoque: number }>>(
+      (map, produto) => {
+        const key = produto.MARCA || "Sem marca";
+        if (!map[key]) map[key] = { name: key, value: 0, estoque: 0 };
+        map[key].value += 1;
+        map[key].estoque += produto.ESTOQUE;
+        return map;
+      },
+      {},
+    );
+    return Object.values(grouped).sort((a, b) => b.value - a.value).slice(0, 8);
+  }, [produtos]);
+
+  const filteredProdutos = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const list = term
+      ? produtos.filter((p) =>
+          [p.DESCRPROD, p.REFERENCIA, p.MARCA, p.USOPROD, p.CODVOL, String(p.CODPROD)]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(term)),
+        )
+      : produtos;
+    return [...list].sort((a, b) => Math.abs(b.ESTOQUE) - Math.abs(a.ESTOQUE)).slice(0, 40);
+  }, [produtos, search]);
+
+  const kpis: Kpi[] = [
+    { label: "Produtos cadastrados", value: String(produtos.length), color: C.gold },
+    { label: "Produtos ativos", value: String(ativos.length), color: C.green },
+    { label: "Com estoque positivo", value: String(comEstoque.length), color: C.blue },
+    {
+      label: "Saldos negativos",
+      value: String(saldosNegativos.length),
+      color: saldosNegativos.length > 0 ? C.red : C.green,
+      alert: saldosNegativos.length > 0,
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      {qProdutos.error && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-geist text-[11px]"
+          style={{ border: `1px solid ${C.red}55`, background: `${C.red}12`, color: C.red }}
+        >
+          <span>
+            {qProdutos.error instanceof ApiError
+              ? qProdutos.error.message
+              : "Erro ao carregar produtos."}
+          </span>
+          <button
+            type="button"
+            className="rounded px-2 py-1 uppercase tracking-[0.12em]"
+            style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
+            onClick={() => void qProdutos.refetch()}
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
+
+      <KpiRow items={qProdutos.data ? kpis : DATA.produtos.kpis} />
+
+      <Card>
+        <SectionHead
+          title="Produtos por Uso"
+          sub={`Estoque total ${formatQty(totalEstoque)} · Sem marca ${semMarca}`}
+          actions={<ChartSwitcher value={chartMode} onChange={setChartMode} options={["hbar", "bar"]} />}
+        />
+        <div style={{ height: 280 }}>
+          <ResponsiveContainer key={chartMode}>
+            {chartMode === "hbar" ? (
+              <BarChart layout="vertical" data={byUso} margin={{ top: 8, right: 16, left: 20, bottom: 0 }}>
+                <CartesianGrid stroke="rgba(255,255,255,0.04)" horizontal={false} />
+                <XAxis type="number" tick={axisStyle} axisLine={false} tickLine={false} />
+                <YAxis dataKey="name" type="category" tick={axisStyle} axisLine={false} tickLine={false} width={95} />
+                <Tooltip {...tooltipStyle} />
+                <Bar dataKey="value" fill={C.gold} radius={[0, 3, 3, 0]} />
+              </BarChart>
+            ) : (
+              <BarChart data={byUso} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+                <XAxis dataKey="name" tick={axisStyle} axisLine={false} tickLine={false} />
+                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
+                <Tooltip {...tooltipStyle} />
+                <Bar dataKey="value" fill={C.gold} radius={[3, 3, 0, 0]} />
+              </BarChart>
+            )}
+          </ResponsiveContainer>
+        </div>
+      </Card>
+
+      <Card>
+        <SectionHead title="Produtos por Marca" sub="Top cadastros" />
+        <div className="grid gap-2">
+          {byMarca.map((row) => (
+            <div
+              key={row.name}
+              className="grid grid-cols-[1fr_auto] gap-3 rounded px-3 py-2"
+              style={{ background: "rgba(255,255,255,0.03)" }}
+            >
+              <div className="truncate" style={{ color: C.text }}>
+                {row.name}
+              </div>
+              <div className="tabular-nums" style={{ color: C.gold }}>
+                {row.value}
+              </div>
+            </div>
+          ))}
+          {byMarca.length === 0 && (
+            <div className="py-4 text-center font-geist text-sm" style={{ color: C.muted }}>
+              Sem produtos carregados.
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card>
+        <SectionHead title="Catalogo de Produtos" sub="Cadastro + estoque" />
+        <Input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Buscar por codigo, descricao, marca, uso ou unidade"
+          className="mb-3 bg-[#09090B] text-white"
+        />
+        <div className="overflow-x-auto">
+          <table className="w-full font-geist text-[12px]">
+            <thead>
+              <tr style={{ color: C.muted, fontSize: 10 }}>
+                <th className="py-2 text-left font-normal uppercase tracking-wider">Produto</th>
+                <th className="py-2 text-left font-normal uppercase tracking-wider">Marca</th>
+                <th className="py-2 text-left font-normal uppercase tracking-wider">Uso</th>
+                <th className="py-2 text-right font-normal uppercase tracking-wider">Estoque</th>
+                <th className="py-2 text-right font-normal uppercase tracking-wider">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredProdutos.map((produto) => (
+                <tr key={produto.CODPROD} style={{ borderTop: `1px solid ${C.border}` }}>
+                  <td className="max-w-[420px] py-2.5" style={{ color: C.text }}>
+                    <div className="truncate">{produto.DESCRPROD}</div>
+                    <div className="mt-1 text-[10px]" style={{ color: C.muted }}>
+                      #{produto.CODPROD} · {produto.CODVOL ?? produto.UNIDADE ?? "sem unidade"}
+                      {produto.REFERENCIA ? ` · ref. ${produto.REFERENCIA}` : ""}
+                    </div>
+                  </td>
+                  <td className="py-2.5" style={{ color: C.mutedStrong }}>
+                    {produto.MARCA ?? "Sem marca"}
+                  </td>
+                  <td className="py-2.5" style={{ color: C.mutedStrong }}>
+                    {produto.USOPROD ?? "-"}
+                  </td>
+                  <td className="py-2.5 text-right tabular-nums" style={{ color: produto.ESTOQUE < 0 ? C.red : C.gold }}>
+                    {formatQty(produto.ESTOQUE)}
+                  </td>
+                  <td className="py-2.5 text-right" style={{ color: produto.ativo ? C.green : C.muted }}>
+                    {produto.ativo ? "Ativo" : "Inativo"}
+                  </td>
+                </tr>
+              ))}
+              {filteredProdutos.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-4 text-center" style={{ color: C.muted }}>
+                    Nenhum produto encontrado.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function ProdutosSection() {
   const d = DATA.produtos;
   const [t1, setT1] = useState<"sbar" | "line" | "area">("sbar");
@@ -3478,7 +3681,7 @@ function Dashboard() {
     dashboard: <DashboardSection />,
     empresas: <EmpresasDashboardSection />,
     financeiro: <FinanceiroSection />,
-    produtos: <ProdutosSection />,
+    produtos: <ProdutosApiSection />,
     vendedores: <VendedoresSection />,
     compras: <ComprasSection />,
     estoque: <EstoqueSection />,

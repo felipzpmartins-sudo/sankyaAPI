@@ -20,6 +20,7 @@ export function migrate(): MigrateResult {
 
   preMigrateProdutoEstoqueShape();
   db.exec(sql);
+  migrateProdutosShape();
   migrateProdutoEstoqueShape();
 
   const versionRow = db
@@ -48,6 +49,22 @@ export function migrate(): MigrateResult {
     tables: counts.tables,
     indexes: counts.indexes,
   };
+}
+
+function migrateProdutosShape(): void {
+  const db = getDb();
+  const columns = db.prepare("PRAGMA table_info(produtos)").all() as Array<{ name: string }>;
+  const names = new Set(columns.map((col) => col.name));
+
+  const additions: Array<[string, string]> = [
+    ["MARCA", "ALTER TABLE produtos ADD COLUMN MARCA TEXT"],
+    ["USOPROD", "ALTER TABLE produtos ADD COLUMN USOPROD TEXT"],
+    ["CODVOL", "ALTER TABLE produtos ADD COLUMN CODVOL TEXT"],
+  ];
+
+  for (const [name, sql] of additions) {
+    if (!names.has(name)) db.exec(sql);
+  }
 }
 
 function preMigrateProdutoEstoqueShape(): void {

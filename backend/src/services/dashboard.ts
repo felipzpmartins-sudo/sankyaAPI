@@ -50,6 +50,9 @@ export type Produto = {
   CODPROD: number;
   DESCRPROD: string;
   REFERENCIA: string | null;
+  MARCA: string | null;
+  USOPROD: string | null;
+  CODVOL: string | null;
   CODGRUPOPROD: number | null;
   GRUPO_DESCR: string | null;
   UNIDADE: string | null;
@@ -66,6 +69,9 @@ export function listarProdutos(): Produto[] {
       `SELECT p.CODPROD,
               p.DESCRPROD,
               p.REFERENCIA,
+              p.MARCA,
+              p.USOPROD,
+              p.CODVOL,
               p.CODGRUPOPROD,
               p.GRUPO_DESCR,
               p.UNIDADE,

@@ -7,6 +7,9 @@ const FIELDS_CORE = [
   "CODPROD",
   "DESCRPROD",
   "REFERENCIA",
+  "MARCA",
+  "USOPROD",
+  "CODVOL",
   "CODGRUPOPROD",
   "GRUPODESCPROD",
   "UNIDADE",
@@ -41,12 +44,17 @@ export async function syncProdutos(): Promise<void> {
 
     const upsert = db.prepare(
       `INSERT INTO produtos
-         (CODPROD, DESCRPROD, REFERENCIA, CODGRUPOPROD, GRUPO_DESCR, UNIDADE, ativo, synced_at)
+         (CODPROD, DESCRPROD, REFERENCIA, MARCA, USOPROD, CODVOL,
+          CODGRUPOPROD, GRUPO_DESCR, UNIDADE, ativo, synced_at)
        VALUES
-         (@CODPROD, @DESCRPROD, @REFERENCIA, @CODGRUPOPROD, @GRUPO_DESCR, @UNIDADE, @ativo, @synced_at)
+         (@CODPROD, @DESCRPROD, @REFERENCIA, @MARCA, @USOPROD, @CODVOL,
+          @CODGRUPOPROD, @GRUPO_DESCR, @UNIDADE, @ativo, @synced_at)
        ON CONFLICT(CODPROD) DO UPDATE SET
          DESCRPROD     = excluded.DESCRPROD,
          REFERENCIA    = excluded.REFERENCIA,
+         MARCA         = excluded.MARCA,
+         USOPROD       = excluded.USOPROD,
+         CODVOL        = excluded.CODVOL,
          CODGRUPOPROD  = excluded.CODGRUPOPROD,
          GRUPO_DESCR   = excluded.GRUPO_DESCR,
          UNIDADE       = excluded.UNIDADE,
@@ -65,9 +73,12 @@ export async function syncProdutos(): Promise<void> {
           CODPROD: codprod,
           DESCRPROD: sankhyaText(record.DESCRPROD) ?? "",
           REFERENCIA: sankhyaText(record.REFERENCIA),
+          MARCA: sankhyaText(record.MARCA),
+          USOPROD: sankhyaText(record.USOPROD),
+          CODVOL: sankhyaText(record.CODVOL),
           CODGRUPOPROD: parseIntOrNull(sankhyaText(record.CODGRUPOPROD)),
           GRUPO_DESCR: sankhyaText(record.GRUPODESCPROD),
-          UNIDADE: sankhyaText(record.UNIDADE),
+          UNIDADE: sankhyaText(record.UNIDADE) ?? sankhyaText(record.CODVOL),
           ativo: parseAtivo(sankhyaText(record.ATIVO)),
           synced_at: now,
         });
