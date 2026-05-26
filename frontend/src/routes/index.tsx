@@ -1573,14 +1573,20 @@ function EmpresasDashboardSection() {
 
 const FIN_DIST_COLORS = ["#F5D547", "#4DA3FF", "#B57EDC", "#2EBD8F", "#E05555"] as const;
 
+const FIN_RECEITA_TOPS = [
+  { cod: 1116, label: "Ajuste estoque" },
+  { cod: 1117, label: "Bonificação" },
+  { cod: 1710, label: "Remessa feira" },
+  { cod: 1100, label: "NFE venda" },
+  { cod: 1792, label: "Demonstração" },
+] as const;
+
 const FLUXO_JANELAS = [
-  { meses: 3, label: "3 meses" },
-  { meses: 6, label: "6 meses" },
   { meses: 12, label: "12 meses" },
-  { meses: 18, label: "18 meses" },
 ] as const;
 
 type FinanceiroCompetenciaModo = FinanceiroDrePeriodo | "intervalo";
+type ReceitaOperacaoModo = "custom" | "faturamento";
 
 function CompetenciaFinanceiraBar({
   modo,
@@ -1693,13 +1699,87 @@ function FluxoJanelaBar({
   );
 }
 
+function TipoOperacaoReceitaBar({
+  modo,
+  selected,
+  onModoChange,
+  onToggle,
+}: {
+  modo: ReceitaOperacaoModo;
+  selected: number[];
+  onModoChange: (modo: ReceitaOperacaoModo) => void;
+  onToggle: (cod: number) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="font-geist text-[10px] uppercase tracking-[0.2em]" style={{ color: C.muted }}>
+        Tipo de operação — receita
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div
+          className="inline-flex flex-wrap items-center gap-1 p-1"
+          style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: "rgba(255,255,255,0.02)" }}
+        >
+          {[
+            { value: "custom", label: "Selecionados" },
+            { value: "faturamento", label: "Faturamento real" },
+          ].map((opt) => {
+            const active = modo === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => onModoChange(opt.value as ReceitaOperacaoModo)}
+                className="px-2 py-1.5 font-geist text-[10px] uppercase tracking-[0.1em] transition-colors sm:px-3 sm:text-[11px]"
+                style={{
+                  borderRadius: 6,
+                  background: active ? C.goldSoft : "transparent",
+                  color: active ? C.gold : C.mutedStrong,
+                  border: active ? `1px solid ${C.gold}40` : "1px solid transparent",
+                }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        {modo === "custom" && (
+          <div className="flex flex-wrap items-center gap-1">
+            {FIN_RECEITA_TOPS.map((opt) => {
+              const active = selected.includes(opt.cod);
+              return (
+                <button
+                  key={opt.cod}
+                  type="button"
+                  onClick={() => onToggle(opt.cod)}
+                  className="px-2 py-1.5 font-geist text-[10px] uppercase tracking-[0.1em] transition-colors sm:text-[11px]"
+                  style={{
+                    borderRadius: 6,
+                    background: active ? C.goldSoft : "rgba(255,255,255,0.02)",
+                    color: active ? C.gold : C.mutedStrong,
+                    border: active ? `1px solid ${C.gold}55` : `1px solid ${C.border}`,
+                  }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function FinanceiroSection() {
   const queryClient = useQueryClient();
   const [empresa, setEmpresa] = useState<EmpresaSeleção>("todas");
   const [competenciaModo, setCompetenciaModo] = useState<FinanceiroCompetenciaModo>("ano");
   const [dataInicioComp, setDataInicioComp] = useState("2026-05-01");
   const [dataFimComp, setDataFimComp] = useState("2026-05-22");
-  const [fluxoMeses, setFluxoMeses] = useState<number>(12);
+  const [receitaOperacaoModo, setReceitaOperacaoModo] = useState<ReceitaOperacaoModo>("custom");
+  const [receitaTops, setReceitaTops] = useState<number[]>(FIN_RECEITA_TOPS.map((op) => op.cod));
+  const fluxoMeses = 12;
   const [t1, setT1] = useState<"bar" | "line" | "area">("bar");
   const [t2, setT2] = useState<"donut" | "bar">("donut");
   const [t3, setT3] = useState<"area" | "line" | "bar">("area");
@@ -1715,8 +1795,16 @@ function FinanceiroSection() {
     competenciaModo === "intervalo" && dataInicioComp && dataFimComp
       ? { dataInicio: dataInicioComp, dataFim: dataFimComp }
       : {};
+  const receitaCodTipOper =
+    receitaOperacaoModo === "custom" && receitaTops.length > 0
+      ? receitaTops.join(",")
+      : undefined;
+  const dreFiltros: FinanceiroDreFiltroDatas = {
+    ...datasComp,
+    codTipOper: receitaCodTipOper,
+  };
 
-  const qDre = useFinanceiroDre(empresa, periodoComp, datasComp);
+  const qDre = useFinanceiroDre(empresa, periodoComp, dreFiltros);
   const qDist = useDistribuicaoDespesas(empresa, periodoComp, datasComp);
   const qFlux = useFluxoCaixa(empresa, fluxoMeses);
   const qContas = useContasAbertasResumo(empresa, "receber");
@@ -1816,6 +1904,15 @@ function FinanceiroSection() {
         ? "Competência mês civil atual"
         : "Competência ano civil atual";
 
+  const toggleReceitaTop = (cod: number) => {
+    setReceitaTops((current) => {
+      if (current.includes(cod)) {
+        return current.length > 1 ? current.filter((id) => id !== cod) : current;
+      }
+      return [...current, cod];
+    });
+  };
+
   return (
     <div className="flex flex-col gap-4">
       {qEmp.error && (
@@ -1883,7 +1980,12 @@ function FinanceiroSection() {
         onDataInicioChange={setDataInicioComp}
         onDataFimChange={setDataFimComp}
       />
-      <FluxoJanelaBar meses={fluxoMeses} onChange={setFluxoMeses} />
+      <TipoOperacaoReceitaBar
+        modo={receitaOperacaoModo}
+        selected={receitaTops}
+        onModoChange={setReceitaOperacaoModo}
+        onToggle={toggleReceitaTop}
+      />
 
       {(qDre.error || qDist.error || qFlux.error || qContas.error) && (
         <div

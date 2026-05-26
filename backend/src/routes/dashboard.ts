@@ -92,6 +92,11 @@ const dreQuery = z.object({
   periodo: z.enum(["mes", "ano"]).default("ano"),
   dataInicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   dataFim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  codTipOper: z
+    .string()
+    .regex(/^\d+(,\d+)*$/)
+    .transform((v) => v.split(",").map((n) => Number(n)))
+    .optional(),
 }).refine((q) => (q.dataInicio === undefined) === (q.dataFim === undefined), {
   message: "Informe dataInicio e dataFim juntos.",
 }).refine((q) => !q.dataInicio || !q.dataFim || q.dataInicio <= q.dataFim, {
@@ -100,8 +105,8 @@ const dreQuery = z.object({
 
 dashboardRouter.get("/financeiro/dre", (req, res, next) => {
   try {
-    const { empresa, periodo, dataInicio, dataFim } = dreQuery.parse(req.query);
-    res.json(dre(empresa, periodo, { dataInicio, dataFim }));
+    const { empresa, periodo, dataInicio, dataFim, codTipOper } = dreQuery.parse(req.query);
+    res.json(dre(empresa, periodo, { dataInicio, dataFim, codTipOper }));
   } catch (err) {
     next(err);
   }

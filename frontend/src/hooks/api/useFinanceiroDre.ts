@@ -20,6 +20,7 @@ async function fetchDre(
       periodo,
       dataInicio: datas.dataInicio,
       dataFim: datas.dataFim,
+      codTipOper: datas.codTipOper,
     },
   });
 }
@@ -32,7 +33,13 @@ export function useFinanceiroDre(
   return useQuery({
     queryKey: [
       "financeiroDre",
-      { empresaKey: empresaKey(empresa), periodo, dataInicio: datas.dataInicio, dataFim: datas.dataFim },
+      {
+        empresaKey: empresaKey(empresa),
+        periodo,
+        dataInicio: datas.dataInicio,
+        dataFim: datas.dataFim,
+        codTipOper: datas.codTipOper,
+      },
     ] as const,
     queryFn: () => fetchDre(empresa, periodo, datas),
     staleTime: 30_000,

@@ -21,6 +21,7 @@ export type Periodo = "mes" | "ano";
 export type IntervaloDatas = {
   dataInicio?: string;
   dataFim?: string;
+  codTipOper?: number[];
 };
 
 type Dre = {
@@ -107,11 +108,14 @@ export function dre(filtro: EmpresaFiltro, periodo: Periodo, intervalo: Interval
   const db = getDb();
   const pedidoEmpresa = empresaToSqlClause(filtro, "CODEMP");
   const pedidoEmpresaWhere = pedidoEmpresa.clause ? ` AND ${pedidoEmpresa.clause}` : "";
+  const receitaTops = intervalo.codTipOper && intervalo.codTipOper.length > 0
+    ? intervalo.codTipOper
+    : FATURAMENTO_TOPS;
   const receitaSql = `
     SELECT COALESCE(SUM(VLRNOTA), 0) AS total
     FROM pedidos
     WHERE ${periodoClause(periodo, "DTFATUR", intervalo)}
-      AND ${inListClause("CODTIPOPER", FATURAMENTO_TOPS)}
+      AND ${inListClause("CODTIPOPER", receitaTops)}
       AND STATUSNOTA = 'L'
       AND DTFATUR IS NOT NULL${pedidoEmpresaWhere}`;
 
