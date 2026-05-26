@@ -75,6 +75,7 @@ import { useProdutos } from "@/hooks/api/useProdutos";
 import { useClientesBI } from "@/hooks/api/useClientesBI";
 import { useRhBI } from "@/hooks/api/useRhBI";
 import { useEntregasBI } from "@/hooks/api/useEntregasBI";
+import { useViaCertaAlunosAtivos } from "@/hooks/api/useViaCertaAlunosAtivos";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -3130,6 +3131,208 @@ function ClientesApiSection() {
   );
 }
 
+const MESES_PT = [
+  { value: "01", label: "Janeiro" },
+  { value: "02", label: "Fevereiro" },
+  { value: "03", label: "Março" },
+  { value: "04", label: "Abril" },
+  { value: "05", label: "Maio" },
+  { value: "06", label: "Junho" },
+  { value: "07", label: "Julho" },
+  { value: "08", label: "Agosto" },
+  { value: "09", label: "Setembro" },
+  { value: "10", label: "Outubro" },
+  { value: "11", label: "Novembro" },
+  { value: "12", label: "Dezembro" },
+] as const;
+
+function downloadCsv(filename: string, rows: Array<Record<string, string | number>>): void {
+  const headers = Object.keys(rows[0] ?? { mes: "", matricula: "", aulas_assistidas: "" });
+  const escapeCell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+  const csv = [
+    headers.join(";"),
+    ...rows.map((row) => headers.map((header) => escapeCell(row[header] ?? "")).join(";")),
+  ].join("\r\n");
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function ViaCertaAlunosSection() {
+  const now = new Date();
+  const [month, setMonth] = useState(String(now.getMonth() + 1).padStart(2, "0"));
+  const [year, setYear] = useState(String(now.getFullYear()));
+  const [search, setSearch] = useState("");
+  const qAlunos = useViaCertaAlunosAtivos(month, year);
+  const alunos = qAlunos.data?.alunos ?? [];
+  const filteredAlunos = useMemo(() => {
+    const term = search.trim();
+    return term ? alunos.filter((row) => String(row.matricula).includes(term)) : alunos;
+  }, [alunos, search]);
+  const anos = useMemo(() => {
+    const current = now.getFullYear();
+    return Array.from({ length: 5 }, (_, i) => String(current - i));
+  }, [now]);
+  const mediaAulas =
+    qAlunos.data && qAlunos.data.total_alunos > 0
+      ? qAlunos.data.total_aulas_assistidas / qAlunos.data.total_alunos
+      : 0;
+  const mesLabel = MESES_PT.find((m) => m.value === month)?.label ?? month;
+  const kpis: Kpi[] = qAlunos.data
+    ? [
+        { label: "Alunos ativos", value: String(qAlunos.data.total_alunos), color: C.gold },
+        { label: "Aulas assistidas", value: String(qAlunos.data.total_aulas_assistidas), color: C.green },
+        { label: "Média por aluno", value: mediaAulas.toFixed(1), color: C.blue },
+        { label: "Competência", value: `${mesLabel}/${year}`, color: C.gold },
+      ]
+    : [
+        { label: "Alunos ativos", value: "Carregando", color: C.gold },
+        { label: "Aulas assistidas", value: "Carregando", color: C.green },
+        { label: "Média por aluno", value: "Carregando", color: C.blue },
+        { label: "Competência", value: `${mesLabel}/${year}`, color: C.gold },
+      ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      {qAlunos.error && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-geist text-[11px]"
+          style={{ border: `1px solid ${C.red}55`, background: `${C.red}12`, color: C.red }}
+        >
+          <span>
+            {qAlunos.error instanceof ApiError
+              ? qAlunos.error.message
+              : "Erro ao carregar alunos ativos da Via Certa."}
+          </span>
+          <button
+            type="button"
+            className="rounded px-2 py-1 uppercase tracking-[0.12em]"
+            style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
+            onClick={() => void qAlunos.refetch()}
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
+
+      <Card>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="grid gap-2 sm:grid-cols-[180px_120px]">
+            <div>
+              <div className="mb-1 font-geist text-[10px] uppercase tracking-[0.18em]" style={{ color: C.muted }}>
+                Mês
+              </div>
+              <Select value={month} onValueChange={setMonth}>
+                <SelectTrigger className="h-9 bg-[#09090B] font-geist text-[12px] text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MESES_PT.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <div className="mb-1 font-geist text-[10px] uppercase tracking-[0.18em]" style={{ color: C.muted }}>
+                Ano
+              </div>
+              <Select value={year} onValueChange={setYear}>
+                <SelectTrigger className="h-9 bg-[#09090B] font-geist text-[12px] text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {anos.map((ano) => (
+                    <SelectItem key={ano} value={ano}>
+                      {ano}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={alunos.length === 0}
+            onClick={() =>
+              downloadCsv(
+                `alunos-ativos-via-certa-${year}-${month}.csv`,
+                alunos.map((row) => ({
+                  mes: row.mes,
+                  matricula: row.matricula,
+                  aulas_assistidas: row.aulas_assistidas,
+                })),
+              )
+            }
+            className="h-9 rounded px-3 font-geist text-[11px] uppercase tracking-[0.12em] disabled:opacity-40"
+            style={{ border: `1px solid ${C.gold}66`, background: C.goldSoft, color: C.gold }}
+          >
+            Exportar CSV
+          </button>
+        </div>
+      </Card>
+
+      <KpiRow items={kpis} />
+
+      <Card>
+        <SectionHead title="Alunos ativos Via Certa" sub={`${mesLabel} de ${year}`} />
+        <Input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Buscar matrícula"
+          className="mb-3 bg-[#09090B] text-white"
+        />
+        <div className="overflow-x-auto">
+          <table className="w-full font-geist text-[12px]">
+            <thead>
+              <tr style={{ color: C.muted, fontSize: 10 }}>
+                <th className="py-2 text-left font-normal uppercase tracking-wider">Mês</th>
+                <th className="py-2 text-left font-normal uppercase tracking-wider">Matrícula</th>
+                <th className="py-2 text-right font-normal uppercase tracking-wider">Aulas assistidas</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredAlunos.map((aluno) => (
+                <tr key={`${aluno.mes}-${aluno.matricula}`} style={{ borderTop: `1px solid ${C.border}` }}>
+                  <td className="py-2.5" style={{ color: C.mutedStrong }}>
+                    {aluno.mes}
+                  </td>
+                  <td className="py-2.5 tabular-nums" style={{ color: C.text }}>
+                    {aluno.matricula}
+                  </td>
+                  <td className="py-2.5 text-right tabular-nums" style={{ color: C.gold }}>
+                    {aluno.aulas_assistidas}
+                  </td>
+                </tr>
+              ))}
+              {!qAlunos.isPending && filteredAlunos.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="py-4 text-center" style={{ color: C.muted }}>
+                    Nenhum aluno ativo encontrado para o período.
+                  </td>
+                </tr>
+              )}
+              {qAlunos.isPending && (
+                <tr>
+                  <td colSpan={3} className="py-4 text-center" style={{ color: C.muted }}>
+                    Carregando alunos ativos...
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function ProdutosApiSection() {
   const qProdutos = useProdutos();
   const [search, setSearch] = useState("");
@@ -4194,6 +4397,7 @@ type NavKey =
   | "estoque"
   | "entregas"
   | "clientes"
+  | "viacerta"
   | "rh";
 
 const NAV_GROUPS: {
@@ -4232,6 +4436,7 @@ const NAV_GROUPS: {
     label: "GESTÃO",
     items: [
       { key: "clientes", label: "Clientes", icon: Users },
+      { key: "viacerta", label: "Alunos Via Certa", icon: Users },
       { key: "rh", label: "RH", icon: UserCog },
     ],
   },
@@ -4247,6 +4452,7 @@ const PAGE_META: Record<NavKey, { title: string; sub: string }> = {
   estoque: { title: "Estoque", sub: "Níveis, giro e alertas críticos" },
   entregas: { title: "Entregas", sub: "Logística e performance de transporte" },
   clientes: { title: "Clientes", sub: "Base ativa, NPS e churn" },
+  viacerta: { title: "Alunos Via Certa", sub: "Relatório mensal de alunos ativos" },
   rh: { title: "Recursos Humanos", sub: "Headcount, satisfação e produtividade" },
 };
 
@@ -4463,6 +4669,7 @@ function Dashboard() {
     estoque: <EstoqueSection />,
     entregas: <EntregasApiSection />,
     clientes: <ClientesApiSection />,
+    viacerta: <ViaCertaAlunosSection />,
     rh: <RhApiSection />,
   };
 

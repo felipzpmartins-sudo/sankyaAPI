@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { listarContasAbertas } from "../services/dashboard-financeiro.js";
+import { alunosAtivosViaCerta } from "../services/viacerta.js";
 import { empresaParam } from "../utils/empresa.js";
 import { dashboardRouter, empresasRouter, vendedoresRouter } from "./dashboard.js";
 
@@ -13,6 +14,20 @@ router.get("/health", (_req, res) => {
 router.use("/empresas", empresasRouter);
 router.use("/vendedores", vendedoresRouter);
 router.use("/dashboard", dashboardRouter);
+
+const viaCertaAlunosAtivosQuery = z.object({
+  month: z.string().regex(/^(0[1-9]|1[0-2])$/),
+  year: z.string().regex(/^\d{4}$/),
+});
+
+router.get("/viacerta/alunos-ativos", async (req, res, next) => {
+  try {
+    const q = viaCertaAlunosAtivosQuery.parse(req.query);
+    res.json(await alunosAtivosViaCerta(q));
+  } catch (err) {
+    next(err);
+  }
+});
 
 /**
  * /api/receber e /api/pagar mantidos para compatibilidade.

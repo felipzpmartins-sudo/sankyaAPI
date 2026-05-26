@@ -321,3 +321,19 @@ export type EntregasBIResponse = {
   transportadoras: EntregaTransportadoraDto[];
   recentes: EntregaRecenteDto[];
 };
+
+export type ViaCertaAlunoAtivoDto = {
+  mes: string;
+  matricula: number;
+  aulas_assistidas: number;
+};
+
+export type ViaCertaAlunosAtivosResponse = {
+  filtro: {
+    month: string;
+    year: string;
+  };
+  total_alunos: number;
+  total_aulas_assistidas: number;
+  alunos: ViaCertaAlunoAtivoDto[];
+};
