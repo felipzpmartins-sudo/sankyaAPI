@@ -63,7 +63,7 @@ import { useVendedoresRanking, type VendedoresPeriodo } from "@/hooks/api/useVen
 import { useVendedoresLancamentosHoje } from "@/hooks/api/useVendedoresLancamentosHoje";
 import { useFaturamentoConsolidado } from "@/hooks/api/useFaturamentoConsolidado";
 import { useFaturamentoPorEmpresa } from "@/hooks/api/useFaturamentoPorEmpresa";
-import type { FinanceiroDrePeriodo } from "@/lib/api/types.dashboard";
+import type { FinanceiroDreFiltroDatas, FinanceiroDrePeriodo } from "@/lib/api/types.dashboard";
 import type { EmpresaSeleção } from "@/lib/empresaSelecao";
 import type { VendedorSeleção } from "@/lib/vendedorSelecao";
 import { useFinanceiroDre } from "@/hooks/api/useFinanceiroDre";
@@ -1580,12 +1580,22 @@ const FLUXO_JANELAS = [
   { meses: 18, label: "18 meses" },
 ] as const;
 
+type FinanceiroCompetenciaModo = FinanceiroDrePeriodo | "intervalo";
+
 function CompetenciaFinanceiraBar({
-  value,
+  modo,
+  dataInicio,
+  dataFim,
   onChange,
+  onDataInicioChange,
+  onDataFimChange,
 }: {
-  value: FinanceiroDrePeriodo;
-  onChange: (p: FinanceiroDrePeriodo) => void;
+  modo: FinanceiroCompetenciaModo;
+  dataInicio: string;
+  dataFim: string;
+  onChange: (p: FinanceiroCompetenciaModo) => void;
+  onDataInicioChange: (v: string) => void;
+  onDataFimChange: (v: string) => void;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1596,13 +1606,17 @@ function CompetenciaFinanceiraBar({
         className="inline-flex flex-wrap items-center gap-1 p-1"
         style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: "rgba(255,255,255,0.02)" }}
       >
-        {(["mes", "ano"] as const).map((p) => {
-          const active = value === p;
+        {[
+          { value: "mes", label: "Mês atual" },
+          { value: "ano", label: "Ano atual" },
+          { value: "intervalo", label: "Intervalo" },
+        ].map((opt) => {
+          const active = modo === opt.value;
           return (
             <button
-              key={p}
+              key={opt.value}
               type="button"
-              onClick={() => onChange(p)}
+              onClick={() => onChange(opt.value as FinanceiroCompetenciaModo)}
               className="px-2 py-1.5 font-geist text-[10px] uppercase tracking-[0.1em] transition-colors sm:px-3 sm:text-[11px]"
               style={{
                 borderRadius: 6,
@@ -1611,11 +1625,30 @@ function CompetenciaFinanceiraBar({
                 border: active ? `1px solid ${C.gold}40` : "1px solid transparent",
               }}
             >
-              {p === "mes" ? "Mês atual" : "Ano atual"}
+              {opt.label}
             </button>
           );
         })}
       </div>
+      {modo === "intervalo" && (
+        <div className="flex flex-wrap items-center gap-1">
+          <Input
+            type="date"
+            value={dataInicio}
+            onChange={(event) => onDataInicioChange(event.target.value)}
+            className="h-8 w-[138px] font-geist text-[11px]"
+            style={{ borderColor: C.borderStrong, background: "rgba(255,255,255,0.03)", color: C.text }}
+          />
+          <Input
+            type="date"
+            value={dataFim}
+            min={dataInicio || undefined}
+            onChange={(event) => onDataFimChange(event.target.value)}
+            className="h-8 w-[138px] font-geist text-[11px]"
+            style={{ borderColor: C.borderStrong, background: "rgba(255,255,255,0.03)", color: C.text }}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -1663,7 +1696,9 @@ function FluxoJanelaBar({
 function FinanceiroSection() {
   const queryClient = useQueryClient();
   const [empresa, setEmpresa] = useState<EmpresaSeleção>("todas");
-  const [periodoComp, setPeriodoComp] = useState<FinanceiroDrePeriodo>("ano");
+  const [competenciaModo, setCompetenciaModo] = useState<FinanceiroCompetenciaModo>("ano");
+  const [dataInicioComp, setDataInicioComp] = useState("2026-05-01");
+  const [dataFimComp, setDataFimComp] = useState("2026-05-22");
   const [fluxoMeses, setFluxoMeses] = useState<number>(12);
   const [t1, setT1] = useState<"bar" | "line" | "area">("bar");
   const [t2, setT2] = useState<"donut" | "bar">("donut");
@@ -1675,8 +1710,14 @@ function FinanceiroSection() {
     return [...raw].sort((a, b) => a.ordem - b.ordem || a.CODEMP - b.CODEMP);
   }, [qEmp.data?.empresas]);
 
-  const qDre = useFinanceiroDre(empresa, periodoComp);
-  const qDist = useDistribuicaoDespesas(empresa, periodoComp);
+  const periodoComp: FinanceiroDrePeriodo = competenciaModo === "mes" ? "mes" : "ano";
+  const datasComp: FinanceiroDreFiltroDatas =
+    competenciaModo === "intervalo" && dataInicioComp && dataFimComp
+      ? { dataInicio: dataInicioComp, dataFim: dataFimComp }
+      : {};
+
+  const qDre = useFinanceiroDre(empresa, periodoComp, datasComp);
+  const qDist = useDistribuicaoDespesas(empresa, periodoComp, datasComp);
   const qFlux = useFluxoCaixa(empresa, fluxoMeses);
   const qContas = useContasAbertasResumo(empresa, "receber");
 
@@ -1769,9 +1810,11 @@ function FinanceiroSection() {
         : [];
 
   const periodoSub =
-    periodoComp === "mes"
-      ? "Competência mês civil atual (títulos realizados)"
-      : "Competência ano civil atual (títulos realizados)";
+    competenciaModo === "intervalo"
+      ? `${dataInicioComp || "--"} a ${dataFimComp || "--"}`
+      : periodoComp === "mes"
+        ? "Competência mês civil atual"
+        : "Competência ano civil atual";
 
   return (
     <div className="flex flex-col gap-4">
@@ -1832,7 +1875,14 @@ function FinanceiroSection() {
         disabled={empresaDisabled}
       />
 
-      <CompetenciaFinanceiraBar value={periodoComp} onChange={setPeriodoComp} />
+      <CompetenciaFinanceiraBar
+        modo={competenciaModo}
+        dataInicio={dataInicioComp}
+        dataFim={dataFimComp}
+        onChange={setCompetenciaModo}
+        onDataInicioChange={setDataInicioComp}
+        onDataFimChange={setDataFimComp}
+      />
       <FluxoJanelaBar meses={fluxoMeses} onChange={setFluxoMeses} />
 
       {(qDre.error || qDist.error || qFlux.error || qContas.error) && (

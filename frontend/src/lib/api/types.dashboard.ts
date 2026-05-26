@@ -89,6 +89,11 @@ export type FinanceiroDreDto = {
 
 export type FinanceiroDrePeriodo = "mes" | "ano";
 
+export type FinanceiroDreFiltroDatas = {
+  dataInicio?: string;
+  dataFim?: string;
+};
+
 /** `GET /api/dashboard/financeiro/fluxo-caixa` */
 export type FluxoCaixaDto = {
   filtro: string;

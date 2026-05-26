@@ -1,5 +1,6 @@
 import { getDb } from "../db/connection.js";
 import { type EmpresaFiltro, empresaToSqlClause } from "../utils/empresa.js";
+import { FATURAMENTO_TOPS, inListClause } from "./operacoes.js";
 
 /**
  * Categorização do plano de contas Maker por prefixo do CODNAT.
@@ -17,6 +18,10 @@ export const CATEGORIAS_NAT = {
 } as const;
 
 export type Periodo = "mes" | "ano";
+export type IntervaloDatas = {
+  dataInicio?: string;
+  dataFim?: string;
+};
 
 type Dre = {
   filtro: string;
@@ -32,11 +37,28 @@ type Dre = {
   snapshot_at: string | null;
 };
 
-function periodoClause(periodo: Periodo, coluna = "DTNEG"): string {
+function periodoClause(periodo: Periodo, coluna = "DTNEG", intervalo: IntervaloDatas = {}): string {
+  if (intervalo.dataInicio && intervalo.dataFim) {
+    return `date(${coluna}) BETWEEN date(?) AND date(?)`;
+  }
   if (periodo === "mes") {
     return `strftime('%Y-%m', ${coluna}) = strftime('%Y-%m', 'now')`;
   }
   return `strftime('%Y', ${coluna}) = strftime('%Y', 'now')`;
+}
+
+function periodoParams(intervalo: IntervaloDatas = {}): string[] {
+  if (intervalo.dataInicio && intervalo.dataFim) return [intervalo.dataInicio, intervalo.dataFim];
+  return [];
+}
+
+function describePeriodo(periodo: Periodo, intervalo: IntervaloDatas = {}): string {
+  if (intervalo.dataInicio && intervalo.dataFim) {
+    return `intervalo:${intervalo.dataInicio}:${intervalo.dataFim}`;
+  }
+  return periodo === "mes"
+    ? `mes_atual:${new Date().toISOString().slice(0, 7)}`
+    : `ano_atual:${new Date().getFullYear()}`;
 }
 
 function describeFiltro(filtro: EmpresaFiltro): string {
@@ -67,10 +89,11 @@ function round2(n: number): number {
  * "despesas_total" do resultado operacional, pois afetam o lucro líquido
  * abaixo da linha (não o EBIT). Mantemos exibidos no payload pra contexto.
  */
-export function dre(filtro: EmpresaFiltro, periodo: Periodo): Dre {
+export function dre(filtro: EmpresaFiltro, periodo: Periodo, intervalo: IntervaloDatas = {}): Dre {
   const { clause: empresaClause, params: empresaParams } = empresaToSqlClause(filtro);
   const empresaWhere = empresaClause ? ` AND ${empresaClause}` : "";
-  const periodoWhere = periodoClause(periodo);
+  const periodoWhere = periodoClause(periodo, "DTNEG", intervalo);
+  const periodoWhereParams = periodoParams(intervalo);
 
   const baseWhere = `${periodoWhere} AND PROVISAO = 'N'${empresaWhere}`;
 
@@ -82,11 +105,23 @@ export function dre(filtro: EmpresaFiltro, periodo: Periodo): Dre {
       AND CAST(COALESCE(CODNAT, 0) AS TEXT) LIKE '${prefixo}%'`;
 
   const db = getDb();
-  const receita_bruta = (db.prepare(somaSql(1, "1")).get(...empresaParams) as { total: number }).total;
-  const custos = (db.prepare(somaSql(-1, "2")).get(...empresaParams) as { total: number }).total;
-  const despesas_admin = (db.prepare(somaSql(-1, "3")).get(...empresaParams) as { total: number }).total;
-  const despesas_comerciais = (db.prepare(somaSql(-1, "4")).get(...empresaParams) as { total: number }).total;
-  const impostos = (db.prepare(somaSql(-1, "5")).get(...empresaParams) as { total: number }).total;
+  const pedidoEmpresa = empresaToSqlClause(filtro, "CODEMP");
+  const pedidoEmpresaWhere = pedidoEmpresa.clause ? ` AND ${pedidoEmpresa.clause}` : "";
+  const receitaSql = `
+    SELECT COALESCE(SUM(VLRNOTA), 0) AS total
+    FROM pedidos
+    WHERE ${periodoClause(periodo, "DTFATUR", intervalo)}
+      AND ${inListClause("CODTIPOPER", FATURAMENTO_TOPS)}
+      AND STATUSNOTA = 'L'
+      AND DTFATUR IS NOT NULL${pedidoEmpresaWhere}`;
+
+  const receita_bruta = (db
+    .prepare(receitaSql)
+    .get(...periodoWhereParams, ...pedidoEmpresa.params) as { total: number }).total;
+  const custos = (db.prepare(somaSql(-1, "2")).get(...periodoWhereParams, ...empresaParams) as { total: number }).total;
+  const despesas_admin = (db.prepare(somaSql(-1, "3")).get(...periodoWhereParams, ...empresaParams) as { total: number }).total;
+  const despesas_comerciais = (db.prepare(somaSql(-1, "4")).get(...periodoWhereParams, ...empresaParams) as { total: number }).total;
+  const impostos = (db.prepare(somaSql(-1, "5")).get(...periodoWhereParams, ...empresaParams) as { total: number }).total;
 
   const despesas_total = custos + despesas_admin + despesas_comerciais + impostos;
   const resultado_operacional = receita_bruta - despesas_total;
@@ -94,7 +129,7 @@ export function dre(filtro: EmpresaFiltro, periodo: Periodo): Dre {
 
   return {
     filtro: describeFiltro(filtro),
-    periodo: periodo === "mes" ? `mes_atual:${new Date().toISOString().slice(0, 7)}` : `ano_atual:${new Date().getFullYear()}`,
+    periodo: describePeriodo(periodo, intervalo),
     receita_bruta: round2(receita_bruta),
     custos: round2(custos),
     despesas_admin: round2(despesas_admin),
@@ -159,7 +194,7 @@ export function fluxoCaixa(filtro: EmpresaFiltro, meses: number): {
  * Distribuição das despesas realizadas no período, agrupadas pelas categorias
  * derivadas do prefixo do CODNAT. Útil para gráfico de pizza/donut.
  */
-export function distribuicaoDespesas(filtro: EmpresaFiltro, periodo: Periodo): {
+export function distribuicaoDespesas(filtro: EmpresaFiltro, periodo: Periodo, intervalo: IntervaloDatas = {}): {
   filtro: string;
   periodo: string;
   total: number;
@@ -168,7 +203,8 @@ export function distribuicaoDespesas(filtro: EmpresaFiltro, periodo: Periodo): {
 } {
   const { clause: empresaClause, params: empresaParams } = empresaToSqlClause(filtro);
   const empresaWhere = empresaClause ? ` AND ${empresaClause}` : "";
-  const periodoWhere = periodoClause(periodo);
+  const periodoWhere = periodoClause(periodo, "DTNEG", intervalo);
+  const periodoWhereParams = periodoParams(intervalo);
 
   // Só categorias 2,3,4,5 entram em "despesa operacional"
   const sql = `
@@ -185,7 +221,7 @@ export function distribuicaoDespesas(filtro: EmpresaFiltro, periodo: Periodo): {
     ORDER BY valor DESC
   `;
 
-  const rows = getDb().prepare(sql).all(...empresaParams) as {
+  const rows = getDb().prepare(sql).all(...periodoWhereParams, ...empresaParams) as {
     prefixo: string;
     valor: number;
   }[];
@@ -207,7 +243,7 @@ export function distribuicaoDespesas(filtro: EmpresaFiltro, periodo: Periodo): {
 
   return {
     filtro: describeFiltro(filtro),
-    periodo: periodo === "mes" ? `mes_atual:${new Date().toISOString().slice(0, 7)}` : `ano_atual:${new Date().getFullYear()}`,
+    periodo: describePeriodo(periodo, intervalo),
     total: round2(total),
     snapshot_at: snapshotTitulosAt(),
     categorias,

@@ -90,12 +90,18 @@ dashboardRouter.get("/vendedores/hoje", (req, res, next) => {
 const dreQuery = z.object({
   empresa: empresaParam,
   periodo: z.enum(["mes", "ano"]).default("ano"),
+  dataInicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dataFim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+}).refine((q) => (q.dataInicio === undefined) === (q.dataFim === undefined), {
+  message: "Informe dataInicio e dataFim juntos.",
+}).refine((q) => !q.dataInicio || !q.dataFim || q.dataInicio <= q.dataFim, {
+  message: "dataInicio deve ser menor ou igual a dataFim.",
 });
 
 dashboardRouter.get("/financeiro/dre", (req, res, next) => {
   try {
-    const { empresa, periodo } = dreQuery.parse(req.query);
-    res.json(dre(empresa, periodo));
+    const { empresa, periodo, dataInicio, dataFim } = dreQuery.parse(req.query);
+    res.json(dre(empresa, periodo, { dataInicio, dataFim }));
   } catch (err) {
     next(err);
   }
@@ -117,8 +123,8 @@ dashboardRouter.get("/financeiro/fluxo-caixa", (req, res, next) => {
 
 dashboardRouter.get("/financeiro/distribuicao-despesas", (req, res, next) => {
   try {
-    const { empresa, periodo } = dreQuery.parse(req.query);
-    res.json(distribuicaoDespesas(empresa, periodo));
+    const { empresa, periodo, dataInicio, dataFim } = dreQuery.parse(req.query);
+    res.json(distribuicaoDespesas(empresa, periodo, { dataInicio, dataFim }));
   } catch (err) {
     next(err);
   }
