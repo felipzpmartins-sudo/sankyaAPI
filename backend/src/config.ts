@@ -10,7 +10,7 @@ const schema = z.object({
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   CORS_ORIGINS: z
     .string()
-    .default("http://localhost:5173")
+    .default("http://localhost:8080,http://localhost:5173")
     .transform((v) => v.split(",").map((s) => s.trim()).filter(Boolean)),
   DATABASE_PATH: z.string().default("./data/snapshot.db"),
   SYNC_INTERVAL_MS: z.coerce.number().int().positive().default(300_000),

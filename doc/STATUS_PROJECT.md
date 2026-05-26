@@ -8,7 +8,7 @@
 > realidade do código, anota aqui e atualiza o plano em seguida.
 
 **Última atualização:** 2026-05-15
-**Stack:** Node 20 + Express 5 (backend) · React 19 + TanStack Start + Vite (frontend) · SQLite snapshot · Sankhya Gateway OAuth 2.0
+**Stack:** Node 22 + Express 5 (backend) · React 19 + TanStack Start + Vite (frontend) · SQLite snapshot · Sankhya Gateway OAuth 2.0
 **Empresa-alvo:** Grupo Maker (Educação e Tecnologia) — 7 empresas mapeadas
 
 ---

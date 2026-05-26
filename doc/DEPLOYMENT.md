@@ -1,196 +1,203 @@
-# Guia de Deployment: Vercel + Railway
+# Deployment: Railway + Vercel
 
-## Pré-requisitos
+Este guia descreve o caminho recomendado hoje:
 
-- Conta no Vercel (você já tem)
-- Conta no Railway (railway.app)
-- Repositório GitHub com o código
-- Domínio custom registrado (registro.br)
+- Backend Express em `backend/`, publicado no Railway.
+- Frontend TanStack Start em `frontend/`, publicado na Vercel.
+- Banco SQLite como snapshot local do backend.
 
----
+## Pre-requisitos
 
-## 1️⃣ Setup Railway (Backend)
+- Repositorio GitHub atualizado.
+- Conta Railway.
+- Conta Vercel.
+- Node.js `>=22.12.0`.
+- Variaveis Sankhya Gateway.
+- Dominio proprio, se for usar DNS customizado.
 
-### Criar projeto no Railway
+## 1. Backend no Railway
 
-1. Acesse [railway.app](https://railway.app)
-2. Clique em "New Project"
-3. Selecione "Deploy from GitHub"
-4. Autorize e selecione seu repositório
-5. Railway vai detectar automaticamente o Node.js
+### Criar o projeto
 
-### Variáveis de Ambiente no Railway
+1. Acesse `https://railway.app`.
+2. Crie um projeto com `Deploy from GitHub`.
+3. Selecione este repositorio.
+4. Configure o servico para usar o diretorio `backend`.
 
-No painel do Railway, configure:
+O arquivo [`backend/railway.json`](../backend/railway.json) ja define:
 
+```json
+{
+  "build": {
+    "builder": "RAILPACK",
+    "buildCommand": "npm install && npm run build"
+  },
+  "deploy": {
+    "startCommand": "npm run start",
+    "healthcheckPath": "/api/health"
+  }
+}
 ```
-# Sankhya API Credentials
-SANKHYA_BASE_URL=<sua-url-base-do-sankhya>
-SANKHYA_CLIENT_ID=<seu-client-id>
-SANKHYA_CLIENT_SECRET=<seu-client-secret>
-SANKHYA_TOKEN=<seu-token>
 
-# Database
-DATABASE_PATH=./data/snapshot.db
+### Variaveis de ambiente
+
+Configure no Railway:
+
+```env
+SANKHYA_BASE_URL=https://api.sankhya.com.br
+SANKHYA_CLIENT_ID=<client-id>
+SANKHYA_CLIENT_SECRET=<client-secret>
+SANKHYA_TOKEN=<gateway-token>
+
+PORT=3000
 NODE_ENV=production
+LOG_LEVEL=info
 
-# CORS
 CORS_ORIGINS=https://seu-dominio.com.br,https://www.seu-dominio.com.br
 
-# Runtime
-LOG_LEVEL=info
+DATABASE_PATH=./data/snapshot.db
 SYNC_ENABLED=true
 SYNC_INTERVAL_MS=300000
 SYNC_INTERVAL_SLOW_MS=1800000
 ```
 
-### Deploy
+### Ponto de atencao: SQLite em producao
 
-1. Railway vai fazer deploy automático ao detectar `package.json` no `/backend`
-2. Copie a URL da aplicação (ex: `cip-backend-prod.railway.app`)
-3. Essa será sua `VITE_API_URL` no frontend
+O backend usa SQLite como snapshot. Antes de usar em producao de forma definitiva, confirme no Railway se o caminho `DATABASE_PATH` sera persistente entre deploys/restarts. Se nao houver volume persistente, o snapshot sera recriado a cada subida.
 
----
+Opcoes:
 
-## 2️⃣ Setup Vercel (Frontend)
+- Manter SQLite com volume persistente no Railway.
+- Migrar snapshot para Postgres depois que o dashboard estabilizar.
+- Rodar sync inicial a cada deploy sabendo que o primeiro carregamento pode demorar.
+
+### Smoke test
+
+Depois do deploy, teste:
+
+```bash
+curl https://sua-api.up.railway.app/api/health
+curl https://sua-api.up.railway.app/api/empresas
+```
+
+Guarde a URL final do backend. Ela sera usada como `VITE_API_URL` no frontend.
+
+## 2. Frontend na Vercel
 
 ### Importar projeto
 
-1. Acesse [vercel.com](https://vercel.com)
-2. Clique em "Add New..." → "Project"
-3. Selecione seu repositório GitHub
-4. Na configuração do projeto:
-   - **Root Directory**: `frontend`
-   - **Build Command**: `npm run build`
-   - **Output Directory**: `dist/client`
+1. Acesse `https://vercel.com`.
+2. Importe o repositorio.
+3. Configure:
 
-### Variáveis de Ambiente
-
-Na seção "Environment Variables", configure:
-
-```
-VITE_API_URL=https://sua-url-do-backend.up.railway.app
+```text
+Root Directory: frontend
+Build Command: npm run build
+Output Directory: .vercel/output
 ```
 
-(Substitua pela URL real do seu backend no Railway)
+O arquivo [`frontend/vercel.json`](../frontend/vercel.json) ja aponta para o preset TanStack Start:
 
-### Deploy
+```json
+{
+  "framework": "tanstack-start",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".vercel/output"
+}
+```
 
-Vercel faz deploy automático ao fazer push para `main`. Você pode acompanhar em https://vercel.com/deployments
+### Variaveis de ambiente
 
----
+Configure na Vercel:
 
-## 3️⃣ Conectar Domínio Custom
+```env
+VITE_API_URL=https://sua-api.up.railway.app
+```
 
-### No Vercel
+Nao use barra final.
 
-1. Vá em "Settings" → "Domains"
-2. Clique em "Add Domain"
-3. Digite seu domínio: `seu-dominio.com.br`
-4. Vercel vai mostrar registros DNS
+### Validacao
+
+Depois do deploy:
+
+1. Abra o dominio da Vercel.
+2. Confirme se os paineis Empresas e Financeiro carregam dados.
+3. Verifique o console do navegador para erros de CORS ou `VITE_API_URL`.
+4. Se houver erro de CORS, adicione o dominio final da Vercel em `CORS_ORIGINS` no Railway.
+
+## 3. Dominio customizado
+
+### Na Vercel
+
+1. Va em `Settings > Domains`.
+2. Adicione `seu-dominio.com.br` e, se necessario, `www.seu-dominio.com.br`.
+3. Copie os registros DNS sugeridos.
 
 ### No Registro.br
 
-1. Acesse seu painel no registro.br
-2. Vá em "Meus Domínios"
-3. Edite os registros DNS
-4. Adicione os registros que Vercel mostrou (CNAME ou A)
+1. Acesse o painel do dominio.
+2. Configure os registros indicados pela Vercel.
+3. Aguarde a propagacao.
 
-Exemplo:
-```
-Nome: seu-dominio.com.br
+Exemplo comum:
+
+```text
 Tipo: CNAME
+Nome: www
 Alvo: cname.vercel-dns.com
 ```
 
----
+Siga sempre os valores mostrados pela Vercel, porque eles podem variar.
 
-## 4️⃣ Estrutura do Repositório
+## 4. Checklist antes de publicar
 
-Para funcionar com ambos, mantenha assim:
+- Backend builda com `npm run build`.
+- Frontend builda com `npm run build`.
+- `CORS_ORIGINS` inclui os dominios finais do frontend.
+- `VITE_API_URL` aponta para o backend Railway.
+- Credenciais Sankhya estao somente no Railway, nunca no Git.
+- `.env` e `.env.local` nao aparecem em `git status`.
+- Snapshot SQLite tem estrategia de persistencia definida.
+- `/api/health` responde publicamente.
 
-```
-sankyaAPI/
-├── backend/
-│   ├── src/
-│   ├── package.json
-│   ├── railway.json
-│   └── .railwayignore
-├── frontend/
-│   ├── src/
-│   ├── package.json
-│   └── vercel.json
-├── .gitignore
-└── README.md
-```
+## 5. Troubleshooting
 
----
+### Frontend nao acessa backend
 
-## 5️⃣ Scripts de Deploy Locais
+- Confira `VITE_API_URL` na Vercel.
+- Confira `CORS_ORIGINS` no Railway.
+- Teste a URL do backend diretamente no navegador.
 
-### Testar build do frontend
+### Backend nao sobe
 
-```bash
-cd frontend
-npm run build
-# Verifica se `dist/client` foi criado
-```
-
-### Testar build do backend
+- Verifique logs do Railway.
+- Confirme se todas as variaveis `SANKHYA_*` existem.
+- Rode localmente:
 
 ```bash
 cd backend
 npm run build
-npm run start  # Testa se roda
+npm run start
 ```
 
----
+### Dados aparecem vazios
 
-## 6️⃣ Variáveis Sensíveis
+- Confira se `SYNC_ENABLED=true`.
+- Verifique logs de sync no backend.
+- Confirme se o snapshot SQLite foi criado no caminho de `DATABASE_PATH`.
+- Teste `/api/empresas` e `/api/vendedores`.
 
-### ⚠️ NUNCA commitar
+### Dominio nao resolve
 
-- `.env` com credenciais reais
-- Senhas ou tokens
+- Aguarde a propagacao DNS.
+- Confira os registros no Registro.br.
+- Teste:
 
-### Usar
+```bash
+nslookup seu-dominio.com.br
+```
 
-- Railway: painel web para configurar variáveis
-- Vercel: painel web para configurar variáveis
+## 6. Notas
 
----
-
-## 7️⃣ Troubleshooting
-
-### Frontend não consegue acessar backend
-
-- Verificar `VITE_API_URL` no Vercel
-- Verificar CORS no backend (`CORS_ORIGINS`)
-- Testar URL diretamente no navegador
-
-### Backend não inicia no Railway
-
-- Verificar logs no painel Railway
-- Confirmar se `npm start` está funcionando
-- Verificar variáveis de ambiente
-
-### Domínio não resolve
-
-- Aguardar 24-48h para DNS se propagar
-- Verificar registros DNS no registro.br
-- Usar `nslookup seu-dominio.com.br` para testar
-
----
-
-## 8️⃣ Próximos Passos
-
-1. Criar conta no Railway
-2. Conectar GitHub ao Railway
-3. Configurar variáveis de ambiente
-4. Fazer push para GitHub (ambos farão deploy automático)
-5. Apontar domínio para Vercel
-6. Testar acesso via seu-dominio.com.br
-
----
-
-**Dúvidas?** Avise quando começar o setup que te ajudo com os passos específicos.
+- `frontend/wrangler.jsonc` ficou como referencia para Cloudflare Workers, mas o deploy documentado aqui usa Vercel.
+- Se a decisao mudar para Cloudflare, atualize este documento e remova a ambiguidade entre Vercel e Wrangler.
