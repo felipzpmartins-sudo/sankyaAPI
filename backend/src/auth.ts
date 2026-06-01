@@ -2,7 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { config } from "./config.js";
 
-const PUBLIC_ROUTES = new Set(["/health", "/auth/validate"]);
+const PUBLIC_ROUTES = new Set(["/health", "/auth/setup", "/auth/validate"]);
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const TOTP_STEP_SECONDS = 30;
 const TOTP_WINDOW = 1;
@@ -68,6 +68,29 @@ export function isValidTotpCode(code: string): boolean {
   }
 
   return false;
+}
+
+export function getTotpSetup() {
+  const issuer = "sankyaAPI";
+  const account = "Maker.OS";
+  const label = encodeURIComponent(`${issuer}:${account}`);
+  const params = new URLSearchParams({
+    secret: config.APP_TOTP_SECRET.replace(/[\s=-]/g, "").toUpperCase(),
+    issuer,
+    algorithm: "SHA1",
+    digits: "6",
+    period: String(TOTP_STEP_SECONDS),
+  });
+  const otpauthUrl = `otpauth://totp/${label}?${params.toString()}`;
+  const qrCodeUrl = `https://quickchart.io/qr?size=240&margin=2&text=${encodeURIComponent(otpauthUrl)}`;
+
+  return {
+    account,
+    issuer,
+    manualKey: config.APP_TOTP_SECRET.replace(/[\s=-]/g, "").toUpperCase(),
+    otpauthUrl,
+    qrCodeUrl,
+  };
 }
 
 export function createSessionToken(): { accessToken: string; expiresAt: string } {

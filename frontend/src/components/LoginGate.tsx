@@ -8,12 +8,33 @@ export function LoginGate({ children }: { children: ReactNode }) {
   const [authed, setAuthed] = useState(false);
   const [ready, setReady] = useState(false);
   const [code, setCode] = useState("");
+  const [setup, setSetup] = useState<{ qrCodeUrl: string; manualKey: string } | null>(null);
   const [error, setError] = useState(false);
   const [shake, setShake] = useState(false);
   const [focused, setFocused] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    void fetch(`${getApiBaseUrl()}/api/auth/setup`, {
+      headers: { Accept: "application/json" },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: unknown) => {
+        if (
+          body &&
+          typeof body === "object" &&
+          "qrCodeUrl" in body &&
+          "manualKey" in body &&
+          typeof (body as { qrCodeUrl: unknown }).qrCodeUrl === "string" &&
+          typeof (body as { manualKey: unknown }).manualKey === "string"
+        ) {
+          setSetup(body as { qrCodeUrl: string; manualKey: string });
+        }
+      })
+      .catch(() => {
+        void 0;
+      });
+
     const storedToken = getStoredAuthToken();
     if (!storedToken) {
       setReady(true);
@@ -71,18 +92,19 @@ export function LoginGate({ children }: { children: ReactNode }) {
       <SmokeyBackground color="#1E5FCC" />
       <div className="absolute inset-0 backdrop-blur-2xl bg-black/40" />
 
-      <div
-        className={`relative z-10 w-full max-w-[420px] ${shake ? "animate-[shake_0.4s_ease]" : ""}`}
-        style={{
-          background: "rgba(18, 21, 32, 0.65)",
-          border: "1px solid rgba(77, 163, 255, 0.12)",
-          borderRadius: 18,
-          padding: 40,
-          boxShadow: "0 40px 100px -20px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03) inset",
-          backdropFilter: "blur(24px)",
-        }}
-      >
-        <div className="flex flex-col items-center mb-8">
+      <div className="relative z-10 grid w-full max-w-[900px] items-stretch gap-4 md:grid-cols-[420px_1fr]">
+        <div
+          className={`w-full ${shake ? "animate-[shake_0.4s_ease]" : ""}`}
+          style={{
+            background: "rgba(18, 21, 32, 0.65)",
+            border: "1px solid rgba(77, 163, 255, 0.12)",
+            borderRadius: 18,
+            padding: 40,
+            boxShadow: "0 40px 100px -20px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03) inset",
+            backdropFilter: "blur(24px)",
+          }}
+        >
+          <div className="flex flex-col items-center mb-8">
           <div
             style={{
               width: 56,
@@ -123,7 +145,7 @@ export function LoginGate({ children }: { children: ReactNode }) {
           </p>
         </div>
 
-        <form onSubmit={onSubmit}>
+          <form onSubmit={onSubmit}>
           <div className="relative">
             <input
               type="password"
@@ -207,9 +229,9 @@ export function LoginGate({ children }: { children: ReactNode }) {
             {submitting ? "Validando..." : "Entrar"}
             <ArrowRight size={16} strokeWidth={2.5} />
           </button>
-        </form>
+          </form>
 
-        <div
+          <div
           style={{
             marginTop: 28,
             color: "rgba(255,255,255,0.3)",
@@ -219,6 +241,53 @@ export function LoginGate({ children }: { children: ReactNode }) {
           }}
         >
           Apenas usuários autorizados
+          </div>
+        </div>
+
+        <div
+          className="flex w-full flex-col items-center justify-center"
+          style={{
+            background: "rgba(18, 21, 32, 0.65)",
+            border: "1px solid rgba(77, 163, 255, 0.12)",
+            borderRadius: 18,
+            padding: 32,
+            boxShadow: "0 40px 100px -20px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03) inset",
+            backdropFilter: "blur(24px)",
+          }}
+        >
+          <div
+            style={{
+              color: "#fff",
+              fontSize: 16,
+              fontWeight: 600,
+              letterSpacing: "-0.01em",
+              textAlign: "center",
+            }}
+          >
+            Escaneie no Google Authenticator
+          </div>
+          <div
+            className="mt-5 flex h-[260px] w-[260px] items-center justify-center"
+            style={{ background: "#fff", borderRadius: 18, padding: 10 }}
+          >
+            {setup ? (
+              <img
+                src={setup.qrCodeUrl}
+                alt="QR Code para Google Authenticator"
+                className="h-full w-full"
+              />
+            ) : (
+              <div style={{ color: "#111827", fontSize: 12 }}>Carregando QR Code...</div>
+            )}
+          </div>
+          {setup && (
+            <div
+              className="mt-4 w-full break-all text-center"
+              style={{ color: "rgba(255,255,255,0.48)", fontSize: 11, lineHeight: 1.6 }}
+            >
+              Chave manual: {setup.manualKey}
+            </div>
+          )}
         </div>
       </div>
 

@@ -4,12 +4,16 @@ import { listarContasAbertas } from "../services/dashboard-financeiro.js";
 import { alunosAtivosViaCerta } from "../services/viacerta.js";
 import { empresaParam } from "../utils/empresa.js";
 import { dashboardRouter, empresasRouter, vendedoresRouter } from "./dashboard.js";
-import { createSessionToken, isValidTotpCode } from "../auth.js";
+import { createSessionToken, getTotpSetup, isValidTotpCode } from "../auth.js";
 
 export const router = Router();
 
 router.get("/health", (_req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
+});
+
+router.get("/auth/setup", (_req, res) => {
+  res.json(getTotpSetup());
 });
 
 router.post("/auth/validate", (req, res) => {
