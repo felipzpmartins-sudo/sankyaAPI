@@ -7,7 +7,7 @@ import { getApiBaseUrl } from "@/lib/api/env";
 export function LoginGate({ children }: { children: ReactNode }) {
   const [authed, setAuthed] = useState(false);
   const [ready, setReady] = useState(false);
-  const [token, setToken] = useState("");
+  const [code, setCode] = useState("");
   const [error, setError] = useState(false);
   const [shake, setShake] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -20,13 +20,11 @@ export function LoginGate({ children }: { children: ReactNode }) {
       return;
     }
 
-    void fetch(`${getApiBaseUrl()}/api/auth/validate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ token: storedToken }),
+    void fetch(`${getApiBaseUrl()}/api/auth/session`, {
+      headers: { Accept: "application/json", Authorization: `Bearer ${storedToken}` },
     })
       .then((res) => {
-        if (!res.ok) throw new Error("invalid_token");
+        if (!res.ok) throw new Error("invalid_session");
         setAuthed(true);
       })
       .catch(() => {
@@ -40,18 +38,20 @@ export function LoginGate({ children }: { children: ReactNode }) {
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const trimmedToken = token.trim();
-    if (!trimmedToken) return;
+    const cleanCode = code.replace(/\D/g, "");
+    if (cleanCode.length !== 6) return;
 
     setSubmitting(true);
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/auth/validate`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ token: trimmedToken }),
+        body: JSON.stringify({ code: cleanCode }),
       });
-      if (!res.ok) throw new Error("invalid_token");
-      setStoredAuthToken(trimmedToken);
+      if (!res.ok) throw new Error("invalid_code");
+      const body = (await res.json()) as { accessToken?: unknown };
+      if (typeof body.accessToken !== "string") throw new Error("missing_session");
+      setStoredAuthToken(body.accessToken);
       setAuthed(true);
     } catch {
       clearStoredAuthToken();
@@ -127,10 +127,12 @@ export function LoginGate({ children }: { children: ReactNode }) {
           <div className="relative">
             <input
               type="password"
+              inputMode="numeric"
+              maxLength={6}
               autoFocus
-              value={token}
+              value={code}
               onChange={(e) => {
-                setToken(e.target.value);
+                setCode(e.target.value.replace(/\D/g, "").slice(0, 6));
                 setError(false);
               }}
               onFocus={() => setFocused(true)}
@@ -156,22 +158,22 @@ export function LoginGate({ children }: { children: ReactNode }) {
               style={{
                 position: "absolute",
                 left: 16,
-                top: focused || token ? 6 : 16,
-                fontSize: focused || token ? 10 : 13,
+                top: focused || code ? 6 : 16,
+                fontSize: focused || code ? 10 : 13,
                 color: focused ? "#4DA3FF" : "rgba(255,255,255,0.5)",
-                letterSpacing: focused || token ? "0.1em" : "0",
-                textTransform: focused || token ? "uppercase" : "none",
+                letterSpacing: focused || code ? "0.1em" : "0",
+                textTransform: focused || code ? "uppercase" : "none",
                 pointerEvents: "none",
                 transition: "all 0.2s ease",
               }}
             >
-              Token de acesso
+              Codigo do Google Authenticator
             </label>
           </div>
 
           {error && (
             <div style={{ color: "#ef4444", fontSize: 12, marginTop: 10, paddingLeft: 4 }}>
-              Token invalido ou backend indisponivel.
+              Codigo invalido, expirado ou backend indisponivel.
             </div>
           )}
 

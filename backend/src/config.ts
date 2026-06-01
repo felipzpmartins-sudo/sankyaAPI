@@ -14,7 +14,11 @@ const schema = z.object({
   SANKHYA_CLIENT_ID: z.string().min(1),
   SANKHYA_CLIENT_SECRET: z.string().min(1),
   SANKHYA_TOKEN: z.string().min(1),
-  APP_ACCESS_TOKEN: z.string().min(12),
+  APP_TOTP_SECRET: z
+    .string()
+    .min(16)
+    .regex(/^[A-Z2-7=\s-]+$/i, "Use um segredo Base32 compativel com Google Authenticator."),
+  APP_SESSION_SECRET: z.string().min(24),
   PORT: z.coerce.number().default(3000),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   CORS_ORIGINS: z

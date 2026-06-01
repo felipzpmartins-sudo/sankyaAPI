@@ -30,8 +30,6 @@ import {
   Smartphone,
   ScanLine,
   CircleCheck,
-  Eye,
-  EyeOff,
 } from "lucide-react";
 import {
   Select,
@@ -4396,15 +4394,14 @@ function RhApiSection() {
 }
 
 function ConfiguracaoSection() {
-  const [token, setToken] = useState(() => getStoredAuthToken());
-  const [visible, setVisible] = useState(false);
+  const [code, setCode] = useState("");
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<"idle" | "ok" | "error">("idle");
-  const hasToken = token.trim().length > 0;
+  const hasSession = getStoredAuthToken().length > 0;
 
-  const validateAndSaveToken = async () => {
-    const trimmedToken = token.trim();
-    if (!trimmedToken) {
+  const validateAndSaveCode = async () => {
+    const cleanCode = code.replace(/\D/g, "");
+    if (cleanCode.length !== 6) {
       setStatus("error");
       return;
     }
@@ -4414,11 +4411,13 @@ function ConfiguracaoSection() {
       const res = await fetch(`${getApiBaseUrl()}/api/auth/validate`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ token: trimmedToken }),
+        body: JSON.stringify({ code: cleanCode }),
       });
-      if (!res.ok) throw new Error("invalid_token");
-      setStoredAuthToken(trimmedToken);
-      setToken(trimmedToken);
+      if (!res.ok) throw new Error("invalid_code");
+      const body = (await res.json()) as { accessToken?: unknown };
+      if (typeof body.accessToken !== "string") throw new Error("missing_session");
+      setStoredAuthToken(body.accessToken);
+      setCode("");
       setStatus("ok");
     } catch {
       setStatus("error");
@@ -4429,7 +4428,7 @@ function ConfiguracaoSection() {
 
   const disconnectToken = () => {
     clearStoredAuthToken();
-    setToken("");
+    setCode("");
     setStatus("idle");
     window.location.reload();
   };
@@ -4450,24 +4449,24 @@ function ConfiguracaoSection() {
             </div>
             <div>
               <h2 className="font-geist text-[22px] font-semibold" style={{ color: C.text }}>
-                Token do usuario
+                iToken do usuario
               </h2>
               <p className="mt-2 max-w-3xl text-[14px] leading-6" style={{ color: C.mutedStrong }}>
-                Use um token de acesso para conectar ao painel. Esse token e exigido para abrir
-                dados do dashboard e consultar a API.
+                Use o Google Authenticator para gerar codigos rotativos. Esses codigos liberam
+                uma sessao temporaria para abrir dados do dashboard e consultar a API.
               </p>
             </div>
           </div>
           <div
             className="flex w-fit items-center gap-2 rounded-full px-3 py-1.5 text-[12px] font-semibold"
             style={{
-              border: `1px solid ${hasToken ? C.green : "#B45309"}`,
-              background: hasToken ? "rgba(46,189,143,0.10)" : "rgba(180,83,9,0.10)",
-              color: hasToken ? C.green : "#F59E0B",
+              border: `1px solid ${hasSession ? C.green : "#B45309"}`,
+              background: hasSession ? "rgba(46,189,143,0.10)" : "rgba(180,83,9,0.10)",
+              color: hasSession ? C.green : "#F59E0B",
             }}
           >
-            {hasToken ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
-            {hasToken ? "Configurado" : "Nao configurado"}
+            {hasSession ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
+            {hasSession ? "Sessao ativa" : "Nao conectado"}
           </div>
         </div>
 
@@ -4484,17 +4483,18 @@ function ConfiguracaoSection() {
             </div>
             <div>
               <h3 className="font-geist text-[18px] font-semibold" style={{ color: C.text }}>
-                Conectar com token
+                Conectar com Google Authenticator
               </h3>
               <p className="mt-2 text-[13px] leading-6" style={{ color: C.mutedStrong }}>
-                Informe o token configurado no backend. Ele fica salvo apenas na sessao do navegador.
+                Digite o codigo de 6 digitos gerado no aplicativo. A sessao fica salva apenas
+                enquanto o navegador estiver aberto.
               </p>
 
               <div className="mt-5 grid gap-4 xl:grid-cols-3">
                 {[
-                  { icon: Smartphone, title: "1. Gere o token", text: "Defina APP_ACCESS_TOKEN no backend com um valor forte e privado." },
-                  { icon: ScanLine, title: "2. Cole aqui", text: "O token sera validado diretamente com a API antes de liberar o acesso." },
-                  { icon: CircleCheck, title: "3. Confirme", text: "Ao confirmar, todas as chamadas do painel passam a usar Bearer Token." },
+                  { icon: Smartphone, title: "1. Configure o app", text: "Adicione APP_TOTP_SECRET no Railway e cadastre essa chave no Google Authenticator." },
+                  { icon: ScanLine, title: "2. Gere o codigo", text: "Abra o Google Authenticator e copie o codigo de 6 digitos da conta do painel." },
+                  { icon: CircleCheck, title: "3. Confirme", text: "Ao confirmar, todas as chamadas do painel usam uma sessao temporaria protegida." },
                 ].map((step) => {
                   const Icon = step.icon;
                   return (
@@ -4518,29 +4518,22 @@ function ConfiguracaoSection() {
               <div className="mt-6 grid gap-3 md:grid-cols-[1fr_auto_auto]">
                 <div className="relative">
                   <Input
-                    value={token}
-                    type={visible ? "text" : "password"}
+                    value={code}
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={6}
                     onChange={(event) => {
-                      setToken(event.target.value);
+                      setCode(event.target.value.replace(/\D/g, "").slice(0, 6));
                       setStatus("idle");
                     }}
-                    placeholder="Cole o token de acesso"
+                    placeholder="Codigo de 6 digitos"
                     className="h-11 bg-[#09090B] pr-11 text-white"
                     style={{ borderColor: status === "error" ? `${C.red}99` : undefined }}
                   />
-                  <button
-                    type="button"
-                    aria-label={visible ? "Ocultar token" : "Mostrar token"}
-                    onClick={() => setVisible((v) => !v)}
-                    className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded"
-                    style={{ color: C.mutedStrong }}
-                  >
-                    {visible ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
                 </div>
                 <button
                   type="button"
-                  onClick={validateAndSaveToken}
+                  onClick={validateAndSaveCode}
                   disabled={saving}
                   className="flex h-11 items-center justify-center gap-2 rounded-[8px] px-5 text-[13px] font-semibold"
                   style={{ background: C.blue, color: "#05070A", opacity: saving ? 0.75 : 1 }}
@@ -4561,12 +4554,12 @@ function ConfiguracaoSection() {
 
               {status === "ok" && (
                 <p className="mt-3 text-[12px]" style={{ color: C.green }}>
-                  Token conectado com sucesso.
+                  Codigo validado. Sessao conectada com sucesso.
                 </p>
               )}
               {status === "error" && (
                 <p className="mt-3 text-[12px]" style={{ color: C.red }}>
-                  Nao foi possivel validar esse token.
+                  Nao foi possivel validar esse codigo.
                 </p>
               )}
             </div>
@@ -4652,7 +4645,7 @@ const PAGE_META: Record<NavKey, { title: string; sub: string }> = {
   clientes: { title: "Clientes", sub: "Base ativa, NPS e churn" },
   viacerta: { title: "Alunos Via Certa", sub: "Relatório mensal de alunos ativos" },
   rh: { title: "Recursos Humanos", sub: "Headcount, satisfação e produtividade" },
-  configuracao: { title: "Seguranca", sub: "Token de acesso e protecao da API" },
+  configuracao: { title: "Seguranca", sub: "Google Authenticator e protecao da API" },
 };
 
 function Sidebar({

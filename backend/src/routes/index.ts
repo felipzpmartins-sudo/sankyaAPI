@@ -4,7 +4,7 @@ import { listarContasAbertas } from "../services/dashboard-financeiro.js";
 import { alunosAtivosViaCerta } from "../services/viacerta.js";
 import { empresaParam } from "../utils/empresa.js";
 import { dashboardRouter, empresasRouter, vendedoresRouter } from "./dashboard.js";
-import { isValidAccessToken } from "../auth.js";
+import { createSessionToken, isValidTotpCode } from "../auth.js";
 
 export const router = Router();
 
@@ -13,12 +13,16 @@ router.get("/health", (_req, res) => {
 });
 
 router.post("/auth/validate", (req, res) => {
-  const token = z.object({ token: z.string().min(1) }).safeParse(req.body);
-  if (!token.success || !isValidAccessToken(token.data.token)) {
-    res.status(401).json({ error: "unauthorized", message: "Token de acesso invalido." });
+  const body = z.object({ code: z.string().min(6).max(12) }).safeParse(req.body);
+  if (!body.success || !isValidTotpCode(body.data.code)) {
+    res.status(401).json({ error: "unauthorized", message: "Codigo do autenticador invalido." });
     return;
   }
 
+  res.json({ ok: true, ...createSessionToken() });
+});
+
+router.get("/auth/session", (_req, res) => {
   res.json({ ok: true });
 });
 

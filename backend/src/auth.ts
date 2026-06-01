@@ -1,8 +1,16 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { config } from "./config.js";
 
 const PUBLIC_ROUTES = new Set(["/health", "/auth/validate"]);
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const TOTP_STEP_SECONDS = 30;
+const TOTP_WINDOW = 1;
+const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+function base64url(input: Buffer | string): string {
+  return Buffer.from(input).toString("base64url");
+}
 
 function extractBearerToken(req: Request): string {
   const header = req.get("authorization") ?? "";
@@ -10,10 +18,99 @@ function extractBearerToken(req: Request): string {
   return match?.[1]?.trim() ?? "";
 }
 
-export function isValidAccessToken(token: string): boolean {
-  const expected = Buffer.from(config.APP_ACCESS_TOKEN);
-  const received = Buffer.from(token);
-  return expected.length === received.length && timingSafeEqual(expected, received);
+function decodeBase32(secret: string): Buffer {
+  const cleanSecret = secret.replace(/[\s=-]/g, "").toUpperCase();
+  let bits = "";
+
+  for (const char of cleanSecret) {
+    const value = BASE32_ALPHABET.indexOf(char);
+    if (value === -1) throw new Error("APP_TOTP_SECRET deve estar em Base32.");
+    bits += value.toString(2).padStart(5, "0");
+  }
+
+  const bytes: number[] = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) {
+    bytes.push(Number.parseInt(bits.slice(i, i + 8), 2));
+  }
+
+  return Buffer.from(bytes);
+}
+
+function hotp(secret: Buffer, counter: number): string {
+  const buffer = Buffer.alloc(8);
+  buffer.writeUInt32BE(Math.floor(counter / 0x100000000), 0);
+  buffer.writeUInt32BE(counter >>> 0, 4);
+
+  const hmac = createHmac("sha1", secret).update(buffer).digest();
+  const offset = hmac[hmac.length - 1] & 0xf;
+  const binary =
+    ((hmac[offset] & 0x7f) << 24) |
+    ((hmac[offset + 1] & 0xff) << 16) |
+    ((hmac[offset + 2] & 0xff) << 8) |
+    (hmac[offset + 3] & 0xff);
+
+  return String(binary % 1_000_000).padStart(6, "0");
+}
+
+export function isValidTotpCode(code: string): boolean {
+  const cleanCode = code.replace(/\D/g, "");
+  if (!/^\d{6}$/.test(cleanCode)) return false;
+
+  const secret = decodeBase32(config.APP_TOTP_SECRET);
+  const currentCounter = Math.floor(Date.now() / 1000 / TOTP_STEP_SECONDS);
+
+  for (let offset = -TOTP_WINDOW; offset <= TOTP_WINDOW; offset += 1) {
+    const expected = Buffer.from(hotp(secret, currentCounter + offset));
+    const received = Buffer.from(cleanCode);
+    if (expected.length === received.length && timingSafeEqual(expected, received)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function createSessionToken(): { accessToken: string; expiresAt: string } {
+  const expiresAt = Date.now() + SESSION_TTL_MS;
+  const payload = base64url(
+    JSON.stringify({
+      exp: expiresAt,
+      nonce: randomBytes(16).toString("hex"),
+    }),
+  );
+  const signature = createHmac("sha256", config.APP_SESSION_SECRET).update(payload).digest("base64url");
+
+  return {
+    accessToken: `${payload}.${signature}`,
+    expiresAt: new Date(expiresAt).toISOString(),
+  };
+}
+
+export function isValidSessionToken(token: string): boolean {
+  const [payload, signature] = token.split(".");
+  if (!payload || !signature) return false;
+
+  const expected = createHmac("sha256", config.APP_SESSION_SECRET)
+    .update(payload)
+    .digest("base64url");
+  const expectedBuffer = Buffer.from(expected);
+  const receivedBuffer = Buffer.from(signature);
+
+  if (
+    expectedBuffer.length !== receivedBuffer.length ||
+    !timingSafeEqual(expectedBuffer, receivedBuffer)
+  ) {
+    return false;
+  }
+
+  try {
+    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+      exp?: unknown;
+    };
+    return typeof decoded.exp === "number" && decoded.exp > Date.now();
+  } catch {
+    return false;
+  }
 }
 
 export function requireApiToken(req: Request, res: Response, next: NextFunction) {
@@ -22,10 +119,10 @@ export function requireApiToken(req: Request, res: Response, next: NextFunction)
     return;
   }
 
-  if (!isValidAccessToken(extractBearerToken(req))) {
+  if (!isValidSessionToken(extractBearerToken(req))) {
     res.status(401).json({
       error: "unauthorized",
-      message: "Token de acesso invalido ou ausente.",
+      message: "Sessao invalida ou expirada.",
     });
     return;
   }
