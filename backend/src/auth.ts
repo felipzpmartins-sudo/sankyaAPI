@@ -5,7 +5,7 @@ import { config } from "./config.js";
 const PUBLIC_ROUTES = new Set(["/health", "/auth/setup", "/auth/validate"]);
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const TOTP_STEP_SECONDS = 30;
-const TOTP_WINDOW = 1;
+const TOTP_WINDOW = 4;
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
 function base64url(input: Buffer | string): string {
