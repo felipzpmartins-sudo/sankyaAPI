@@ -4,11 +4,22 @@ import { listarContasAbertas } from "../services/dashboard-financeiro.js";
 import { alunosAtivosViaCerta } from "../services/viacerta.js";
 import { empresaParam } from "../utils/empresa.js";
 import { dashboardRouter, empresasRouter, vendedoresRouter } from "./dashboard.js";
+import { isValidAccessToken } from "../auth.js";
 
 export const router = Router();
 
 router.get("/health", (_req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
+});
+
+router.post("/auth/validate", (req, res) => {
+  const token = z.object({ token: z.string().min(1) }).safeParse(req.body);
+  if (!token.success || !isValidAccessToken(token.data.token)) {
+    res.status(401).json({ error: "unauthorized", message: "Token de acesso invalido." });
+    return;
+  }
+
+  res.json({ ok: true });
 });
 
 router.use("/empresas", empresasRouter);

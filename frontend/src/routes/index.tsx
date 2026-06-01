@@ -23,6 +23,15 @@ import {
   Menu,
   X,
   Building2,
+  Settings,
+  KeyRound,
+  ShieldCheck,
+  ShieldAlert,
+  Smartphone,
+  ScanLine,
+  CircleCheck,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import {
   Select,
@@ -76,6 +85,8 @@ import { useClientesBI } from "@/hooks/api/useClientesBI";
 import { useRhBI } from "@/hooks/api/useRhBI";
 import { useEntregasBI } from "@/hooks/api/useEntregasBI";
 import { useViaCertaAlunosAtivos } from "@/hooks/api/useViaCertaAlunosAtivos";
+import { getApiBaseUrl } from "@/lib/api/env";
+import { getStoredAuthToken, setStoredAuthToken, clearStoredAuthToken } from "@/lib/auth";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -4384,6 +4395,188 @@ function RhApiSection() {
   );
 }
 
+function ConfiguracaoSection() {
+  const [token, setToken] = useState(() => getStoredAuthToken());
+  const [visible, setVisible] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<"idle" | "ok" | "error">("idle");
+  const hasToken = token.trim().length > 0;
+
+  const validateAndSaveToken = async () => {
+    const trimmedToken = token.trim();
+    if (!trimmedToken) {
+      setStatus("error");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/auth/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ token: trimmedToken }),
+      });
+      if (!res.ok) throw new Error("invalid_token");
+      setStoredAuthToken(trimmedToken);
+      setToken(trimmedToken);
+      setStatus("ok");
+    } catch {
+      setStatus("error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const disconnectToken = () => {
+    clearStoredAuthToken();
+    setToken("");
+    setStatus("idle");
+    window.location.reload();
+  };
+
+  return (
+    <div className="grid gap-5">
+      <div
+        className="rounded-[8px] p-5 sm:p-7"
+        style={{ background: "#11161D", border: "1px solid rgba(255,255,255,0.10)" }}
+      >
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex gap-4">
+            <div
+              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[18px]"
+              style={{ background: "rgba(77,163,255,0.14)", color: C.blue }}
+            >
+              <KeyRound size={26} strokeWidth={1.8} />
+            </div>
+            <div>
+              <h2 className="font-geist text-[22px] font-semibold" style={{ color: C.text }}>
+                Token do usuario
+              </h2>
+              <p className="mt-2 max-w-3xl text-[14px] leading-6" style={{ color: C.mutedStrong }}>
+                Use um token de acesso para conectar ao painel. Esse token e exigido para abrir
+                dados do dashboard e consultar a API.
+              </p>
+            </div>
+          </div>
+          <div
+            className="flex w-fit items-center gap-2 rounded-full px-3 py-1.5 text-[12px] font-semibold"
+            style={{
+              border: `1px solid ${hasToken ? C.green : "#B45309"}`,
+              background: hasToken ? "rgba(46,189,143,0.10)" : "rgba(180,83,9,0.10)",
+              color: hasToken ? C.green : "#F59E0B",
+            }}
+          >
+            {hasToken ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
+            {hasToken ? "Configurado" : "Nao configurado"}
+          </div>
+        </div>
+
+        <div
+          className="mt-8 rounded-[8px] p-4 sm:p-6"
+          style={{ background: "#0D1117", border: "1px solid rgba(255,255,255,0.10)" }}
+        >
+          <div className="grid gap-6 lg:grid-cols-[200px_1fr]">
+            <div
+              className="flex aspect-square max-h-[210px] min-h-[170px] items-center justify-center rounded-[14px]"
+              style={{ background: "#F7F7F7" }}
+            >
+              <KeyRound size={58} strokeWidth={1.6} color="#2563EB" />
+            </div>
+            <div>
+              <h3 className="font-geist text-[18px] font-semibold" style={{ color: C.text }}>
+                Conectar com token
+              </h3>
+              <p className="mt-2 text-[13px] leading-6" style={{ color: C.mutedStrong }}>
+                Informe o token configurado no backend. Ele fica salvo apenas na sessao do navegador.
+              </p>
+
+              <div className="mt-5 grid gap-4 xl:grid-cols-3">
+                {[
+                  { icon: Smartphone, title: "1. Gere o token", text: "Defina APP_ACCESS_TOKEN no backend com um valor forte e privado." },
+                  { icon: ScanLine, title: "2. Cole aqui", text: "O token sera validado diretamente com a API antes de liberar o acesso." },
+                  { icon: CircleCheck, title: "3. Confirme", text: "Ao confirmar, todas as chamadas do painel passam a usar Bearer Token." },
+                ].map((step) => {
+                  const Icon = step.icon;
+                  return (
+                    <div
+                      key={step.title}
+                      className="rounded-[8px] p-5"
+                      style={{ border: "1px solid rgba(255,255,255,0.10)", background: "#11161D" }}
+                    >
+                      <Icon size={21} color={C.blue} />
+                      <div className="mt-4 font-geist text-[15px] font-semibold" style={{ color: C.text }}>
+                        {step.title}
+                      </div>
+                      <p className="mt-2 text-[12px] leading-5" style={{ color: C.mutedStrong }}>
+                        {step.text}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-6 grid gap-3 md:grid-cols-[1fr_auto_auto]">
+                <div className="relative">
+                  <Input
+                    value={token}
+                    type={visible ? "text" : "password"}
+                    onChange={(event) => {
+                      setToken(event.target.value);
+                      setStatus("idle");
+                    }}
+                    placeholder="Cole o token de acesso"
+                    className="h-11 bg-[#09090B] pr-11 text-white"
+                    style={{ borderColor: status === "error" ? `${C.red}99` : undefined }}
+                  />
+                  <button
+                    type="button"
+                    aria-label={visible ? "Ocultar token" : "Mostrar token"}
+                    onClick={() => setVisible((v) => !v)}
+                    className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded"
+                    style={{ color: C.mutedStrong }}
+                  >
+                    {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={validateAndSaveToken}
+                  disabled={saving}
+                  className="flex h-11 items-center justify-center gap-2 rounded-[8px] px-5 text-[13px] font-semibold"
+                  style={{ background: C.blue, color: "#05070A", opacity: saving ? 0.75 : 1 }}
+                >
+                  <ShieldCheck size={16} />
+                  {saving ? "Validando" : "Conectar"}
+                </button>
+                <button
+                  type="button"
+                  onClick={disconnectToken}
+                  className="flex h-11 items-center justify-center gap-2 rounded-[8px] px-5 text-[13px] font-semibold"
+                  style={{ border: `1px solid ${C.borderStrong}`, color: C.mutedStrong }}
+                >
+                  <LogOut size={16} />
+                  Desconectar
+                </button>
+              </div>
+
+              {status === "ok" && (
+                <p className="mt-3 text-[12px]" style={{ color: C.green }}>
+                  Token conectado com sucesso.
+                </p>
+              )}
+              {status === "error" && (
+                <p className="mt-3 text-[12px]" style={{ color: C.red }}>
+                  Nao foi possivel validar esse token.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ============================================================
  *  SIDEBAR
  * ============================================================ */
@@ -4398,7 +4591,8 @@ type NavKey =
   | "entregas"
   | "clientes"
   | "viacerta"
-  | "rh";
+  | "rh"
+  | "configuracao";
 
 const NAV_GROUPS: {
   label: string;
@@ -4440,6 +4634,10 @@ const NAV_GROUPS: {
       { key: "rh", label: "RH", icon: UserCog },
     ],
   },
+  {
+    label: "SISTEMA",
+    items: [{ key: "configuracao", label: "Configuracao", icon: Settings }],
+  },
 ];
 
 const PAGE_META: Record<NavKey, { title: string; sub: string }> = {
@@ -4454,6 +4652,7 @@ const PAGE_META: Record<NavKey, { title: string; sub: string }> = {
   clientes: { title: "Clientes", sub: "Base ativa, NPS e churn" },
   viacerta: { title: "Alunos Via Certa", sub: "Relatório mensal de alunos ativos" },
   rh: { title: "Recursos Humanos", sub: "Headcount, satisfação e produtividade" },
+  configuracao: { title: "Seguranca", sub: "Token de acesso e protecao da API" },
 };
 
 function Sidebar({
@@ -4633,11 +4832,7 @@ function TopBar({ active, onMenu }: { active: NavKey; onMenu: () => void }) {
         </div>
         <button
           onClick={() => {
-            try {
-              sessionStorage.removeItem("sankhya_auth_v1");
-            } catch {
-              void 0;
-            }
+            clearStoredAuthToken();
             window.location.reload();
           }}
           className="flex items-center gap-2 px-2.5 py-1.5 font-geist text-[10px] uppercase tracking-[0.18em] transition-colors"
@@ -4671,6 +4866,7 @@ function Dashboard() {
     clientes: <ClientesApiSection />,
     viacerta: <ViaCertaAlunosSection />,
     rh: <RhApiSection />,
+    configuracao: <ConfiguracaoSection />,
   };
 
   return (

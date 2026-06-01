@@ -1,43 +1,65 @@
 import { useEffect, useState, type ReactNode, type FormEvent } from "react";
 import { Lock, ArrowRight } from "lucide-react";
 import { SmokeyBackground } from "@/components/ui/smokey-background";
-
-const PASSWORD = "Maker@2026";
-const STORAGE_KEY = "sankhya_auth_v1";
+import { clearStoredAuthToken, getStoredAuthToken, setStoredAuthToken } from "@/lib/auth";
+import { getApiBaseUrl } from "@/lib/api/env";
 
 export function LoginGate({ children }: { children: ReactNode }) {
   const [authed, setAuthed] = useState(false);
   const [ready, setReady] = useState(false);
-  const [password, setPassword] = useState("");
+  const [token, setToken] = useState("");
   const [error, setError] = useState(false);
   const [shake, setShake] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    try {
-      if (sessionStorage.getItem(STORAGE_KEY) === "1") setAuthed(true);
-    } catch {
-      void 0;
+    const storedToken = getStoredAuthToken();
+    if (!storedToken) {
+      setReady(true);
+      return;
     }
-    setReady(true);
+
+    void fetch(`${getApiBaseUrl()}/api/auth/validate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ token: storedToken }),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("invalid_token");
+        setAuthed(true);
+      })
+      .catch(() => {
+        clearStoredAuthToken();
+      })
+      .finally(() => setReady(true));
   }, []);
 
   if (!ready) return null;
   if (authed) return <>{children}</>;
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (password === PASSWORD) {
-      try {
-        sessionStorage.setItem(STORAGE_KEY, "1");
-      } catch {
-        void 0;
-      }
+    const trimmedToken = token.trim();
+    if (!trimmedToken) return;
+
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/auth/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ token: trimmedToken }),
+      });
+      if (!res.ok) throw new Error("invalid_token");
+      setStoredAuthToken(trimmedToken);
       setAuthed(true);
-    } else {
+    } catch {
+      clearStoredAuthToken();
       setError(true);
       setShake(true);
       setTimeout(() => setShake(false), 500);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -106,9 +128,9 @@ export function LoginGate({ children }: { children: ReactNode }) {
             <input
               type="password"
               autoFocus
-              value={password}
+              value={token}
               onChange={(e) => {
-                setPassword(e.target.value);
+                setToken(e.target.value);
                 setError(false);
               }}
               onFocus={() => setFocused(true)}
@@ -134,28 +156,29 @@ export function LoginGate({ children }: { children: ReactNode }) {
               style={{
                 position: "absolute",
                 left: 16,
-                top: focused || password ? 6 : 16,
-                fontSize: focused || password ? 10 : 13,
+                top: focused || token ? 6 : 16,
+                fontSize: focused || token ? 10 : 13,
                 color: focused ? "#4DA3FF" : "rgba(255,255,255,0.5)",
-                letterSpacing: focused || password ? "0.1em" : "0",
-                textTransform: focused || password ? "uppercase" : "none",
+                letterSpacing: focused || token ? "0.1em" : "0",
+                textTransform: focused || token ? "uppercase" : "none",
                 pointerEvents: "none",
                 transition: "all 0.2s ease",
               }}
             >
-              Senha de acesso
+              Token de acesso
             </label>
           </div>
 
           {error && (
             <div style={{ color: "#ef4444", fontSize: 12, marginTop: 10, paddingLeft: 4 }}>
-              Senha incorreta. Tente novamente.
+              Token invalido ou backend indisponivel.
             </div>
           )}
 
           <button
             type="submit"
             className="group"
+            disabled={submitting}
             style={{
               marginTop: 24,
               width: "100%",
@@ -174,11 +197,12 @@ export function LoginGate({ children }: { children: ReactNode }) {
               justifyContent: "center",
               gap: 8,
               boxShadow: "0 10px 30px -10px rgba(77, 163, 255, 0.4)",
+              opacity: submitting ? 0.75 : 1,
             }}
             onMouseEnter={(e) => (e.currentTarget.style.filter = "brightness(1.08)")}
             onMouseLeave={(e) => (e.currentTarget.style.filter = "brightness(1)")}
           >
-            Entrar
+            {submitting ? "Validando..." : "Entrar"}
             <ArrowRight size={16} strokeWidth={2.5} />
           </button>
         </form>

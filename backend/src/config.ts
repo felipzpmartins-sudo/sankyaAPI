@@ -1,11 +1,20 @@
-import "dotenv/config";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { config as loadEnv } from "dotenv";
 import { z } from "zod";
+
+for (const envPath of [resolve(process.cwd(), "../.env"), resolve(process.cwd(), ".env")]) {
+  if (existsSync(envPath)) {
+    loadEnv({ path: envPath, override: true });
+  }
+}
 
 const schema = z.object({
   SANKHYA_BASE_URL: z.string().url(),
   SANKHYA_CLIENT_ID: z.string().min(1),
   SANKHYA_CLIENT_SECRET: z.string().min(1),
   SANKHYA_TOKEN: z.string().min(1),
+  APP_ACCESS_TOKEN: z.string().min(12),
   PORT: z.coerce.number().default(3000),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   CORS_ORIGINS: z

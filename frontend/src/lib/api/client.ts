@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from "./env";
+import { getStoredAuthToken } from "@/lib/auth";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -27,8 +28,12 @@ export async function apiJson<T>(
   }
   const qs = q.toString();
   const url = `${base}${pathname}${qs ? `?${qs}` : ""}`;
+  const token = getStoredAuthToken();
   const res = await fetch(url, {
-    headers: { Accept: "application/json" },
+    headers: {
+      Accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     credentials: "omit",
   });
   const text = await res.text();

@@ -3,6 +3,7 @@ import express from "express";
 import pino from "pino";
 import { ZodError } from "zod";
 import { config } from "./config.js";
+import { requireApiToken } from "./auth.js";
 import { migrate } from "./db/migrate.js";
 import { router } from "./routes/index.js";
 import { startScheduler } from "./sync/scheduler.js";
@@ -35,7 +36,7 @@ app.use((req, _res, next) => {
   next();
 });
 
-app.use("/api", router);
+app.use("/api", requireApiToken, router);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (err instanceof ZodError) {
