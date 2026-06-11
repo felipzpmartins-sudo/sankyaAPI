@@ -61,11 +61,9 @@ async function initialSync(): Promise<void> {
     runSync("vendedores", syncVendedores),
     runSync("produtos", syncProdutos),
   ]);
-  await Promise.all([
-    runSync("pedidos", syncPedidos),
-    runSync("titulos", syncTitulos),
-    runSync("estoque", syncEstoque),
-  ]);
+  await runSync("pedidos", syncPedidos);
+  await runSync("titulos", syncTitulos);
+  await runSync("estoque", syncEstoque);
 }
 
 const timers: NodeJS.Timeout[] = [];
@@ -98,8 +96,10 @@ export function startScheduler(): void {
 
   timers.push(
     setInterval(() => {
-      void runSync("pedidos", syncPedidos);
-      void runSync("titulos", syncTitulos);
+      void (async () => {
+        await runSync("pedidos", syncPedidos);
+        await runSync("titulos", syncTitulos);
+      })();
     }, config.SYNC_INTERVAL_MS),
   );
 }

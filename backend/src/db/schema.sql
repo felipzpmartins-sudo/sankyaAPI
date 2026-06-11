@@ -288,6 +288,14 @@ CREATE INDEX IF NOT EXISTS idx_titulos_emp_baixa  ON titulos(CODEMP, DHBAIXA);
 CREATE INDEX IF NOT EXISTS idx_pedidos_emp_tipmov_dtneg
   ON pedidos(CODEMP, TIPMOV, DTNEG);
 
+-- /api/dashboard/empresa/* e /api/dashboard/vendedores/*
+-- As telas usam faturamento por DTFATUR/CODTIPOPER, não DTNEG/TIPMOV.
+CREATE INDEX IF NOT EXISTS idx_pedidos_faturamento_status_dt_top_emp
+  ON pedidos(STATUSNOTA, DTFATUR, CODTIPOPER, CODEMP);
+
+CREATE INDEX IF NOT EXISTS idx_pedidos_faturamento_vend_status_dt_top
+  ON pedidos(CODVEND, STATUSNOTA, DTFATUR, CODTIPOPER);
+
 -- /api/dashboard/top-clientes (pesado, reavaliar)
 CREATE INDEX IF NOT EXISTS idx_pedidos_emp_tipmov_parc_dtneg
   ON pedidos(CODEMP, TIPMOV, CODPARC, DTNEG);

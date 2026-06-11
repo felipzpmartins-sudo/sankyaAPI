@@ -23,6 +23,7 @@ export function migrate(): MigrateResult {
   migrateParceirosShape();
   migrateProdutosShape();
   migratePedidosShape();
+  migratePedidosIndexes();
   migrateProdutoEstoqueShape();
 
   const versionRow = db
@@ -68,6 +69,16 @@ function migratePedidosShape(): void {
   for (const [name, sql] of additions) {
     if (!names.has(name)) db.exec(sql);
   }
+}
+
+function migratePedidosIndexes(): void {
+  getDb().exec(`
+    CREATE INDEX IF NOT EXISTS idx_pedidos_faturamento_status_dt_top_emp
+      ON pedidos(STATUSNOTA, DTFATUR, CODTIPOPER, CODEMP);
+
+    CREATE INDEX IF NOT EXISTS idx_pedidos_faturamento_vend_status_dt_top
+      ON pedidos(CODVEND, STATUSNOTA, DTFATUR, CODTIPOPER);
+  `);
 }
 
 function migrateParceirosShape(): void {

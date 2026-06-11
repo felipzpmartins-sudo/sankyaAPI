@@ -142,10 +142,30 @@ function normalizeReferenceDate(data?: string): string {
   return data && /^\d{4}-\d{2}-\d{2}$/.test(data) ? data : todayLocalIso();
 }
 
-function vendasPeriodoClause(coluna: string, periodo: PeriodoVendas): string {
-  if (periodo === "dia") return `${coluna} = date(?)`;
-  if (periodo === "mes") return `strftime('%Y-%m', ${coluna}) = strftime('%Y-%m', ?)`;
-  return `strftime('%Y', ${coluna}) = strftime('%Y', ?)`;
+function addDaysIso(date: string, days: number): string {
+  const next = new Date(`${date}T00:00:00.000Z`);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next.toISOString().slice(0, 10);
+}
+
+function periodoDateRange(dataReferencia: string, periodo: PeriodoVendas): [string, string] {
+  const [year, month] = dataReferencia.split("-").map(Number);
+
+  if (periodo === "dia") {
+    return [dataReferencia, addDaysIso(dataReferencia, 1)];
+  }
+
+  if (periodo === "mes") {
+    const start = `${year}-${String(month).padStart(2, "0")}-01`;
+    const endDate = new Date(Date.UTC(year, month, 1));
+    return [start, endDate.toISOString().slice(0, 10)];
+  }
+
+  return [`${year}-01-01`, `${year + 1}-01-01`];
+}
+
+function vendasPeriodoClause(coluna: string): string {
+  return `${coluna} >= date(?) AND ${coluna} < date(?)`;
 }
 
 export function listarEmpresas(): Empresa[] {
@@ -268,6 +288,7 @@ export function vendedoresRanking(
   ranking: VendedorRankingLinha[];
 } {
   const refDate = normalizeReferenceDate(dataReferencia);
+  const [periodoInicio, periodoFim] = periodoDateRange(refDate, periodo);
   const rows = getDb()
     .prepare(
       `SELECT
@@ -279,11 +300,11 @@ export function vendedoresRanking(
        LEFT JOIN pedidos p
          ON p.CODVEND = v.CODVEND
          AND ${JOIN_PEDIDO_FATURAMENTO}
-         AND ${vendasPeriodoClause("p.DTFATUR", periodo)}
+         AND ${vendasPeriodoClause("p.DTFATUR")}
        GROUP BY v.CODVEND, v.APELIDO, v.ativo
        ORDER BY faturamento DESC, v.APELIDO`,
     )
-    .all(refDate) as {
+    .all(periodoInicio, periodoFim) as {
     CODVEND: number;
     APELIDO: string;
     ativo: 0 | 1;
@@ -312,7 +333,8 @@ export function faturamentoConsolidado(
   dataReferencia?: string,
 ): FaturamentoConsolidado {
   const refDate = normalizeReferenceDate(dataReferencia);
-  const refYear = refDate.slice(0, 4);
+  const anoInicio = `${refDate.slice(0, 4)}-01-01`;
+  const anoFim = `${Number(refDate.slice(0, 4)) + 1}-01-01`;
   const empresaSql = empresaToSqlClause(empresa);
   const vendedorSql = vendedorToSqlClause(vendedor);
   const whereExtras = [empresaSql.clause, vendedorSql.clause]
@@ -325,7 +347,7 @@ export function faturamentoConsolidado(
       SELECT DTFATUR, VLRNOTA
       FROM pedidos
       WHERE ${WHERE_FATURAMENTO}${whereExtras}
-        AND strftime('%Y', DTFATUR) = ?
+        AND DTFATUR >= date(?) AND DTFATUR < date(?)
     )
     SELECT
       COALESCE((SELECT SUM(VLRNOTA) FROM base WHERE DTFATUR = date(?)), 0) AS dia,
@@ -336,7 +358,16 @@ export function faturamentoConsolidado(
 
   const row = getDb()
     .prepare(sql)
-    .get(...empresaSql.params, ...vendedorSql.params, refYear, refDate, refDate, refDate, refDate) as {
+    .get(
+      ...empresaSql.params,
+      ...vendedorSql.params,
+      anoInicio,
+      anoFim,
+      refDate,
+      refDate,
+      refDate,
+      refDate,
+    ) as {
     dia: number;
     semana_7d: number;
     mes_atual: number;
@@ -373,6 +404,7 @@ export function faturamentoPorEmpresa(
   empresas: FaturamentoEmpresa[];
 } {
   const refDate = normalizeReferenceDate(dataReferencia);
+  const [periodoInicio, periodoFim] = periodoDateRange(refDate, periodo);
   const vendedorSql = vendedorToSqlClause(vendedor, "p.CODVEND");
   const vendedorJoin = vendedorSql.clause ? ` AND ${vendedorSql.clause}` : "";
 
@@ -386,12 +418,12 @@ export function faturamentoPorEmpresa(
        LEFT JOIN pedidos p
          ON p.CODEMP = e.CODEMP
          AND ${JOIN_PEDIDO_FATURAMENTO}
-         AND ${vendasPeriodoClause("p.DTFATUR", periodo)}${vendedorJoin}
+         AND ${vendasPeriodoClause("p.DTFATUR")}${vendedorJoin}
        WHERE e.${WHERE_EMPRESA_VISIVEL}
        GROUP BY e.CODEMP, e.NOMEFANTASIA
        ORDER BY faturamento DESC`,
     )
-    .all(refDate, ...vendedorSql.params) as {
+    .all(periodoInicio, periodoFim, ...vendedorSql.params) as {
       CODEMP: number;
       NOMEFANTASIA: string;
       faturamento: number;
