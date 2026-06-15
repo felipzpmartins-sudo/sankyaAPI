@@ -6,6 +6,7 @@
  * UI atual só permite seleção única — extensível depois.
  */
 export type VendedorSeleção = "todos" | number;
+export type VendedorSelecao = VendedorSeleção;
 
 export function vendedorKey(sel: VendedorSeleção): string {
   return sel === "todos" ? "todos" : String(sel);

@@ -10,6 +10,7 @@ import { syncTiposOperacao } from "./tipos_operacao.js";
 import { syncTiposTitulo } from "./tipos_titulo.js";
 import { syncTitulos } from "./titulos.js";
 import { syncVendedores } from "./vendedores.js";
+import { getSyncState } from "./state.js";
 
 const logger = pino({
   level: config.LOG_LEVEL,
@@ -18,6 +19,19 @@ const logger = pino({
 
 type SyncFn = () => Promise<void> | void;
 const inflight = new Set<string>();
+
+function hasSnapshot(entity: string): boolean {
+  const state = getSyncState(entity);
+  return Boolean(state?.last_synced_at && state.row_count > 0);
+}
+
+async function runIfMissing(entity: string, fn: SyncFn): Promise<void> {
+  if (hasSnapshot(entity)) {
+    logger.info({ entity }, "sync boot skip: snapshot existente");
+    return;
+  }
+  await runSync(entity, fn);
+}
 
 async function runSync(entity: string, fn: SyncFn): Promise<void> {
   if (inflight.has(entity)) {
@@ -52,18 +66,20 @@ async function runSync(entity: string, fn: SyncFn): Promise<void> {
  *   - Fatos sequenciais após: pedidos (depende do mapa TIPMOV); títulos virá na Etapa 6.
  */
 async function initialSync(): Promise<void> {
+  await runSync("empresas", syncEmpresas);
   await Promise.all([
-    runSync("empresas", syncEmpresas),
-    runSync("tipos_operacao", syncTiposOperacao),
-    runSync("naturezas", syncNaturezas),
-    runSync("tipos_titulo", syncTiposTitulo),
-    runSync("parceiros", syncParceiros),
-    runSync("vendedores", syncVendedores),
-    runSync("produtos", syncProdutos),
+    runIfMissing("tipos_operacao", syncTiposOperacao),
+    runIfMissing("naturezas", syncNaturezas),
+    runIfMissing("tipos_titulo", syncTiposTitulo),
+    runIfMissing("parceiros", syncParceiros),
+    runIfMissing("vendedores", syncVendedores),
+    runIfMissing("produtos", syncProdutos),
   ]);
-  await runSync("pedidos", syncPedidos);
-  await runSync("titulos", syncTitulos);
-  await runSync("estoque", syncEstoque);
+  await Promise.all([
+    runIfMissing("pedidos", syncPedidos),
+    runIfMissing("titulos", syncTitulos),
+    runIfMissing("estoque", syncEstoque),
+  ]);
 }
 
 const timers: NodeJS.Timeout[] = [];

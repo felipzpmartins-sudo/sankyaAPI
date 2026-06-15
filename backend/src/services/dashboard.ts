@@ -446,6 +446,27 @@ export function faturamentoPorEmpresa(
   };
 }
 
+export type EmpresasResumo = {
+  empresas: Empresa[];
+  vendedores: Vendedor[];
+  faturamento: FaturamentoConsolidado;
+  faturamento_por_empresa: ReturnType<typeof faturamentoPorEmpresa>;
+};
+
+export function empresasResumo(
+  empresa: EmpresaFiltro,
+  vendedor: VendedorFiltro = { modo: "todos" },
+  dataReferencia?: string,
+  periodo: PeriodoVendas = "ano",
+): EmpresasResumo {
+  return {
+    empresas: listarEmpresas(),
+    vendedores: listarVendedores(),
+    faturamento: faturamentoConsolidado(empresa, vendedor, dataReferencia),
+    faturamento_por_empresa: faturamentoPorEmpresa(vendedor, dataReferencia, periodo),
+  };
+}
+
 export type ComodatoConsolidado = {
   filtro: string;
   enviado: {

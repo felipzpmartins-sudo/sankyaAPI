@@ -38,19 +38,55 @@ type Dre = {
   snapshot_at: string | null;
 };
 
-function periodoClause(periodo: Periodo, coluna = "DTNEG", intervalo: IntervaloDatas = {}): string {
-  if (intervalo.dataInicio && intervalo.dataFim) {
-    return `date(${coluna}) BETWEEN date(?) AND date(?)`;
-  }
-  if (periodo === "mes") {
-    return `strftime('%Y-%m', ${coluna}) = strftime('%Y-%m', 'now')`;
-  }
-  return `strftime('%Y', ${coluna}) = strftime('%Y', 'now')`;
+export type ContasAbertasResumo = {
+  filtro: string;
+  tipo: "receber" | "pagar";
+  total: number;
+  valor_total_aberto: number;
+  snapshot_at: string | null;
+};
+
+export type FinanceiroResumo = {
+  dre: Dre;
+  distribuicao_despesas: ReturnType<typeof distribuicaoDespesas>;
+  fluxo_caixa: ReturnType<typeof fluxoCaixa>;
+  contas_receber: ContasAbertasResumo;
+};
+
+function addMonths(date: Date, months: number): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
 }
 
-function periodoParams(intervalo: IntervaloDatas = {}): string[] {
-  if (intervalo.dataInicio && intervalo.dataFim) return [intervalo.dataInicio, intervalo.dataFim];
-  return [];
+function isoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function periodoRange(periodo: Periodo, intervalo: IntervaloDatas = {}): [string, string] {
+  if (intervalo.dataInicio && intervalo.dataFim) {
+    const end = new Date(`${intervalo.dataFim}T00:00:00.000Z`);
+    end.setUTCDate(end.getUTCDate() + 1);
+    return [intervalo.dataInicio, isoDate(end)];
+  }
+
+  const now = new Date();
+  if (periodo === "mes") {
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    return [isoDate(start), isoDate(addMonths(start, 1))];
+  }
+
+  const start = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+  const end = new Date(Date.UTC(now.getUTCFullYear() + 1, 0, 1));
+  return [isoDate(start), isoDate(end)];
+}
+
+function periodoClause(periodo: Periodo, coluna = "DTNEG", intervalo: IntervaloDatas = {}): string {
+  void periodo;
+  void intervalo;
+  return `${coluna} >= ? AND ${coluna} < ?`;
+}
+
+function periodoParams(periodo: Periodo, intervalo: IntervaloDatas = {}): string[] {
+  return periodoRange(periodo, intervalo);
 }
 
 function describePeriodo(periodo: Periodo, intervalo: IntervaloDatas = {}): string {
@@ -94,7 +130,7 @@ export function dre(filtro: EmpresaFiltro, periodo: Periodo, intervalo: Interval
   const { clause: empresaClause, params: empresaParams } = empresaToSqlClause(filtro);
   const empresaWhere = empresaClause ? ` AND ${empresaClause}` : "";
   const periodoWhere = periodoClause(periodo, "DTNEG", intervalo);
-  const periodoWhereParams = periodoParams(intervalo);
+  const periodoWhereParams = periodoParams(periodo, intervalo);
 
   const baseWhere = `${periodoWhere} AND PROVISAO = 'N'${empresaWhere}`;
 
@@ -166,14 +202,19 @@ export function fluxoCaixa(filtro: EmpresaFiltro, meses: number): {
       COALESCE(SUM(CASE WHEN RECDESP = -1 THEN VLRBAIXA ELSE 0 END), 0) AS saidas
     FROM titulos
     WHERE DHBAIXA IS NOT NULL
-      AND DHBAIXA >= date('now', 'start of month', '-${meses - 1} months')
-      AND DHBAIXA <  date('now', 'start of month', '+1 months')
+      AND DHBAIXA >= ?
+      AND DHBAIXA <  ?
       ${empresaWhere}
     GROUP BY mes
     ORDER BY mes
   `;
 
-  const rows = getDb().prepare(sql).all(...empresaParams) as {
+  const now = new Date();
+  const currentMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const start = addMonths(currentMonth, -(meses - 1));
+  const end = addMonths(currentMonth, 1);
+
+  const rows = getDb().prepare(sql).all(isoDate(start), isoDate(end), ...empresaParams) as {
     mes: string;
     entradas: number;
     saidas: number;
@@ -208,7 +249,7 @@ export function distribuicaoDespesas(filtro: EmpresaFiltro, periodo: Periodo, in
   const { clause: empresaClause, params: empresaParams } = empresaToSqlClause(filtro);
   const empresaWhere = empresaClause ? ` AND ${empresaClause}` : "";
   const periodoWhere = periodoClause(periodo, "DTNEG", intervalo);
-  const periodoWhereParams = periodoParams(intervalo);
+  const periodoWhereParams = periodoParams(periodo, intervalo);
 
   // Só categorias 2,3,4,5 entram em "despesa operacional"
   const sql = `
@@ -351,5 +392,46 @@ export function listarContasAbertas(args: {
     valor_total_aberto: round2(totalRow.soma),
     snapshot_at: snapshotTitulosAt(),
     titulos: rows.map((r) => ({ ...r, valor_aberto: round2(r.valor_aberto) })),
+  };
+}
+
+export function resumoContasAbertas(
+  filtro: EmpresaFiltro,
+  tipo: "receber" | "pagar",
+): ContasAbertasResumo {
+  const recdesp = tipo === "receber" ? 1 : -1;
+  const { clause: empresaClause, params: empresaParams } = empresaToSqlClause(filtro, "CODEMP");
+  const empresaWhere = empresaClause ? ` AND ${empresaClause}` : "";
+
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(*) AS qt, COALESCE(SUM(valor_aberto), 0) AS soma
+       FROM titulos
+       WHERE RECDESP = ?
+         AND PROVISAO = 'N'
+         AND is_em_aberto = 1${empresaWhere}`,
+    )
+    .get(recdesp, ...empresaParams) as { qt: number; soma: number };
+
+  return {
+    filtro: describeFiltro(filtro),
+    tipo,
+    total: row.qt,
+    valor_total_aberto: round2(row.soma),
+    snapshot_at: snapshotTitulosAt(),
+  };
+}
+
+export function financeiroResumo(
+  filtro: EmpresaFiltro,
+  periodo: Periodo,
+  intervalo: IntervaloDatas = {},
+  fluxoMeses = 12,
+): FinanceiroResumo {
+  return {
+    dre: dre(filtro, periodo, intervalo),
+    distribuicao_despesas: distribuicaoDespesas(filtro, periodo, intervalo),
+    fluxo_caixa: fluxoCaixa(filtro, fluxoMeses),
+    contas_receber: resumoContasAbertas(filtro, "receber"),
   };
 }

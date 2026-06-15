@@ -315,5 +315,14 @@ CREATE INDEX IF NOT EXISTS idx_titulos_emp_natureza_dtneg
   ON titulos(CODEMP, CODNAT, DTNEG)
   WHERE tipo = 'despesa';
 
+CREATE INDEX IF NOT EXISTS idx_titulos_rec_prov_dtneg
+  ON titulos(RECDESP, PROVISAO, DTNEG);
+
+CREATE INDEX IF NOT EXISTS idx_titulos_aberto_rec_prov
+  ON titulos(is_em_aberto, RECDESP, PROVISAO);
+
+CREATE INDEX IF NOT EXISTS idx_titulos_dhbaixa
+  ON titulos(DHBAIXA);
+
 CREATE INDEX IF NOT EXISTS idx_natcat_categoria
   ON natureza_categoria(categoria);

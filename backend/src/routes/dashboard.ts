@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   distribuicaoDespesas,
   dre,
+  financeiroResumo,
   fluxoCaixa,
   listarContasAbertas,
 } from "../services/dashboard-financeiro.js";
@@ -10,6 +11,7 @@ import { clientesBI, rhBI } from "../services/dashboard-clientes-rh.js";
 import { entregasBI } from "../services/dashboard-entregas.js";
 import {
   comodatoConsolidado,
+  empresasResumo,
   faturamentoConsolidado,
   faturamentoPorEmpresa,
   listarEmpresas,
@@ -49,6 +51,16 @@ dashboardRouter.get("/empresa/faturamento-por-empresa", (req, res, next) => {
   try {
     const { vendedor, data, periodo } = faturamentoPorEmpresaQuery.parse(req.query);
     res.json(faturamentoPorEmpresa(vendedor, data, periodo));
+  } catch (err) {
+    next(err);
+  }
+});
+
+dashboardRouter.get("/empresa/resumo", (req, res, next) => {
+  try {
+    const { empresa, vendedor, data } = faturamentoQuery.parse(req.query);
+    const { periodo } = faturamentoPorEmpresaQuery.pick({ periodo: true }).parse(req.query);
+    res.json(empresasResumo(empresa, vendedor, data, periodo));
   } catch (err) {
     next(err);
   }
@@ -103,10 +115,39 @@ const dreQuery = z.object({
   message: "dataInicio deve ser menor ou igual a dataFim.",
 });
 
+const financeiroResumoQuery = z.object({
+  empresa: empresaParam,
+  periodo: z.enum(["mes", "ano"]).default("ano"),
+  dataInicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dataFim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  codTipOper: z
+    .string()
+    .regex(/^\d+(,\d+)*$/)
+    .transform((v) => v.split(",").map((n) => Number(n)))
+    .optional(),
+  fluxoMeses: z.coerce.number().int().min(1).max(36).default(12),
+}).refine((q) => (q.dataInicio === undefined) === (q.dataFim === undefined), {
+  message: "Informe dataInicio e dataFim juntos.",
+}).refine((q) => !q.dataInicio || !q.dataFim || q.dataInicio <= q.dataFim, {
+  message: "dataInicio deve ser menor ou igual a dataFim.",
+});
+
 dashboardRouter.get("/financeiro/dre", (req, res, next) => {
   try {
     const { empresa, periodo, dataInicio, dataFim, codTipOper } = dreQuery.parse(req.query);
     res.json(dre(empresa, periodo, { dataInicio, dataFim, codTipOper }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+dashboardRouter.get("/financeiro/resumo", (req, res, next) => {
+  try {
+    const { empresa, periodo, dataInicio, dataFim, codTipOper, fluxoMeses } =
+      financeiroResumoQuery.parse(req.query);
+    res.json(
+      financeiroResumo(empresa, periodo, { dataInicio, dataFim, codTipOper }, fluxoMeses),
+    );
   } catch (err) {
     next(err);
   }

@@ -16,6 +16,8 @@ export function getDb(): DatabaseType {
   db.pragma("synchronous = NORMAL");
   db.pragma("foreign_keys = ON");
   db.pragma("temp_store = MEMORY");
+  db.pragma("busy_timeout = 5000");
+  db.pragma("cache_size = -20000");
 
   instance = db;
   return db;

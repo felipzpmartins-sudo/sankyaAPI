@@ -72,6 +72,13 @@ export type FaturamentoPorEmpresaDto = {
   empresas: FaturamentoEmpresaLinha[];
 };
 
+export type EmpresasResumoDto = {
+  empresas: EmpresaDashboardDto[];
+  vendedores: VendedorDto[];
+  faturamento: FaturamentoConsolidadoDto;
+  faturamento_por_empresa: FaturamentoPorEmpresaDto;
+};
+
 /** `GET /api/dashboard/financeiro/dre` */
 export type FinanceiroDreDto = {
   filtro: string;
@@ -122,6 +129,21 @@ export type ContasFinanceirasDto = {
   valor_total_aberto: number;
   snapshot_at: string | null;
   titulos: unknown[];
+};
+
+export type ContasFinanceirasResumoDto = {
+  filtro: string;
+  tipo: "receber" | "pagar";
+  total: number;
+  valor_total_aberto: number;
+  snapshot_at: string | null;
+};
+
+export type FinanceiroResumoDto = {
+  dre: FinanceiroDreDto;
+  distribuicao_despesas: DistribuicaoDespesasDto;
+  fluxo_caixa: FluxoCaixaDto;
+  contas_receber: ContasFinanceirasResumoDto;
 };
 
 export type EstoqueKpiDto = {

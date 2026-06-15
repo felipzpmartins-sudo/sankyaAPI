@@ -70,13 +70,11 @@ import { useVendedoresRanking, type VendedoresPeriodo } from "@/hooks/api/useVen
 import { useVendedoresLancamentosHoje } from "@/hooks/api/useVendedoresLancamentosHoje";
 import { useFaturamentoConsolidado } from "@/hooks/api/useFaturamentoConsolidado";
 import { useFaturamentoPorEmpresa } from "@/hooks/api/useFaturamentoPorEmpresa";
+import { useEmpresasResumo } from "@/hooks/api/useEmpresasResumo";
 import type { FinanceiroDreFiltroDatas, FinanceiroDrePeriodo } from "@/lib/api/types.dashboard";
 import type { EmpresaSeleção } from "@/lib/empresaSelecao";
 import type { VendedorSeleção } from "@/lib/vendedorSelecao";
-import { useFinanceiroDre } from "@/hooks/api/useFinanceiroDre";
-import { useDistribuicaoDespesas } from "@/hooks/api/useDistribuicaoDespesas";
-import { useFluxoCaixa } from "@/hooks/api/useFluxoCaixa";
-import { useContasAbertasResumo } from "@/hooks/api/useContasAbertasResumo";
+import { useFinanceiroResumo } from "@/hooks/api/useFinanceiroResumo";
 import { useEstoque } from "@/hooks/api/useEstoque";
 import { useProdutos } from "@/hooks/api/useProdutos";
 import { useClientesBI } from "@/hooks/api/useClientesBI";
@@ -1192,10 +1190,14 @@ function EmpresasDashboardSection() {
   const [vendedor, setVendedor] = useState<VendedorSeleção>("todos");
   const [t2, setT2] = useState<"donut" | "bar">("donut");
 
-  const qEmp = useEmpresas();
-  const qVend = useVendedores();
-  const qFat = useFaturamentoConsolidado(empresa, vendedor);
-  const qMix = useFaturamentoPorEmpresa(vendedor);
+  const qResumo = useEmpresasResumo(empresa, vendedor);
+  const qEmp = { ...qResumo, data: qResumo.data ? { empresas: qResumo.data.empresas } : undefined };
+  const qVend = {
+    ...qResumo,
+    data: qResumo.data ? { vendedores: qResumo.data.vendedores } : undefined,
+  };
+  const qFat = { ...qResumo, data: qResumo.data?.faturamento };
+  const qMix = { ...qResumo, data: qResumo.data?.faturamento_por_empresa };
 
   const listaEmpresas = useMemo(() => {
     const raw = qEmp.data?.empresas ?? [];
@@ -1303,7 +1305,7 @@ function EmpresasDashboardSection() {
             type="button"
             className="rounded px-2 py-1 font-geist uppercase tracking-[0.12em]"
             style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
-            onClick={() => void queryClient.invalidateQueries({ queryKey: ["empresas"] })}
+            onClick={() => void queryClient.invalidateQueries({ queryKey: ["empresasResumo"] })}
           >
             Tentar novamente
           </button>
@@ -1396,7 +1398,7 @@ function EmpresasDashboardSection() {
             className="rounded px-2 py-1 uppercase tracking-[0.12em]"
             style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
             onClick={() =>
-              void queryClient.invalidateQueries({ queryKey: ["faturamentoConsolidado"] })
+              void queryClient.invalidateQueries({ queryKey: ["empresasResumo"] })
             }
           >
             Tentar novamente
@@ -1425,10 +1427,7 @@ function EmpresasDashboardSection() {
             className="rounded px-2 py-1 uppercase tracking-[0.12em]"
             style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
             onClick={() =>
-              void queryClient.invalidateQueries({
-                queryKey: ["faturamentoPorEmpresa"],
-                exact: true,
-              })
+              void queryClient.invalidateQueries({ queryKey: ["empresasResumo"] })
             }
           >
             Tentar novamente
@@ -1814,10 +1813,11 @@ function FinanceiroSection() {
     codTipOper: receitaCodTipOper,
   };
 
-  const qDre = useFinanceiroDre(empresa, periodoComp, dreFiltros);
-  const qDist = useDistribuicaoDespesas(empresa, periodoComp, datasComp);
-  const qFlux = useFluxoCaixa(empresa, fluxoMeses);
-  const qContas = useContasAbertasResumo(empresa, "receber");
+  const qFinanceiro = useFinanceiroResumo(empresa, periodoComp, dreFiltros, fluxoMeses);
+  const qDre = { ...qFinanceiro, data: qFinanceiro.data?.dre };
+  const qDist = { ...qFinanceiro, data: qFinanceiro.data?.distribuicao_despesas };
+  const qFlux = { ...qFinanceiro, data: qFinanceiro.data?.fluxo_caixa };
+  const qContas = { ...qFinanceiro, data: qFinanceiro.data?.contas_receber };
 
   const snapshotAt =
     qDre.data?.snapshot_at ?? qFlux.data?.snapshot_at ?? qDist.data?.snapshot_at ?? null;
@@ -2018,10 +2018,7 @@ function FinanceiroSection() {
             className="rounded px-2 py-1 uppercase tracking-[0.12em]"
             style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
             onClick={() => {
-              void queryClient.invalidateQueries({ queryKey: ["financeiroDre"] });
-              void queryClient.invalidateQueries({ queryKey: ["distribuicaoDespesas"] });
-              void queryClient.invalidateQueries({ queryKey: ["fluxoCaixa"] });
-              void queryClient.invalidateQueries({ queryKey: ["contasAbertasResumo"] });
+              void queryClient.invalidateQueries({ queryKey: ["financeiroResumo"] });
             }}
           >
             Tentar novamente
