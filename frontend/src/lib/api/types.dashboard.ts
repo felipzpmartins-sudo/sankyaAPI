@@ -77,6 +77,7 @@ export type EmpresasResumoDto = {
   vendedores: VendedorDto[];
   faturamento: FaturamentoConsolidadoDto;
   faturamento_por_empresa: FaturamentoPorEmpresaDto;
+  financeiro_ano: FinanceiroDreDto;
 };
 
 /** `GET /api/dashboard/financeiro/dre` */

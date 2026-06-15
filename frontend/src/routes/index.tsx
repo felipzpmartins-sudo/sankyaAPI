@@ -1281,6 +1281,37 @@ function EmpresasDashboardSection() {
           },
         ];
 
+  const financeiroAno = qResumo.data?.financeiro_ano;
+  const margemOperacional =
+    financeiroAno && Number.isFinite(financeiroAno.margem_pct)
+      ? `${financeiroAno.margem_pct.toFixed(1)}%`
+      : "0,0%";
+  const operacionalKpis: Kpi[] =
+    !financeiroAno || aguardandoSync
+      ? []
+      : [
+          {
+            label: "Receita bruta 2026",
+            value: formatBRLCompact(financeiroAno.receita_bruta),
+            color: C.gold,
+          },
+          {
+            label: "Despesas 2026",
+            value: formatBRLCompact(financeiroAno.despesas_total),
+            color: C.red,
+          },
+          {
+            label: "Sobra operacional",
+            value: formatBRLCompact(financeiroAno.resultado_operacional),
+            color: financeiroAno.resultado_operacional >= 0 ? C.green : C.red,
+          },
+          {
+            label: "Margem operacional",
+            value: margemOperacional,
+            color: financeiroAno.resultado_operacional >= 0 ? C.green : C.red,
+          },
+        ];
+
   const mixTooltipFormatter = (item: { payload?: unknown }) => {
     const row = item.payload as EmpresaChartRow | undefined;
     if (!row) return ["", ""];
@@ -1411,6 +1442,21 @@ function EmpresasDashboardSection() {
       ) : fatKpis.length > 0 ? (
         <KpiRow items={fatKpis} />
       ) : null}
+
+      {operacionalKpis.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <KpiRow items={operacionalKpis} />
+          {vendedor !== "todos" && (
+            <div
+              className="font-geist text-[10px] uppercase tracking-[0.14em]"
+              style={{ color: C.muted }}
+            >
+              Resultado operacional considera despesas da empresa selecionada; o filtro de vendedor
+              afeta apenas o faturamento.
+            </div>
+          )}
+        </div>
+      )}
 
       {qMix.error && (
         <div

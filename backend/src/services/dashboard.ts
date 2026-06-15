@@ -11,6 +11,7 @@ import {
   FATURAMENTO_TOPS,
   inListClause,
 } from "./operacoes.js";
+import { dre } from "./dashboard-financeiro.js";
 
 /**
  * Empresa do snapshot. `ordem` < 99 = empresa do seed conhecida;
@@ -451,6 +452,7 @@ export type EmpresasResumo = {
   vendedores: Vendedor[];
   faturamento: FaturamentoConsolidado;
   faturamento_por_empresa: ReturnType<typeof faturamentoPorEmpresa>;
+  financeiro_ano: ReturnType<typeof dre>;
 };
 
 export function empresasResumo(
@@ -464,6 +466,7 @@ export function empresasResumo(
     vendedores: listarVendedores(),
     faturamento: faturamentoConsolidado(empresa, vendedor, dataReferencia),
     faturamento_por_empresa: faturamentoPorEmpresa(vendedor, dataReferencia, periodo),
+    financeiro_ano: dre(empresa, "ano"),
   };
 }
 
