@@ -3,13 +3,41 @@ import { z } from "zod";
 import { listarContasAbertas } from "../services/dashboard-financeiro.js";
 import { alunosAtivosViaCerta } from "../services/viacerta.js";
 import { empresaParam } from "../utils/empresa.js";
+import { config } from "../config.js";
+import { getDb } from "../db/connection.js";
 import { dashboardRouter, empresasRouter, vendedoresRouter } from "./dashboard.js";
 import { createSessionToken, getTotpSetup, isValidTotpCode } from "../auth.js";
+import { getSyncState } from "../sync/state.js";
 
 export const router = Router();
 
+function tableCount(table: string): number | null {
+  try {
+    const row = getDb().prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as
+      | { count: number }
+      | undefined;
+    return row?.count ?? null;
+  } catch {
+    return null;
+  }
+}
+
 router.get("/health", (_req, res) => {
-  res.json({ status: "ok", time: new Date().toISOString() });
+  res.json({
+    status: "ok",
+    time: new Date().toISOString(),
+    database_path: config.DATABASE_PATH,
+    sync: {
+      pedidos: getSyncState("pedidos") ?? null,
+      titulos: getSyncState("titulos") ?? null,
+      estoque: getSyncState("estoque") ?? null,
+    },
+    rows: {
+      pedidos: tableCount("pedidos"),
+      titulos: tableCount("titulos"),
+      produto_estoque: tableCount("produto_estoque"),
+    },
+  });
 });
 
 router.get("/auth/setup", (_req, res) => {
