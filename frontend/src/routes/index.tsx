@@ -78,6 +78,7 @@ import { useFinanceiroResumo } from "@/hooks/api/useFinanceiroResumo";
 import { useEstoque } from "@/hooks/api/useEstoque";
 import { useProdutos } from "@/hooks/api/useProdutos";
 import { useClientesBI } from "@/hooks/api/useClientesBI";
+import { useRateio } from "@/hooks/api/useRateio";
 import { useRhBI } from "@/hooks/api/useRhBI";
 import { useEntregasBI } from "@/hooks/api/useEntregasBI";
 import { useViaCertaAlunosAtivos } from "@/hooks/api/useViaCertaAlunosAtivos";
@@ -1864,6 +1865,7 @@ function FinanceiroSection() {
   const qDist = { ...qFinanceiro, data: qFinanceiro.data?.distribuicao_despesas };
   const qFlux = { ...qFinanceiro, data: qFinanceiro.data?.fluxo_caixa };
   const qContas = { ...qFinanceiro, data: qFinanceiro.data?.contas_receber };
+  const qRateio = useRateio(empresa, dataInicioComp, dataFimComp);
 
   const snapshotAt =
     qDre.data?.snapshot_at ?? qFlux.data?.snapshot_at ?? qDist.data?.snapshot_at ?? null;
@@ -2042,6 +2044,47 @@ function FinanceiroSection() {
         onModoChange={setReceitaOperacaoModo}
         onToggle={toggleReceitaTop}
       />
+
+      {/* Rateio por projeto - tabela simples para visualização (Ladhine) */}
+      <div className="mt-3">
+        <Card>
+          <SectionHead title="Rateio por projeto" sub="Linhas rateadas (por projeto)" />
+          <div className="p-3 overflow-auto">
+            {qRateio.isLoading ? (
+              <div>Carregando rateio...</div>
+            ) : qRateio.error ? (
+              <div className="text-red-600">Erro ao carregar rateio</div>
+            ) : (
+              <table className="w-full text-sm table-auto">
+                <thead>
+                  <tr>
+                    <th className="text-left">Empresa</th>
+                    <th className="text-left">Data Baixa</th>
+                    <th className="text-left">Parceiro</th>
+                    <th className="text-left">Doc</th>
+                    <th className="text-right">Valor Doc</th>
+                    <th className="text-right">Projeto</th>
+                    <th className="text-right">Valor Rateado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {qRateio.data?.rows.map((r, i) => (
+                    <tr key={i} className="border-t">
+                      <td>{r.NOMEEMP ?? "-"}</td>
+                      <td>{r.DATA_BAIXA ?? "-"}</td>
+                      <td>{r.NOMEPARC ?? "-"}</td>
+                      <td>{r.NUMDOC ?? "-"}</td>
+                      <td className="text-right">{r.VLR_DOCUMENTO ? formatBRL(r.VLR_DOCUMENTO as number) : "-"}</td>
+                      <td className="text-right">{r.CODPROJ ?? "-"}</td>
+                      <td className="text-right">{r.VALOR_RATEADO ? formatBRL(r.VALOR_RATEADO as number) : "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </Card>
+      </div>
 
       {(qDre.error || qDist.error || qFlux.error || qContas.error) && (
         <div

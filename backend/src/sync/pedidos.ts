@@ -32,6 +32,8 @@ const FIELDS_BASE = [
 
 const FIELDS = [
   ...FIELDS_BASE.slice(0, 5),
+  "CODCENCUS",
+  "CODPROJ",
   "CODPARCTRANSP",
   ...FIELDS_BASE.slice(5, 9),
   "DTENTSAI",
@@ -97,12 +99,14 @@ export async function syncPedidos(): Promise<void> {
        `INSERT INTO pedidos
          (NUNOTA, CODEMP, CODPARC, CODVEND, CODTIPOPER, TIPMOV,
           CODPARCTRANSP, TRANSPORTADORA_NOME, NUMNOTA, SERIENOTA,
-          DTNEG, DTFATUR, DTENTSAI, CIF_FOB, QTDVOL, STATUSNOTA,
+           DTNEG, DTFATUR, DTENTSAI, CIF_FOB, QTDVOL, STATUSNOTA,
+           CODCENCUS, CODPROJ,
           VLRNOTA, VLRDESC, VLRFRETE, AD_OBS, synced_at)
        VALUES
          (@NUNOTA, @CODEMP, @CODPARC, @CODVEND, @CODTIPOPER, @TIPMOV,
           @CODPARCTRANSP, @TRANSPORTADORA_NOME, @NUMNOTA, @SERIENOTA,
           @DTNEG, @DTFATUR, @DTENTSAI, @CIF_FOB, @QTDVOL, @STATUSNOTA,
+          @CODCENCUS, @CODPROJ,
           @VLRNOTA, @VLRDESC, @VLRFRETE, @AD_OBS, @synced_at)
        ON CONFLICT(NUNOTA) DO UPDATE SET
          CODEMP     = excluded.CODEMP,
@@ -112,6 +116,8 @@ export async function syncPedidos(): Promise<void> {
          TIPMOV     = excluded.TIPMOV,
          CODPARCTRANSP = excluded.CODPARCTRANSP,
          TRANSPORTADORA_NOME = excluded.TRANSPORTADORA_NOME,
+         CODCENCUS = excluded.CODCENCUS,
+         CODPROJ = excluded.CODPROJ,
          NUMNOTA    = excluded.NUMNOTA,
          SERIENOTA  = excluded.SERIENOTA,
          DTNEG      = excluded.DTNEG,
@@ -162,6 +168,8 @@ export async function syncPedidos(): Promise<void> {
           DTENTSAI: parseDateBR(r.DTENTSAI),
           CIF_FOB: r.CIF_FOB ?? null,
           QTDVOL: parseDecimal(r.QTDVOL),
+            CODCENCUS: parseIntOrNull(r.CODCENCUS),
+            CODPROJ: parseIntOrNull(r.CODPROJ),
           STATUSNOTA: r.STATUSNOTA ?? null,
           VLRNOTA: parseDecimal(r.VLRNOTA),
           VLRDESC: 0,

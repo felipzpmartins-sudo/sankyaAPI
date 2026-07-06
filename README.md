@@ -125,6 +125,7 @@ Guia detalhado: [`doc/DEPLOYMENT.md`](doc/DEPLOYMENT.md).
 
 ## Documentacao
 
+- [`doc/BACKEND_COMPLETO.md`](doc/BACKEND_COMPLETO.md): documentacao consolidada do backend atual.
 - [`doc/STATUS_PROJECT.md`](doc/STATUS_PROJECT.md): estado atual, backlog e decisoes de negocio.
 - [`doc/ROTAS.md`](doc/ROTAS.md): contrato das rotas REST.
 - [`doc/PLAN_DATA_BASE.md`](doc/PLAN_DATA_BASE.md): schema e modelagem do snapshot.

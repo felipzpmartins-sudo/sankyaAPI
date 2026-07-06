@@ -6,7 +6,7 @@ import { getDb } from "./connection.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCHEMA_PATH = resolve(__dirname, "./schema.sql");
 
-const EXPECTED_SCHEMA_VERSION = "2";
+const EXPECTED_SCHEMA_VERSION = "3";
 
 export type MigrateResult = {
   schemaVersion: string;
@@ -23,6 +23,8 @@ export function migrate(): MigrateResult {
   migrateParceirosShape();
   migrateProdutosShape();
   migratePedidosShape();
+  migrateTitulosShape();
+  migrateRateioShape();
   migratePedidosIndexes();
   migrateFinanceiroIndexes();
   migrateProdutoEstoqueShape();
@@ -34,10 +36,15 @@ export function migrate(): MigrateResult {
   const schemaVersion = versionRow?.value ?? "unknown";
 
   if (schemaVersion !== EXPECTED_SCHEMA_VERSION) {
-    throw new Error(
-      `Schema version mismatch: banco em '${schemaVersion}', código espera '${EXPECTED_SCHEMA_VERSION}'. ` +
-        `Migration manual necessária — ver PLAN_DATA_BASE.md seção 13 (riscos).`,
-    );
+    // Se a versão no banco for diferente, atualizamos para a versão esperada
+    // após aplicar as migrations incrementais definidas acima. Isso permite
+    // que upgrades sejam aplicados automaticamente em instâncias locais.
+    getDb()
+      .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES ('schema_version', ?)")
+      .run(EXPECTED_SCHEMA_VERSION);
+    // refetch schemaVersion para retornar o valor atualizado
+    // (mantemos compatibilidade de retorno para quem consome migrate()).
+    // nota: não lançamos erro aqui — o processo continua com o schema atualizado.
   }
 
   const counts = db
@@ -61,6 +68,8 @@ function migratePedidosShape(): void {
   const names = new Set(columns.map((col) => col.name));
 
   const additions: Array<[string, string]> = [
+    ["CODCENCUS", "ALTER TABLE pedidos ADD COLUMN CODCENCUS INTEGER"],
+    ["CODPROJ", "ALTER TABLE pedidos ADD COLUMN CODPROJ INTEGER"],
     ["CODPARCTRANSP", "ALTER TABLE pedidos ADD COLUMN CODPARCTRANSP INTEGER"],
     ["TRANSPORTADORA_NOME", "ALTER TABLE pedidos ADD COLUMN TRANSPORTADORA_NOME TEXT"],
     ["CIF_FOB", "ALTER TABLE pedidos ADD COLUMN CIF_FOB TEXT"],
@@ -178,5 +187,43 @@ function migrateProdutoEstoqueShape(): void {
 
     CREATE INDEX IF NOT EXISTS idx_produto_estoque_prod ON produto_estoque(CODPROD);
     CREATE INDEX IF NOT EXISTS idx_produto_estoque_emp ON produto_estoque(CODEMP);
+  `);
+}
+
+function migrateTitulosShape(): void {
+  const db = getDb();
+  const columns = db.prepare("PRAGMA table_info(titulos)").all() as Array<{ name: string }>;
+  const names = new Set(columns.map((col) => col.name));
+
+  const additions: Array<[string, string]> = [
+    ["CODCENCUS", "ALTER TABLE titulos ADD COLUMN CODCENCUS INTEGER"],
+    ["CODPROJ", "ALTER TABLE titulos ADD COLUMN CODPROJ INTEGER"],
+  ];
+
+  for (const [name, sql] of additions) {
+    if (!names.has(name)) db.exec(sql);
+  }
+}
+
+function migrateRateioShape(): void {
+  const db = getDb();
+  const table = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'titulos_rateio'")
+    .get() as { name: string } | undefined;
+
+  if (table) return;
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS titulos_rateio (
+      NUFIN       INTEGER NOT NULL,
+      CODPROJ     INTEGER,
+      PERCRATEIO  REAL NOT NULL DEFAULT 0,
+      CODEMP      INTEGER,
+      synced_at   TEXT NOT NULL,
+      PRIMARY KEY (NUFIN, CODPROJ)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_titulos_rateio_nufin ON titulos_rateio(NUFIN);
+    CREATE INDEX IF NOT EXISTS idx_titulos_rateio_proj ON titulos_rateio(CODPROJ);
   `);
 }

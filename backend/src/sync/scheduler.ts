@@ -2,6 +2,7 @@ import pino from "pino";
 import { config } from "../config.js";
 import { syncEmpresas } from "./empresas.js";
 import { syncNaturezas } from "./naturezas.js";
+import { syncProjetos } from "./projetos.js";
 import { syncParceiros } from "./parceiros.js";
 import { syncPedidos } from "./pedidos.js";
 import { syncProdutos } from "./produtos.js";
@@ -10,6 +11,7 @@ import { syncTiposOperacao } from "./tipos_operacao.js";
 import { syncTiposTitulo } from "./tipos_titulo.js";
 import { syncTitulos } from "./titulos.js";
 import { syncVendedores } from "./vendedores.js";
+import { syncRateio } from "./rateio.js";
 import { getSyncState } from "./state.js";
 
 const logger = pino({
@@ -70,6 +72,7 @@ async function initialSync(): Promise<void> {
   await Promise.all([
     runIfMissing("tipos_operacao", syncTiposOperacao),
     runIfMissing("naturezas", syncNaturezas),
+    runIfMissing("projetos", syncProjetos),
     runIfMissing("tipos_titulo", syncTiposTitulo),
     runIfMissing("parceiros", syncParceiros),
     runIfMissing("vendedores", syncVendedores),
@@ -115,6 +118,7 @@ export function startScheduler(): void {
       void (async () => {
         await runSync("pedidos", syncPedidos);
         await runSync("titulos", syncTitulos);
+        await runSync("rateio", syncRateio);
       })();
     }, config.SYNC_INTERVAL_MS),
   );

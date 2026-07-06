@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { listarContasAbertas } from "../services/dashboard-financeiro.js";
+import { listarContasAbertas, listarProjetos } from "../services/dashboard-financeiro.js";
 import { alunosAtivosViaCerta } from "../services/viacerta.js";
 import { empresaParam } from "../utils/empresa.js";
 import { config } from "../config.js";
@@ -115,6 +115,14 @@ router.get("/pagar", (req, res, next) => {
         pageSize: q.pageSize,
       }),
     );
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/projetos", (_req, res, next) => {
+  try {
+    res.json({ projetos: listarProjetos() });
   } catch (err) {
     next(err);
   }

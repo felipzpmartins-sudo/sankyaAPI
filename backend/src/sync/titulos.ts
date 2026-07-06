@@ -19,6 +19,8 @@ const FIELDS = [
   "NUFIN",
   "CODEMP",
   "CODPARC",
+  "CODCENCUS",
+  "CODPROJ",
   "CODTIPTIT",
   "CODNAT",
   "RECDESP",
@@ -68,16 +70,18 @@ export async function syncTitulos(): Promise<void> {
 
     const upsert = db.prepare(
       `INSERT INTO titulos
-         (NUFIN, CODEMP, CODPARC, CODTIPTIT, CODNAT, RECDESP, PROVISAO, tipo,
+          (NUFIN, CODEMP, CODPARC, CODCENCUS, CODPROJ, CODTIPTIT, CODNAT, RECDESP, PROVISAO, tipo,
           DTNEG, DTVENC, DHBAIXA, DHCONCIL, DTCONTAB,
-          VLRDESDOB, VLRBAIXA, valor_aberto, is_em_aberto, synced_at)
+            VLRDESDOB, VLRBAIXA, valor_aberto, is_em_aberto, synced_at)
        VALUES
-         (@NUFIN, @CODEMP, @CODPARC, @CODTIPTIT, @CODNAT, @RECDESP, @PROVISAO, @tipo,
+          @NUFIN, @CODEMP, @CODPARC, @CODCENCUS, @CODPROJ, @CODTIPTIT, @CODNAT, @RECDESP, @PROVISAO, @tipo,
           @DTNEG, @DTVENC, @DHBAIXA, @DHCONCIL, @DTCONTAB,
           @VLRDESDOB, @VLRBAIXA, @valor_aberto, @is_em_aberto, @synced_at)
        ON CONFLICT(NUFIN) DO UPDATE SET
          CODEMP       = excluded.CODEMP,
          CODPARC      = excluded.CODPARC,
+         CODCENCUS    = excluded.CODCENCUS,
+         CODPROJ      = excluded.CODPROJ,
          CODTIPTIT    = excluded.CODTIPTIT,
          CODNAT       = excluded.CODNAT,
          RECDESP      = excluded.RECDESP,
@@ -128,6 +132,8 @@ export async function syncTitulos(): Promise<void> {
           NUFIN: nufin,
           CODEMP: codemp,
           CODPARC: codparc,
+          CODCENCUS: r.CODCENCUS != null ? Number(r.CODCENCUS) : null,
+          CODPROJ: r.CODPROJ != null ? Number(r.CODPROJ) : null,
           CODTIPTIT: r.CODTIPTIT != null ? Number(r.CODTIPTIT) : null,
           CODNAT: r.CODNAT != null ? Number(r.CODNAT) : null,
           RECDESP: recdesp,

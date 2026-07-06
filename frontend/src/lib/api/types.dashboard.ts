@@ -103,6 +103,23 @@ export type FinanceiroDreFiltroDatas = {
   codTipOper?: string;
 };
 
+export type ContasFinanceirasTituloDto = {
+  NUFIN: number;
+  CODEMP: number;
+  CODPARC: number;
+  NOMEPARC: string | null;
+  CODCENCUS: number | null;
+  CODPROJ: number | null;
+  CODTIPTIT: number | null;
+  DESCRTIPTIT: string | null;
+  CODNAT: number | null;
+  DESCRNAT: string | null;
+  DTNEG: string | null;
+  DTVENC: string | null;
+  valor_aberto: number;
+  dias_atraso: number;
+};
+
 /** `GET /api/dashboard/financeiro/fluxo-caixa` */
 export type FluxoCaixaDto = {
   filtro: string;
@@ -129,7 +146,7 @@ export type ContasFinanceirasDto = {
   total: number;
   valor_total_aberto: number;
   snapshot_at: string | null;
-  titulos: unknown[];
+  titulos: ContasFinanceirasTituloDto[];
 };
 
 export type ContasFinanceirasResumoDto = {
@@ -140,12 +157,44 @@ export type ContasFinanceirasResumoDto = {
   snapshot_at: string | null;
 };
 
+export type ProjetoDto = {
+  CODPROJ: number;
+  IDENTIFICACAO: string | null;
+  DESCRPROJ: string | null;
+  ativo: 0 | 1;
+};
+
+export type ProjetosResponse = {
+  projetos: ProjetoDto[];
+};
+
 export type FinanceiroResumoDto = {
   dre: FinanceiroDreDto;
   distribuicao_despesas: DistribuicaoDespesasDto;
   fluxo_caixa: FluxoCaixaDto;
   contas_receber: ContasFinanceirasResumoDto;
 };
+
+/** `GET /api/dashboard/financeiro/rateio` */
+export type RateioRowDto = {
+  NOMEEMP: string | null;
+  DATA_BAIXA: string | null;
+  VALOR_BAIXADO: number | null;
+  DATA_VENC: string | null;
+  TIPOMOV: string | null;
+  NOMEPARC: string | null;
+  HISTORICO: string | null;
+  NUMDOC: string | null;
+  VLR_DOCUMENTO: number | null;
+  CODPROJ: number | null;
+  VALOR_RATEADO: number | null;
+  CODCR: number | null;
+  DESCCR: string | null;
+  CODNAT: number | null;
+  DESCNAT: string | null;
+};
+
+export type RateioResponse = { rows: RateioRowDto[]; snapshot_at: string | null };
 
 export type EstoqueKpiDto = {
   label: string;

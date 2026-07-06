@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS metadata (
 );
 
 INSERT OR IGNORE INTO metadata (key, value) VALUES
-  ('schema_version', '2'),
+  ('schema_version', '3'),
   ('created_at',     CURRENT_TIMESTAMP);
 
 -- ----------------------------------------------------------------------------
@@ -151,6 +151,17 @@ CREATE TABLE IF NOT EXISTS naturezas (
 );
 
 -- ----------------------------------------------------------------------------
+-- projetos: dimensão de projetos / finalidade (TCSPRJ)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS projetos (
+  CODPROJ      INTEGER PRIMARY KEY,
+  IDENTIFICACAO TEXT,
+  DESCRPROJ    TEXT,
+  ativo        INTEGER NOT NULL DEFAULT 1,
+  synced_at    TEXT NOT NULL
+);
+
+-- ----------------------------------------------------------------------------
 -- titulos: Financeiro (contas a receber + a pagar)
 --
 -- Campos derivados (preenchidos pelo sync, NÃO vêm do Sankhya):
@@ -168,6 +179,8 @@ CREATE TABLE IF NOT EXISTS titulos (
   NUFIN         INTEGER PRIMARY KEY,
   CODEMP        INTEGER NOT NULL,
   CODPARC       INTEGER NOT NULL,
+  CODCENCUS     INTEGER,
+  CODPROJ       INTEGER,
   CODTIPTIT     INTEGER,
   CODNAT        INTEGER,
   RECDESP       INTEGER NOT NULL,
@@ -187,6 +200,23 @@ CREATE TABLE IF NOT EXISTS titulos (
 );
 
 -- ----------------------------------------------------------------------------
+-- titulos_rateio: rateio por projeto (extraído de TGFRAT)
+-- Armazena percentuais e projetos vinculados a um NUFIN
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS titulos_rateio (
+  NUFIN       INTEGER NOT NULL,
+  CODPROJ     INTEGER,
+  PERCRATEIO  REAL NOT NULL DEFAULT 0,
+  CODEMP      INTEGER,
+  synced_at   TEXT NOT NULL,
+  PRIMARY KEY (NUFIN, CODPROJ)
+);
+
+CREATE INDEX IF NOT EXISTS idx_titulos_rateio_nufin ON titulos_rateio(NUFIN);
+CREATE INDEX IF NOT EXISTS idx_titulos_rateio_proj ON titulos_rateio(CODPROJ);
+
+
+-- ----------------------------------------------------------------------------
 -- pedidos: CabecalhoNota (vendas + compras + devoluções)
 --
 -- NOTA: FKs removidas no MVP porque as tabelas-pai (parceiros, vendedores)
@@ -201,6 +231,8 @@ CREATE TABLE IF NOT EXISTS pedidos (
   NUNOTA      INTEGER PRIMARY KEY,
   CODEMP      INTEGER NOT NULL,
   CODPARC     INTEGER NOT NULL,
+  CODCENCUS   INTEGER,
+  CODPROJ     INTEGER,
   CODVEND     INTEGER,
   CODTIPOPER  INTEGER NOT NULL,
   TIPMOV      TEXT NOT NULL,
@@ -326,3 +358,55 @@ CREATE INDEX IF NOT EXISTS idx_titulos_dhbaixa
 
 CREATE INDEX IF NOT EXISTS idx_natcat_categoria
   ON natureza_categoria(categoria);
+
+-- ============================================================================
+-- v3 raw Sankhya: inventario e extracao ampla de entidades/campos/registros.
+--
+-- Essas tabelas NAO alimentam diretamente o dashboard. Elas guardam o que o
+-- usuario Sankhya atual consegue ler, em JSON, para exploracao e posterior
+-- modelagem em tabelas tratadas.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS sankhya_raw_runs (
+  run_id      TEXT PRIMARY KEY,
+  mode        TEXT NOT NULL,
+  started_at  TEXT NOT NULL,
+  finished_at TEXT,
+  status      TEXT NOT NULL,
+  config_json TEXT NOT NULL,
+  error       TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sankhya_raw_entities (
+  entity          TEXT PRIMARY KEY,
+  description     TEXT,
+  table_name      TEXT,
+  status          TEXT NOT NULL,
+  field_count     INTEGER NOT NULL DEFAULT 0,
+  sample_count    INTEGER NOT NULL DEFAULT 0,
+  total_reported  INTEGER,
+  last_error      TEXT,
+  last_probed_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sankhya_raw_fields (
+  entity        TEXT NOT NULL,
+  field_name    TEXT NOT NULL,
+  field_order   INTEGER NOT NULL,
+  raw_meta_json TEXT NOT NULL,
+  last_seen_at  TEXT NOT NULL,
+  PRIMARY KEY (entity, field_name)
+);
+
+CREATE TABLE IF NOT EXISTS sankhya_raw_records (
+  run_id     TEXT NOT NULL,
+  entity     TEXT NOT NULL,
+  page       INTEGER NOT NULL,
+  row_number INTEGER NOT NULL,
+  data_json  TEXT NOT NULL,
+  fetched_at TEXT NOT NULL,
+  PRIMARY KEY (run_id, entity, page, row_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sankhya_raw_records_entity
+  ON sankhya_raw_records(entity);

@@ -126,6 +126,17 @@ Sankhya cai (mostra dados com flag stale).
 | `ItemNota` | ⚠ não testado | Pendente (necessário pra análise por produto) |
 | `Estoque` | ⚠ não testado | Pendente |
 
+### 3.5 STATUSNOTA — semântica
+
+Campo Sankhya: `STATUSNOTA` (em `CabecalhoNota`). Valores vistos e sua interpretação no dashboard:
+
+- `L`: Liberada / lançada (aceita como contabilizada; usada como filtro principal para `pedidos`).
+- `P`: Pendente (rascunho, aguardando validação/integração). Não é considerada para relatórios.
+- `A`: Em atendimento (processo de faturamento iniciado). Tratamos como não-final até virar `L`.
+- `C`: Cancelada. Ignorar em agregados.
+
+Regra aplicada: o sincronizador de `pedidos` filtra por `STATUSNOTA = 'L'` para evitar incluir notas não finalizadas ou testes. Se o suporte de negócio requerer, podemos expor um parâmetro adicional na API para incluir outros status (ex.: `?status=P,A`).
+
 ### 3.4 Infraestrutura
 
 | Item | Status | Observação |

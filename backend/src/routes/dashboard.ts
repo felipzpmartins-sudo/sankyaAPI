@@ -6,6 +6,8 @@ import {
   financeiroResumo,
   fluxoCaixa,
   listarContasAbertas,
+  listarProjetos,
+  listarRateio,
 } from "../services/dashboard-financeiro.js";
 import { clientesBI, rhBI } from "../services/dashboard-clientes-rh.js";
 import { entregasBI } from "../services/dashboard-entregas.js";
@@ -213,6 +215,23 @@ dashboardRouter.get("/estoque", (req, res, next) => {
 dashboardRouter.get("/produtos", (_req, res, next) => {
   try {
     res.json({ produtos: listarProdutos() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+dashboardRouter.get("/projetos", (_req, res, next) => {
+  try {
+    res.json({ projetos: listarProjetos() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+dashboardRouter.get("/financeiro/rateio", (req, res, next) => {
+  try {
+    const q = z.object({ dataInicio: z.string(), dataFim: z.string(), codEmp: z.coerce.number().nullable().optional() }).parse(req.query);
+    res.json(listarRateio({ dataInicio: q.dataInicio, dataFim: q.dataFim, codEmp: q.codEmp ?? null }));
   } catch (err) {
     next(err);
   }

@@ -235,6 +235,43 @@ export function fluxoCaixa(filtro: EmpresaFiltro, meses: number): {
   };
 }
 
+export function listarRateio(args: { dataInicio: string; dataFim: string; codEmp?: number | null }) {
+  const db = getDb();
+  const { dataInicio, dataFim, codEmp } = args;
+  const empresaWhere = codEmp ? `AND t.CODEMP = ${Number(codEmp)}` : "";
+
+  const sql = `
+    SELECT
+      e.NOMEFANTASIA AS NOMEEMP,
+      t.DHBAIXA AS DATA_BAIXA,
+      COALESCE(t.VLRBAIXA,0) AS VALOR_BAIXADO,
+      t.DTVENC AS DATA_VENC,
+      CASE WHEN t.RECDESP = 1 THEN 'receber' WHEN t.RECDESP = -1 THEN 'pagar' ELSE '' END AS TIPOMOV,
+      p.NOMEPARC,
+      COALESCE(t.HISTORICO, 'SEM DESCRIÇÃO') AS HISTORICO,
+      t.NUMNOTA AS NUMDOC,
+      t.VLRDESDOB AS VLR_DOCUMENTO,
+      COALESCE(r.CODPROJ, t.CODPROJ) AS CODPROJ,
+      CASE WHEN r.PERCRATEIO IS NOT NULL THEN ROUND(r.PERCRATEIO * t.VLRDESDOB / 100.0, 2) ELSE t.VLRDESDOB END AS VALOR_RATEADO,
+      t.CODCENCUS AS CODCR,
+      NULL AS DESCCR,
+      t.CODNAT AS CODNAT,
+      n.DESCRNAT AS DESCNAT
+    FROM titulos t
+    LEFT JOIN titulos_rateio r ON r.NUFIN = t.NUFIN
+    LEFT JOIN parceiros p ON p.CODPARC = t.CODPARC
+    LEFT JOIN empresas e ON e.CODEMP = t.CODEMP
+    LEFT JOIN naturezas n ON n.CODNAT = t.CODNAT
+    WHERE t.DHBAIXA >= ? AND t.DHBAIXA <= ?
+      AND t.DHBAIXA IS NOT NULL
+      ${empresaWhere}
+    ORDER BY t.DHBAIXA ASC
+  `;
+
+  const rows = db.prepare(sql).all(dataInicio, dataFim) as Array<Record<string, unknown>>;
+  return { rows, snapshot_at: snapshotTitulosAt() };
+}
+
 /**
  * Distribuição das despesas realizadas no período, agrupadas pelas categorias
  * derivadas do prefixo do CODNAT. Útil para gráfico de pizza/donut.
@@ -317,6 +354,8 @@ export function listarContasAbertas(args: {
     CODEMP: number;
     CODPARC: number;
     NOMEPARC: string | null;
+    CODCENCUS: number | null;
+    CODPROJ: number | null;
     CODTIPTIT: number | null;
     DESCRTIPTIT: string | null;
     CODNAT: number | null;
@@ -348,7 +387,9 @@ export function listarContasAbertas(args: {
     .prepare(
       `SELECT
          t.NUFIN, t.CODEMP, t.CODPARC,
-         NULL AS NOMEPARC,
+         p.NOMEPARC,
+         t.CODCENCUS,
+         t.CODPROJ,
          t.CODTIPTIT,
          tt.DESCRTIPTIT,
          t.CODNAT,
@@ -362,6 +403,7 @@ export function listarContasAbertas(args: {
            ELSE 0
          END AS dias_atraso
        FROM titulos t
+       LEFT JOIN parceiros p ON p.CODPARC = t.CODPARC
        LEFT JOIN tipos_titulo tt ON tt.CODTIPTIT = t.CODTIPTIT
        LEFT JOIN naturezas n     ON n.CODNAT     = t.CODNAT
        WHERE ${where}
@@ -373,6 +415,8 @@ export function listarContasAbertas(args: {
       CODEMP: number;
       CODPARC: number;
       NOMEPARC: string | null;
+      CODCENCUS: number | null;
+      CODPROJ: number | null;
       CODTIPTIT: number | null;
       DESCRTIPTIT: string | null;
       CODNAT: number | null;
@@ -420,6 +464,16 @@ export function resumoContasAbertas(
     valor_total_aberto: round2(row.soma),
     snapshot_at: snapshotTitulosAt(),
   };
+}
+
+export function listarProjetos(): { CODPROJ: number; IDENTIFICACAO: string | null; DESCRPROJ: string | null; ativo: number }[] {
+  return getDb()
+    .prepare(
+      `SELECT CODPROJ, IDENTIFICACAO, DESCRPROJ, ativo
+       FROM projetos
+       ORDER BY CODPROJ ASC`,
+    )
+    .all() as { CODPROJ: number; IDENTIFICACAO: string | null; DESCRPROJ: string | null; ativo: number }[];
 }
 
 export function financeiroResumo(
