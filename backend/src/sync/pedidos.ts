@@ -71,7 +71,7 @@ function upsertEmpresaStub(codemp: number): void {
 async function loadPedidosSankhya() {
   const args = {
     rootEntity: "CabecalhoNota",
-    expression: `this.DTNEG >= TO_DATE('${DATA_INICIO}','DD/MM/YYYY') AND this.STATUSNOTA = 'L'`,
+    expression: `this.DTNEG >= TO_DATE('${DATA_INICIO}','DD/MM/YYYY')`,
   };
 
   try {

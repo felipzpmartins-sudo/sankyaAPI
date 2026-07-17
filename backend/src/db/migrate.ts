@@ -22,8 +22,10 @@ export function migrate(): MigrateResult {
   db.exec(sql);
   migrateParceirosShape();
   migrateProdutosShape();
+  migrateProjetosShape();
   migratePedidosShape();
   migrateTitulosShape();
+  migrateCentrosResultadoShape();
   migrateRateioShape();
   migratePedidosIndexes();
   migrateFinanceiroIndexes();
@@ -138,6 +140,22 @@ function migrateProdutosShape(): void {
   }
 }
 
+function migrateProjetosShape(): void {
+  const db = getDb();
+  const columns = db.prepare("PRAGMA table_info(projetos)").all() as Array<{ name: string }>;
+  const names = new Set(columns.map((col) => col.name));
+
+  const additions: Array<[string, string]> = [
+    ["CODPROJPAI", "ALTER TABLE projetos ADD COLUMN CODPROJPAI INTEGER"],
+    ["GRAU", "ALTER TABLE projetos ADD COLUMN GRAU INTEGER"],
+    ["ANALITICO", "ALTER TABLE projetos ADD COLUMN ANALITICO TEXT"],
+  ];
+
+  for (const [name, sql] of additions) {
+    if (!names.has(name)) db.exec(sql);
+  }
+}
+
 function preMigrateProdutoEstoqueShape(): void {
   const db = getDb();
   const table = db
@@ -225,5 +243,19 @@ function migrateRateioShape(): void {
 
     CREATE INDEX IF NOT EXISTS idx_titulos_rateio_nufin ON titulos_rateio(NUFIN);
     CREATE INDEX IF NOT EXISTS idx_titulos_rateio_proj ON titulos_rateio(CODPROJ);
+  `);
+}
+
+function migrateCentrosResultadoShape(): void {
+  getDb().exec(`
+    CREATE TABLE IF NOT EXISTS centros_resultado (
+      CODCENCUS   INTEGER PRIMARY KEY,
+      DESCRCENCUS TEXT NOT NULL,
+      ativo       INTEGER NOT NULL DEFAULT 1,
+      synced_at   TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_centros_resultado_descr
+      ON centros_resultado(DESCRCENCUS);
   `);
 }

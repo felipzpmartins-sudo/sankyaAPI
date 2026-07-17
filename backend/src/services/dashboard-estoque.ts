@@ -27,6 +27,7 @@ export type EstoqueAlerta = {
 };
 
 export type EstoqueLocal = {
+  codlocal: number;
   empresa: string;
   local: string;
   linhas: number;
@@ -44,6 +45,7 @@ export type EstoqueNegativo = {
 export type EstoqueDto = {
   filtro: string;
   snapshot_at: string | null;
+  resumo: { skus_ativos: number; quantidade_total: number; abaixo_minimo: number };
   kpis: EstoqueKpi[];
   niveis: EstoqueNivel[];
   alertas: EstoqueAlerta[];
@@ -73,10 +75,26 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-export function estoqueVisaoGeral(empresa: EmpresaFiltro): EstoqueDto {
+export function listarLocaisEstoque(empresa: EmpresaFiltro): Array<{ codlocal: number; local: string }> {
+  const { clause, params } = empresaToSqlClause(empresa, "e.CODEMP");
+  const where = clause ? `WHERE ${clause}` : "";
+  return getDb().prepare(
+    `SELECT e.CODLOCALORIG AS codlocal,
+            COALESCE(MAX(NULLIF(e.LOCAL_DESCR, '')), 'Local ' || e.CODLOCALORIG) AS local
+     FROM produto_estoque e
+     ${where}
+     GROUP BY e.CODLOCALORIG
+     ORDER BY local`,
+  ).all(...params) as Array<{ codlocal: number; local: string }>;
+}
+
+export function estoqueVisaoGeral(empresa: EmpresaFiltro, locais: number[] = []): EstoqueDto {
   const db = getDb();
   const { clause: empresaClause, params: empresaParams } = empresaToSqlClause(empresa, "e.CODEMP");
   const empresaWhere = empresaClause ? ` AND ${empresaClause}` : "";
+  const localClause = locais.length > 0 ? `e.CODLOCALORIG IN (${locais.map(() => "?").join(", ")})` : "";
+  const localWhere = localClause ? ` AND ${localClause}` : "";
+  const filtroParams = [...empresaParams, ...locais];
 
   const rows = db
     .prepare(
@@ -85,9 +103,9 @@ export function estoqueVisaoGeral(empresa: EmpresaFiltro): EstoqueDto {
               COALESCE(e.EST_MINIMO, 0) AS minimo
        FROM produto_estoque e
        JOIN produtos p ON p.CODPROD = e.CODPROD
-       WHERE p.ativo = 1${empresaWhere}`,
+       WHERE p.ativo = 1${empresaWhere}${localWhere}`,
     )
-    .all(...empresaParams) as Array<{ cat: string; atual: number; minimo: number }>;
+    .all(...filtroParams) as Array<{ cat: string; atual: number; minimo: number }>;
 
   const totals = rows.reduce(
     (acc, row) => {
@@ -99,6 +117,15 @@ export function estoqueVisaoGeral(empresa: EmpresaFiltro): EstoqueDto {
     },
     { total: 0, totalMin: 0, belowMin: 0, negativeRows: 0 },
   );
+
+  const skuRow = db
+    .prepare(
+      `SELECT COUNT(DISTINCT CASE WHEN e.ESTOQUE > 0 THEN e.CODPROD END) AS skus_ativos
+       FROM produto_estoque e
+       JOIN produtos p ON p.CODPROD = e.CODPROD
+       WHERE p.ativo = 1${empresaWhere}${localWhere}`,
+    )
+    .get(...filtroParams) as { skus_ativos: number };
 
   const categorySummary = Object.values(
     rows.reduce<Record<string, { cat: string; atual: number; min: number }>>((map, row) => {
@@ -126,11 +153,11 @@ export function estoqueVisaoGeral(empresa: EmpresaFiltro): EstoqueDto {
        JOIN produtos p ON p.CODPROD = e.CODPROD
        WHERE e.EST_MINIMO > 0
          AND e.ESTOQUE < e.EST_MINIMO
-         ${empresaWhere}
+         ${empresaWhere}${localWhere}
        ORDER BY (e.EST_MINIMO - e.ESTOQUE) DESC
        LIMIT 6`,
     )
-    .all(...empresaParams) as Array<{
+    .all(...filtroParams) as Array<{
       item: string;
       empresa: string | null;
       local: string | null;
@@ -141,18 +168,20 @@ export function estoqueVisaoGeral(empresa: EmpresaFiltro): EstoqueDto {
 
   const localRows = db
     .prepare(
-      `SELECT COALESCE(e.EMPRESA_NOMEFANTASIA, 'EMPRESA ' || e.CODEMP) AS empresa,
+      `SELECT e.CODLOCALORIG AS codlocal,
+              COALESCE(e.EMPRESA_NOMEFANTASIA, 'EMPRESA ' || e.CODEMP) AS empresa,
               COALESCE(e.LOCAL_DESCR, '<SEM LOCAL>') AS local,
               COUNT(*) AS linhas,
               COALESCE(SUM(e.ESTOQUE), 0) AS estoque
        FROM produto_estoque e
        JOIN produtos p ON p.CODPROD = e.CODPROD
-       WHERE p.ativo = 1${empresaWhere}
+       WHERE p.ativo = 1${empresaWhere}${localWhere}
        GROUP BY e.CODEMP, e.CODLOCALORIG
        ORDER BY ABS(estoque) DESC
        LIMIT 8`,
     )
-    .all(...empresaParams) as Array<{
+    .all(...filtroParams) as Array<{
+      codlocal: number;
       empresa: string;
       local: string;
       linhas: number;
@@ -170,11 +199,11 @@ export function estoqueVisaoGeral(empresa: EmpresaFiltro): EstoqueDto {
        JOIN produtos p ON p.CODPROD = e.CODPROD
        WHERE p.ativo = 1
          AND e.ESTOQUE < 0
-         ${empresaWhere}
+         ${empresaWhere}${localWhere}
        ORDER BY e.ESTOQUE ASC
        LIMIT 8`,
     )
-    .all(...empresaParams) as Array<{
+    .all(...filtroParams) as Array<{
       item: string;
       empresa: string;
       local: string;
@@ -183,8 +212,13 @@ export function estoqueVisaoGeral(empresa: EmpresaFiltro): EstoqueDto {
     }>;
 
   return {
-    filtro: describeFiltro(empresa),
+    filtro: `${describeFiltro(empresa)};locais=${locais.length > 0 ? locais.join(",") : "todos"}`,
     snapshot_at: snapshotEstoqueAt(),
+    resumo: {
+      skus_ativos: skuRow.skus_ativos,
+      quantidade_total: round2(totals.total),
+      abaixo_minimo: totals.belowMin,
+    },
     kpis: [
       {
         label: "Qtde em Estoque",

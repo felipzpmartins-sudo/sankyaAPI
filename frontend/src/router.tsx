@@ -1,24 +1,9 @@
 import { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
-import { ApiError } from "./lib/api/client";
 
 export const getRouter = () => {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        staleTime: 5 * 60_000,
-        refetchInterval: 5 * 60_000,
-        retry: (failureCount, error) => {
-          if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
-            return false;
-          }
-          return failureCount < 1;
-        },
-        refetchOnWindowFocus: false,
-      },
-    },
-  });
+  const queryClient = new QueryClient();
 
   const router = createRouter({
     routeTree,

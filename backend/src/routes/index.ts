@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { listarContasAbertas, listarProjetos } from "../services/dashboard-financeiro.js";
+import { listarCentrosResultado, listarContasAbertas, listarProjetos } from "../services/dashboard-financeiro.js";
 import { alunosAtivosViaCerta } from "../services/viacerta.js";
 import { empresaParam } from "../utils/empresa.js";
 import { config } from "../config.js";
@@ -8,6 +8,7 @@ import { getDb } from "../db/connection.js";
 import { dashboardRouter, empresasRouter, vendedoresRouter } from "./dashboard.js";
 import { createSessionToken, getTotpSetup, isValidTotpCode } from "../auth.js";
 import { getSyncState } from "../sync/state.js";
+import { FATURAMENTO_TOPS, inListClause } from "../services/operacoes.js";
 
 export const router = Router();
 
@@ -22,6 +23,30 @@ function tableCount(table: string): number | null {
   }
 }
 
+function latestValue(table: string, column: string): string | null {
+  try {
+    const row = getDb().prepare(`SELECT MAX(${column}) AS value FROM ${table}`).get() as
+      | { value: string | null }
+      | undefined;
+    return row?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function latestFaturamentoDate(): string | null {
+  try {
+    const row = getDb()
+      .prepare(`SELECT MAX(DTFATUR) AS value FROM pedidos
+        WHERE ${inListClause("CODTIPOPER", FATURAMENTO_TOPS)}
+          AND STATUSNOTA = 'L' AND DTFATUR IS NOT NULL`)
+      .get() as { value: string | null } | undefined;
+    return row?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
 router.get("/health", (_req, res) => {
   res.json({
     status: "ok",
@@ -30,12 +55,23 @@ router.get("/health", (_req, res) => {
     sync: {
       pedidos: getSyncState("pedidos") ?? null,
       titulos: getSyncState("titulos") ?? null,
+      centros_resultado: getSyncState("centros_resultado") ?? null,
+      projetos: getSyncState("projetos") ?? null,
+      rateio: getSyncState("rateio") ?? null,
       estoque: getSyncState("estoque") ?? null,
     },
     rows: {
       pedidos: tableCount("pedidos"),
       titulos: tableCount("titulos"),
+      centros_resultado: tableCount("centros_resultado"),
+      projetos: tableCount("projetos"),
+      titulos_rateio: tableCount("titulos_rateio"),
       produto_estoque: tableCount("produto_estoque"),
+    },
+    data_available: {
+      pedidos_ate: latestFaturamentoDate(),
+      titulos_ate: latestValue("titulos", "DTNEG"),
+      estoque_ate: latestValue("produto_estoque", "synced_at"),
     },
   });
 });
@@ -123,6 +159,14 @@ router.get("/pagar", (req, res, next) => {
 router.get("/projetos", (_req, res, next) => {
   try {
     res.json({ projetos: listarProjetos() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/centros-resultado", (_req, res, next) => {
+  try {
+    res.json({ centros_resultado: listarCentrosResultado() });
   } catch (err) {
     next(err);
   }

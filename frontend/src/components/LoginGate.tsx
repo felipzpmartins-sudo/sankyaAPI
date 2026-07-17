@@ -1,303 +1,127 @@
-import { useEffect, useState, type ReactNode, type FormEvent } from "react";
-import { Lock, ArrowRight } from "lucide-react";
-import { SmokeyBackground } from "@/components/ui/smokey-background";
-import { clearStoredAuthToken, getStoredAuthToken, setStoredAuthToken } from "@/lib/auth";
-import { getApiBaseUrl } from "@/lib/api/env";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { LockKeyhole } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  clearStoredAuthToken,
+  getApiBaseUrl,
+  getStoredAuthToken,
+  setStoredAuthToken,
+} from "@/lib/api";
 
 export function LoginGate({ children }: { children: ReactNode }) {
-  const [authed, setAuthed] = useState(false);
   const [ready, setReady] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
   const [code, setCode] = useState("");
-  const [setup, setSetup] = useState<{ qrCodeUrl: string; manualKey: string } | null>(null);
-  const [error, setError] = useState(false);
-  const [shake, setShake] = useState(false);
-  const [focused, setFocused] = useState(false);
+  const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [setup, setSetup] = useState<{ qrCodeUrl: string; manualKey: string } | null>(null);
+  const [setupError, setSetupError] = useState(false);
 
   useEffect(() => {
-    void fetch(`${getApiBaseUrl()}/api/auth/setup`, {
-      headers: { Accept: "application/json" },
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((body: unknown) => {
-        if (
-          body &&
-          typeof body === "object" &&
-          "qrCodeUrl" in body &&
-          "manualKey" in body &&
-          typeof (body as { qrCodeUrl: unknown }).qrCodeUrl === "string" &&
-          typeof (body as { manualKey: unknown }).manualKey === "string"
-        ) {
-          setSetup(body as { qrCodeUrl: string; manualKey: string });
-        }
+    fetch(`${getApiBaseUrl()}/api/auth/setup`, { headers: { Accept: "application/json" } })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Falha ao carregar configuracao");
+        return response.json() as Promise<{ qrCodeUrl: string; manualKey: string }>;
       })
-      .catch(() => {
-        void 0;
-      });
+      .then(setSetup)
+      .catch(() => setSetupError(true));
 
-    const storedToken = getStoredAuthToken();
-    if (!storedToken) {
+    const token = getStoredAuthToken();
+    if (!token) {
       setReady(true);
       return;
     }
-
-    void fetch(`${getApiBaseUrl()}/api/auth/session`, {
-      headers: { Accept: "application/json", Authorization: `Bearer ${storedToken}` },
+    fetch(`${getApiBaseUrl()}/api/auth/session`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
     })
-      .then((res) => {
-        if (!res.ok) throw new Error("invalid_session");
-        setAuthed(true);
+      .then((response) => {
+        if (!response.ok) throw new Error("Sessao expirada");
+        setAuthenticated(true);
       })
-      .catch(() => {
-        clearStoredAuthToken();
-      })
+      .catch(() => clearStoredAuthToken())
       .finally(() => setReady(true));
   }, []);
 
-  if (!ready) return null;
-  if (authed) return <>{children}</>;
-
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    const cleanCode = code.replace(/\D/g, "");
-    if (cleanCode.length !== 6) return;
-
+  async function submit(event: FormEvent) {
+    event.preventDefault();
     setSubmitting(true);
+    setError("");
     try {
-      const res = await fetch(`${getApiBaseUrl()}/api/auth/validate`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/auth/validate`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ code: cleanCode }),
+        body: JSON.stringify({ code }),
       });
-      if (!res.ok) throw new Error("invalid_code");
-      const body = (await res.json()) as { accessToken?: unknown };
-      if (typeof body.accessToken !== "string") throw new Error("missing_session");
+      const body = await response.json() as { accessToken?: string; message?: string };
+      if (!response.ok || !body.accessToken) throw new Error(body.message ?? "Codigo invalido");
       setStoredAuthToken(body.accessToken);
-      setAuthed(true);
-    } catch {
-      clearStoredAuthToken();
-      setError(true);
-      setShake(true);
-      setTimeout(() => setShake(false), 500);
+      setAuthenticated(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Falha ao autenticar");
     } finally {
       setSubmitting(false);
     }
-  };
+  }
+
+  if (!ready) return <div className="min-h-screen bg-background" />;
+  if (authenticated) return <>{children}</>;
 
   return (
-    <div
-      className="relative min-h-screen w-full flex items-center justify-center px-6 overflow-hidden"
-      style={{ background: "#000000", fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif" }}
-    >
-      <SmokeyBackground color="#1E5FCC" />
-      <div className="absolute inset-0 backdrop-blur-2xl bg-black/40" />
-
-      <div className="relative z-10 grid w-full max-w-[900px] items-stretch gap-4 md:grid-cols-[420px_1fr]">
-        <div
-          className={`w-full ${shake ? "animate-[shake_0.4s_ease]" : ""}`}
-          style={{
-            background: "rgba(18, 21, 32, 0.65)",
-            border: "1px solid rgba(77, 163, 255, 0.12)",
-            borderRadius: 18,
-            padding: 40,
-            boxShadow: "0 40px 100px -20px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03) inset",
-            backdropFilter: "blur(24px)",
-          }}
-        >
-          <div className="flex flex-col items-center mb-8">
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 14,
-              background: "linear-gradient(135deg, #4DA3FF 0%, #1E5FCC 100%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#000000",
-              boxShadow: "0 10px 30px -10px rgba(77, 163, 255, 0.5)",
-              marginBottom: 18,
-            }}
-          >
-            <Lock size={22} strokeWidth={2.5} />
+    <main className="grid min-h-screen place-items-center bg-background px-4">
+      <div className="grid w-full max-w-4xl gap-4 md:grid-cols-[minmax(0,1fr)_360px]">
+        <form onSubmit={submit} className="rounded-2xl border border-border bg-surface p-8 shadow-2xl">
+          <div className="mb-6 grid h-12 w-12 place-items-center rounded-xl bg-primary/15 text-primary">
+            <LockKeyhole className="h-5 w-5" />
           </div>
-          <h1
-            style={{
-              color: "#fff",
-              fontSize: 22,
-              fontWeight: 600,
-              letterSpacing: "-0.02em",
-              margin: 0,
-            }}
-          >
-            Maker.OS Command Center
-          </h1>
-          <p
-            style={{
-              color: "rgba(255,255,255,0.45)",
-              fontSize: 12,
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-              marginTop: 8,
-            }}
-          >
-            Acesso restrito
+          <h1 className="text-2xl font-semibold text-foreground">Sankya 2.0</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Escaneie o QR Code ao lado no Google Authenticator e informe o código de 6 dígitos.
           </p>
-        </div>
-
-          <form onSubmit={onSubmit}>
-          <div className="relative">
-            <input
-              type="password"
-              inputMode="numeric"
-              maxLength={6}
-              autoFocus
-              value={code}
-              onChange={(e) => {
-                setCode(e.target.value.replace(/\D/g, "").slice(0, 6));
-                setError(false);
-              }}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              placeholder=" "
-              id="pw"
-              style={{
-                width: "100%",
-                background: "rgba(10, 12, 16, 0.6)",
-                border: `1px solid ${error ? "#dc2626" : focused ? "#4DA3FF" : "rgba(255,255,255,0.08)"}`,
-                borderRadius: 10,
-                padding: "18px 16px 14px",
-                color: "#fff",
-                fontSize: 14,
-                outline: "none",
-                transition: "border-color 0.2s, box-shadow 0.2s",
-                fontFamily: "inherit",
-                boxShadow: focused && !error ? "0 0 0 4px rgba(77, 163, 255, 0.08)" : "none",
-              }}
-            />
-            <label
-              htmlFor="pw"
-              style={{
-                position: "absolute",
-                left: 16,
-                top: focused || code ? 6 : 16,
-                fontSize: focused || code ? 10 : 13,
-                color: focused ? "#4DA3FF" : "rgba(255,255,255,0.5)",
-                letterSpacing: focused || code ? "0.1em" : "0",
-                textTransform: focused || code ? "uppercase" : "none",
-                pointerEvents: "none",
-                transition: "all 0.2s ease",
-              }}
-            >
-              Codigo do Google Authenticator
-            </label>
-          </div>
-
-          {error && (
-            <div style={{ color: "#ef4444", fontSize: 12, marginTop: 10, paddingLeft: 4 }}>
-              Codigo invalido, expirado ou backend indisponivel.
-            </div>
-          )}
-
-          <button
-            type="submit"
-            className="group"
-            disabled={submitting}
-            style={{
-              marginTop: 24,
-              width: "100%",
-              background: "linear-gradient(135deg, #4DA3FF 0%, #1E5FCC 100%)",
-              color: "#000000",
-              border: "none",
-              borderRadius: 10,
-              padding: "14px 16px",
-              fontSize: 14,
-              fontWeight: 600,
-              letterSpacing: "-0.005em",
-              cursor: "pointer",
-              transition: "filter 0.15s, transform 0.15s",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-              boxShadow: "0 10px 30px -10px rgba(77, 163, 255, 0.4)",
-              opacity: submitting ? 0.75 : 1,
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.filter = "brightness(1.08)")}
-            onMouseLeave={(e) => (e.currentTarget.style.filter = "brightness(1)")}
-          >
+          <Input
+            className="mt-6 h-12 text-center text-lg tracking-[0.35em]"
+            inputMode="numeric"
+            autoFocus
+            maxLength={6}
+            value={code}
+            onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+            aria-label="Código de autenticação"
+          />
+          {error && <p className="mt-3 text-sm text-danger">{error}</p>}
+          <Button className="mt-5 w-full" disabled={code.length !== 6 || submitting}>
             {submitting ? "Validando..." : "Entrar"}
-            <ArrowRight size={16} strokeWidth={2.5} />
-          </button>
-          </form>
+          </Button>
+        </form>
 
-          <div
-          style={{
-            marginTop: 28,
-            color: "rgba(255,255,255,0.3)",
-            fontSize: 11,
-            textAlign: "center",
-            letterSpacing: "0.05em",
-          }}
-        >
-          Apenas usuários autorizados
-          </div>
-        </div>
-
-        <div
-          className="flex w-full flex-col items-center justify-center"
-          style={{
-            background: "rgba(18, 21, 32, 0.65)",
-            border: "1px solid rgba(77, 163, 255, 0.12)",
-            borderRadius: 18,
-            padding: 32,
-            boxShadow: "0 40px 100px -20px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03) inset",
-            backdropFilter: "blur(24px)",
-          }}
-        >
-          <div
-            style={{
-              color: "#fff",
-              fontSize: 16,
-              fontWeight: 600,
-              letterSpacing: "-0.01em",
-              textAlign: "center",
-            }}
-          >
-            Escaneie no Google Authenticator
-          </div>
-          <div
-            className="mt-5 flex h-[260px] w-[260px] items-center justify-center"
-            style={{ background: "#fff", borderRadius: 18, padding: 10 }}
-          >
+        <section className="flex flex-col items-center justify-center rounded-2xl border border-border bg-surface p-6 shadow-2xl">
+          <h2 className="text-base font-semibold text-foreground">Google Authenticator</h2>
+          <p className="mt-1 text-center text-xs text-muted-foreground">
+            Use o botão + e escolha “Ler código QR”.
+          </p>
+          <div className="mt-5 grid h-[260px] w-[260px] place-items-center rounded-2xl bg-white p-3">
             {setup ? (
               <img
                 src={setup.qrCodeUrl}
-                alt="QR Code para Google Authenticator"
+                alt="QR Code para configurar o Google Authenticator"
                 className="h-full w-full"
               />
             ) : (
-              <div style={{ color: "#111827", fontSize: 12 }}>Carregando QR Code...</div>
+              <span className="text-center text-sm text-slate-600">
+                {setupError ? "Não foi possível carregar o QR Code." : "Carregando QR Code..."}
+              </span>
             )}
           </div>
           {setup && (
-            <div
-              className="mt-4 w-full break-all text-center"
-              style={{ color: "rgba(255,255,255,0.48)", fontSize: 11, lineHeight: 1.6 }}
-            >
-              Chave manual: {setup.manualKey}
+            <div className="mt-4 w-full text-center">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Chave manual</p>
+              <code className="mt-1 block break-all rounded-lg bg-background px-3 py-2 text-xs text-foreground">
+                {setup.manualKey}
+              </code>
             </div>
           )}
-        </div>
+        </section>
       </div>
-
-      <style>{`
-        @keyframes shake {
-          0%, 100% { transform: translateX(0); }
-          25% { transform: translateX(-8px); }
-          75% { transform: translateX(8px); }
-        }
-      `}</style>
-    </div>
+    </main>
   );
 }

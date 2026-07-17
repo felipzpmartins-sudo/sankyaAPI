@@ -9,38 +9,82 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as QualidadeRouteImport } from './routes/qualidade'
+import { Route as DreRouteImport } from './routes/dre'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ModulosModuloRouteImport } from './routes/modulos.$modulo'
 
+const QualidadeRoute = QualidadeRouteImport.update({
+  id: '/qualidade',
+  path: '/qualidade',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DreRoute = DreRouteImport.update({
+  id: '/dre',
+  path: '/dre',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ModulosModuloRoute = ModulosModuloRouteImport.update({
+  id: '/modulos/$modulo',
+  path: '/modulos/$modulo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/dre': typeof DreRoute
+  '/qualidade': typeof QualidadeRoute
+  '/modulos/$modulo': typeof ModulosModuloRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/dre': typeof DreRoute
+  '/qualidade': typeof QualidadeRoute
+  '/modulos/$modulo': typeof ModulosModuloRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/dre': typeof DreRoute
+  '/qualidade': typeof QualidadeRoute
+  '/modulos/$modulo': typeof ModulosModuloRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/dre' | '/qualidade' | '/modulos/$modulo'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/dre' | '/qualidade' | '/modulos/$modulo'
+  id: '__root__' | '/' | '/dre' | '/qualidade' | '/modulos/$modulo'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DreRoute: typeof DreRoute
+  QualidadeRoute: typeof QualidadeRoute
+  ModulosModuloRoute: typeof ModulosModuloRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/qualidade': {
+      id: '/qualidade'
+      path: '/qualidade'
+      fullPath: '/qualidade'
+      preLoaderRoute: typeof QualidadeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dre': {
+      id: '/dre'
+      path: '/dre'
+      fullPath: '/dre'
+      preLoaderRoute: typeof DreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,11 +92,21 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/modulos/$modulo': {
+      id: '/modulos/$modulo'
+      path: '/modulos/$modulo'
+      fullPath: '/modulos/$modulo'
+      preLoaderRoute: typeof ModulosModuloRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DreRoute: DreRoute,
+  QualidadeRoute: QualidadeRoute,
+  ModulosModuloRoute: ModulosModuloRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -31,6 +31,11 @@ export type FaturamentoConsolidado = {
   semana_7d: number;
   mes_atual: number;
   ano_atual: number;
+  faturamento_bruto: number;
+  qtd_notas: number;
+  ticket_medio: number;
+  variacao_pct: number;
+  evolucao: Array<{ mes: string; atual: number; anterior: number }>;
   snapshot_at: string | null;
 };
 
@@ -195,10 +200,37 @@ export type VendedorRankingLinha = {
   APELIDO: string;
   ativo: 0 | 1;
   faturamento: number;
+  qtd_notas: number;
+  ticket_medio: number;
   percentual: number;
 };
 
 export type PeriodoVendas = "dia" | "mes" | "ano";
+
+export type VendasEscopo = {
+  dataInicio?: string;
+  dataFim?: string;
+  codProj?: number[];
+};
+
+function vendasEscopoSql(alias: string, escopo: VendasEscopo = {}): { clause: string; params: number[] } {
+  if (!escopo.codProj?.length) return { clause: "", params: [] };
+  return {
+    clause: `${alias}.CODPROJ IN (${escopo.codProj.map(() => "?").join(", ")})`,
+    params: escopo.codProj,
+  };
+}
+
+function rangeVendas(dataReferencia: string, periodo: PeriodoVendas, escopo: VendasEscopo = {}): [string, string] {
+  if (escopo.dataInicio && escopo.dataFim) return [escopo.dataInicio, addDaysIso(escopo.dataFim, 1)];
+  return periodoDateRange(dataReferencia, periodo);
+}
+
+function addYearsIso(date: string, years: number): string {
+  const next = new Date(`${date}T00:00:00.000Z`);
+  next.setUTCFullYear(next.getUTCFullYear() + years);
+  return next.toISOString().slice(0, 10);
+}
 
 export type LancamentoHojeLinha = {
   NUNOTA: number;
@@ -214,6 +246,8 @@ export type LancamentoHojeLinha = {
 export function lancamentosHoje(
   vendedor: VendedorFiltro = { modo: "todos" },
   dataReferencia?: string,
+  empresa: EmpresaFiltro = { modo: "todas" },
+  escopo: VendasEscopo = {},
 ): {
   periodo: string;
   total: number;
@@ -222,7 +256,11 @@ export function lancamentosHoje(
 } {
   const refDate = normalizeReferenceDate(dataReferencia);
   const vendedorSql = vendedorToSqlClause(vendedor, "p.CODVEND");
-  const vendedorJoin = vendedorSql.clause ? ` AND ${vendedorSql.clause}` : "";
+  const empresaSql = empresaToSqlClause(empresa, "p.CODEMP");
+  const projetoSql = vendasEscopoSql("p", escopo);
+  const extras = [vendedorSql, empresaSql, projetoSql];
+  const extraWhere = extras.filter((item) => item.clause).map((item) => ` AND ${item.clause}`).join("");
+  const extraParams = extras.flatMap((item) => item.params);
 
   const rows = getDb()
     .prepare(
@@ -244,12 +282,12 @@ export function lancamentosHoje(
        LEFT JOIN pedido_itens pi ON pi.NUNOTA = p.NUNOTA
        LEFT JOIN produtos pr ON pr.CODPROD = pi.CODPROD
        WHERE ${WHERE_FATURAMENTO}
-         AND DTFATUR = date(?)${vendedorJoin}
+         AND p.DTFATUR = date(?)${extraWhere}
        GROUP BY p.NUNOTA, p.NUMNOTA, p.SERIENOTA, e.NOMEFANTASIA, p.CODVEND, v.APELIDO, p.VLRNOTA
        ORDER BY p.DTFATUR DESC, p.NUNOTA DESC
        LIMIT 5`,
     )
-    .all(refDate, ...vendedorSql.params) as {
+    .all(refDate, ...extraParams) as {
       NUNOTA: number;
       NUMNOTA: number | null;
       SERIENOTA: string | null;
@@ -277,11 +315,15 @@ export function lancamentosHoje(
       valor: round2(row.valor),
     })),
   };
+
 }
 
 export function vendedoresRanking(
   dataReferencia?: string,
   periodo: PeriodoVendas = "ano",
+  empresa: EmpresaFiltro = { modo: "todas" },
+  vendedor: VendedorFiltro = { modo: "todos" },
+  escopo: VendasEscopo = {},
 ): {
   periodo: string;
   total: number;
@@ -289,27 +331,35 @@ export function vendedoresRanking(
   ranking: VendedorRankingLinha[];
 } {
   const refDate = normalizeReferenceDate(dataReferencia);
-  const [periodoInicio, periodoFim] = periodoDateRange(refDate, periodo);
+  const [periodoInicio, periodoFim] = rangeVendas(refDate, periodo, escopo);
+  const empresaSql = empresaToSqlClause(empresa, "p.CODEMP");
+  const vendedorSql = vendedorToSqlClause(vendedor, "p.CODVEND");
+  const projetoSql = vendasEscopoSql("p", escopo);
+  const extras = [empresaSql, vendedorSql, projetoSql];
+  const extraJoin = extras.filter((item) => item.clause).map((item) => ` AND ${item.clause}`).join("");
+  const extraParams = extras.flatMap((item) => item.params);
   const rows = getDb()
     .prepare(
       `SELECT
          v.CODVEND,
          v.APELIDO,
          v.ativo,
-         COALESCE(SUM(p.VLRNOTA), 0) AS faturamento
+         COALESCE(SUM(p.VLRNOTA), 0) AS faturamento,
+         COUNT(p.NUNOTA) AS qtd_notas
        FROM vendedores v
        LEFT JOIN pedidos p
          ON p.CODVEND = v.CODVEND
          AND ${JOIN_PEDIDO_FATURAMENTO}
-         AND ${vendasPeriodoClause("p.DTFATUR")}
+         AND ${vendasPeriodoClause("p.DTFATUR")}${extraJoin}
        GROUP BY v.CODVEND, v.APELIDO, v.ativo
        ORDER BY faturamento DESC, v.APELIDO`,
     )
-    .all(periodoInicio, periodoFim) as {
+    .all(periodoInicio, periodoFim, ...extraParams) as {
     CODVEND: number;
     APELIDO: string;
     ativo: 0 | 1;
     faturamento: number;
+    qtd_notas: number;
   }[];
 
   const total = rows.reduce((acc, row) => acc + row.faturamento, 0);
@@ -323,6 +373,8 @@ export function vendedoresRanking(
       APELIDO: row.APELIDO,
       ativo: row.ativo,
       faturamento: round2(row.faturamento),
+      qtd_notas: row.qtd_notas,
+      ticket_medio: row.qtd_notas > 0 ? round2(row.faturamento / row.qtd_notas) : 0,
       percentual: total > 0 ? round2((row.faturamento / total) * 100) : 0,
     })),
   };
@@ -332,13 +384,18 @@ export function faturamentoConsolidado(
   empresa: EmpresaFiltro,
   vendedor: VendedorFiltro = { modo: "todos" },
   dataReferencia?: string,
+  escopo: VendasEscopo = {},
 ): FaturamentoConsolidado {
   const refDate = normalizeReferenceDate(dataReferencia);
+  const [selecionadoInicio, selecionadoFim] = rangeVendas(refDate, "mes", escopo);
+  const anteriorInicio = addYearsIso(selecionadoInicio, -1);
+  const anteriorFim = addYearsIso(selecionadoFim, -1);
   const anoInicio = `${refDate.slice(0, 4)}-01-01`;
   const anoFim = `${Number(refDate.slice(0, 4)) + 1}-01-01`;
   const empresaSql = empresaToSqlClause(empresa);
   const vendedorSql = vendedorToSqlClause(vendedor);
-  const whereExtras = [empresaSql.clause, vendedorSql.clause]
+  const projetoSql = vendasEscopoSql("pedidos", escopo);
+  const whereExtras = [empresaSql.clause, vendedorSql.clause, projetoSql.clause]
     .filter(Boolean)
     .map((c) => ` AND ${c}`)
     .join("");
@@ -362,6 +419,7 @@ export function faturamentoConsolidado(
     .get(
       ...empresaSql.params,
       ...vendedorSql.params,
+      ...projetoSql.params,
       anoInicio,
       anoFim,
       refDate,
@@ -375,12 +433,71 @@ export function faturamentoConsolidado(
     ano_atual: number;
   };
 
+  const comparativo = getDb()
+    .prepare(`
+      SELECT
+        COUNT(CASE WHEN DTFATUR >= date(?) AND DTFATUR < date(?) THEN 1 END) AS qtd_notas,
+        COALESCE(SUM(CASE WHEN DTFATUR >= date(?) AND DTFATUR < date(?) THEN VLRNOTA ELSE 0 END), 0) AS atual,
+        COALESCE(SUM(CASE WHEN DTFATUR >= date(?) AND DTFATUR < date(?) THEN VLRNOTA ELSE 0 END), 0) AS anterior
+      FROM pedidos
+      WHERE ${WHERE_FATURAMENTO}${whereExtras}
+        AND DTFATUR >= date(?) AND DTFATUR < date(?)
+    `)
+    .get(
+      selecionadoInicio,
+      selecionadoFim,
+      selecionadoInicio,
+      selecionadoFim,
+      anteriorInicio,
+      anteriorFim,
+      ...empresaSql.params,
+      ...vendedorSql.params,
+      ...projetoSql.params,
+      anteriorInicio,
+      selecionadoFim,
+    ) as { qtd_notas: number; atual: number; anterior: number };
+
+  const variacaoPct = comparativo.anterior > 0
+    ? ((comparativo.atual - comparativo.anterior) / comparativo.anterior) * 100
+    : 0;
+
+  const ano = Number(refDate.slice(0, 4));
+  const evolucaoRows = getDb()
+    .prepare(`
+      SELECT strftime('%Y-%m', DTFATUR) AS mes, COALESCE(SUM(VLRNOTA), 0) AS total
+      FROM pedidos
+      WHERE ${WHERE_FATURAMENTO}${whereExtras}
+        AND DTFATUR >= date(?) AND DTFATUR < date(?)
+      GROUP BY strftime('%Y-%m', DTFATUR)
+      ORDER BY mes
+    `)
+    .all(
+      ...empresaSql.params,
+      ...vendedorSql.params,
+      ...projetoSql.params,
+      `${ano - 1}-01-01`,
+      `${ano + 1}-01-01`,
+    ) as Array<{ mes: string; total: number }>;
+  const evolucaoMap = new Map(evolucaoRows.map((item) => [item.mes, item.total]));
+  const meses = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  const ultimoMes = Number(refDate.slice(5, 7));
+  const evolucao = meses.slice(0, ultimoMes).map((mes, index) => ({
+    mes,
+    atual: round2(evolucaoMap.get(`${ano}-${String(index + 1).padStart(2, "0")}`) ?? 0),
+    anterior: round2(evolucaoMap.get(`${ano - 1}-${String(index + 1).padStart(2, "0")}`) ?? 0),
+  }));
+
   return {
     filtro: describeFiltros(empresa, vendedor),
     dia: round2(row.dia),
     semana_7d: round2(row.semana_7d),
     mes_atual: round2(row.mes_atual),
     ano_atual: round2(row.ano_atual),
+    faturamento_bruto: round2(comparativo.atual),
+    qtd_notas: comparativo.qtd_notas,
+    ticket_medio: comparativo.qtd_notas > 0 ? round2(comparativo.atual / comparativo.qtd_notas) : 0,
+    variacao_pct: round2(variacaoPct),
+    evolucao,
     snapshot_at: snapshotPedidosAt(),
   };
 }
@@ -395,9 +512,11 @@ export function faturamentoConsolidado(
  * "a Camila vendeu quanto em cada empresa?".
  */
 export function faturamentoPorEmpresa(
+  empresa: EmpresaFiltro = { modo: "todas" },
   vendedor: VendedorFiltro = { modo: "todos" },
   dataReferencia?: string,
   periodo: PeriodoVendas = "ano",
+  escopo: VendasEscopo = {},
 ): {
   periodo: string;
   total: number;
@@ -405,9 +524,13 @@ export function faturamentoPorEmpresa(
   empresas: FaturamentoEmpresa[];
 } {
   const refDate = normalizeReferenceDate(dataReferencia);
-  const [periodoInicio, periodoFim] = periodoDateRange(refDate, periodo);
+  const [periodoInicio, periodoFim] = rangeVendas(refDate, periodo, escopo);
+  const empresaSql = empresaToSqlClause(empresa, "e.CODEMP");
   const vendedorSql = vendedorToSqlClause(vendedor, "p.CODVEND");
-  const vendedorJoin = vendedorSql.clause ? ` AND ${vendedorSql.clause}` : "";
+  const projetoSql = vendasEscopoSql("p", escopo);
+  const pedidoExtras = [vendedorSql, projetoSql];
+  const pedidoJoin = pedidoExtras.filter((item) => item.clause).map((item) => ` AND ${item.clause}`).join("");
+  const empresaWhere = empresaSql.clause ? ` AND ${empresaSql.clause}` : "";
 
   const rows = getDb()
     .prepare(
@@ -419,12 +542,12 @@ export function faturamentoPorEmpresa(
        LEFT JOIN pedidos p
          ON p.CODEMP = e.CODEMP
          AND ${JOIN_PEDIDO_FATURAMENTO}
-         AND ${vendasPeriodoClause("p.DTFATUR")}${vendedorJoin}
-       WHERE e.${WHERE_EMPRESA_VISIVEL}
+         AND ${vendasPeriodoClause("p.DTFATUR")}${pedidoJoin}
+       WHERE e.${WHERE_EMPRESA_VISIVEL}${empresaWhere}
        GROUP BY e.CODEMP, e.NOMEFANTASIA
        ORDER BY faturamento DESC`,
     )
-    .all(periodoInicio, periodoFim, ...vendedorSql.params) as {
+    .all(periodoInicio, periodoFim, ...vendedorSql.params, ...projetoSql.params, ...empresaSql.params) as {
       CODEMP: number;
       NOMEFANTASIA: string;
       faturamento: number;
@@ -460,12 +583,13 @@ export function empresasResumo(
   vendedor: VendedorFiltro = { modo: "todos" },
   dataReferencia?: string,
   periodo: PeriodoVendas = "ano",
+  escopo: VendasEscopo = {},
 ): EmpresasResumo {
   return {
     empresas: listarEmpresas(),
     vendedores: listarVendedores(),
-    faturamento: faturamentoConsolidado(empresa, vendedor, dataReferencia),
-    faturamento_por_empresa: faturamentoPorEmpresa(vendedor, dataReferencia, periodo),
+    faturamento: faturamentoConsolidado(empresa, vendedor, dataReferencia, escopo),
+    faturamento_por_empresa: faturamentoPorEmpresa(empresa, vendedor, dataReferencia, periodo, escopo),
     financeiro_ano: dre(empresa, "ano"),
   };
 }

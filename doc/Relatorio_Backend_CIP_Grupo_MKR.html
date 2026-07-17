@@ -1,0 +1,952 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Relatorio Tecnico Executivo - Backend CIP Grupo MKR</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 18mm 16mm 18mm 16mm;
+    }
+
+    :root {
+      --ink: #172033;
+      --muted: #5f6b7a;
+      --blue: #1f5f99;
+      --blue-dark: #163d63;
+      --line: #d7dee8;
+      --fill: #f3f6fa;
+      --fill-strong: #e8eef6;
+      --ok: #0f766e;
+      --warn: #946200;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 11px;
+      line-height: 1.42;
+      background: #fff;
+    }
+
+    .page {
+      break-after: page;
+      min-height: 260mm;
+    }
+
+    .page:last-child {
+      break-after: auto;
+    }
+
+    .cover {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 260mm;
+      padding: 5mm 0 0;
+    }
+
+    .kicker {
+      margin: 0 0 10px;
+      color: var(--blue);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-size: 10px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 29px;
+      line-height: 1.06;
+      color: var(--blue-dark);
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 14px;
+      max-width: 600px;
+    }
+
+    .meta-grid {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 18px 0 24px;
+      table-layout: fixed;
+    }
+
+    .meta-grid td {
+      padding: 7px 8px;
+      border-top: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    .meta-grid .label {
+      width: 118px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .lead {
+      margin: 0 0 16px;
+      padding: 13px 14px;
+      border-left: 4px solid var(--blue);
+      background: var(--fill);
+      font-size: 12px;
+    }
+
+    .cover-footer {
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    header.running {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      color: var(--muted);
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 7px;
+      margin-bottom: 18px;
+      font-size: 9.5px;
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      color: var(--blue);
+      font-size: 18px;
+      line-height: 1.18;
+      break-after: avoid;
+    }
+
+    h3 {
+      margin: 16px 0 7px;
+      color: var(--blue-dark);
+      font-size: 13px;
+      break-after: avoid;
+    }
+
+    p {
+      margin: 0 0 8px;
+    }
+
+    ul, ol {
+      margin: 0 0 10px 19px;
+      padding: 0;
+    }
+
+    li {
+      margin: 0 0 5px;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin: 12px 0 16px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 12px;
+      background: #fff;
+      break-inside: avoid;
+    }
+
+    .card h3 {
+      margin-top: 0;
+    }
+
+    .metric-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 9px;
+      margin: 14px 0 18px;
+    }
+
+    .metric {
+      padding: 10px;
+      background: var(--fill);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      min-height: 62px;
+    }
+
+    .metric .num {
+      font-size: 20px;
+      color: var(--blue-dark);
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+
+    .metric .txt {
+      color: var(--muted);
+      font-size: 9.5px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 14px;
+      table-layout: fixed;
+      break-inside: avoid;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 6px 7px;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--fill-strong);
+      color: var(--blue-dark);
+      text-align: left;
+      font-weight: 700;
+    }
+
+    .small {
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: var(--fill);
+      border: 1px solid var(--line);
+      color: var(--blue-dark);
+      font-size: 9px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .status-ok {
+      color: var(--ok);
+      font-weight: 700;
+    }
+
+    .status-warn {
+      color: var(--warn);
+      font-weight: 700;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr 28px 1fr 28px 1fr;
+      align-items: stretch;
+      gap: 7px;
+      margin: 12px 0 18px;
+      break-inside: avoid;
+    }
+
+    .flow-box {
+      border: 1px solid var(--line);
+      background: var(--fill);
+      border-radius: 6px;
+      padding: 10px;
+      min-height: 78px;
+    }
+
+    .flow-arrow {
+      align-self: center;
+      text-align: center;
+      color: var(--blue);
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .toc {
+      columns: 2;
+      column-gap: 26px;
+      margin-top: 14px;
+    }
+
+    .toc p {
+      break-inside: avoid;
+      margin-bottom: 7px;
+    }
+
+    .note {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--warn);
+      background: #fff9e8;
+      margin: 12px 0 14px;
+      break-inside: avoid;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      padding-top: 8px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 9.5px;
+    }
+
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 10px;
+      background: #f2f4f7;
+      padding: 1px 3px;
+      border-radius: 3px;
+    }
+
+    .mono {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 10px;
+    }
+
+    @media print {
+      body {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="page cover">
+    <div>
+      <p class="kicker">Relatorio tecnico executivo</p>
+      <h1>Backend CIP<br />Central de Inteligencia e Performance</h1>
+      <p class="subtitle">Resumo do backend desenvolvido para o Grupo MKR, incluindo arquitetura, integracoes, sincronizacao de dados, seguranca, rotas entregues e proximos passos.</p>
+
+      <table class="meta-grid">
+        <tr>
+          <td class="label">Projeto</td>
+          <td>CIP - Dashboard executivo integrado ao Sankhya</td>
+        </tr>
+        <tr>
+          <td class="label">Escopo</td>
+          <td>Backend Node.js, API REST, snapshot SQLite, sincronizadores Sankhya, autenticacao e indicadores de negocio</td>
+        </tr>
+        <tr>
+          <td class="label">Data</td>
+          <td>29 de junho de 2026</td>
+        </tr>
+        <tr>
+          <td class="label">Status</td>
+          <td><span class="status-ok">Implementado na fatia atual</span>, com pendencias mapeadas para evolucao</td>
+        </tr>
+      </table>
+
+      <p class="lead">
+        O backend foi construido para centralizar a comunicacao com o Sankhya, proteger credenciais, acelerar as consultas do dashboard por meio de um snapshot SQLite e entregar uma camada REST estavel para o frontend. A solucao ja cobre autenticacao, sincronizacao das principais entidades, indicadores financeiros, vendas, estoque, clientes, RH, entregas e integracao Via Certa.
+      </p>
+
+      <div class="metric-row">
+        <div class="metric">
+          <div class="num">Node 22</div>
+          <div class="txt">Runtime minimo do backend</div>
+        </div>
+        <div class="metric">
+          <div class="num">SQLite</div>
+          <div class="txt">Snapshot local para performance</div>
+        </div>
+        <div class="metric">
+          <div class="num">5 min</div>
+          <div class="txt">Intervalo padrao de sync quente</div>
+        </div>
+        <div class="metric">
+          <div class="num">TOTP</div>
+          <div class="txt">Autenticacao do dashboard</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cover-footer">
+      Documento preparado a partir do codigo atual do repositorio <span class="mono">sankyaAPI/backend</span>. Informacoes sensiveis, segredos e credenciais nao foram incluidas.
+    </div>
+  </section>
+
+  <section class="page">
+    <header class="running">
+      <span>Backend CIP - Grupo MKR</span>
+      <span>Resumo para envio</span>
+    </header>
+
+    <h2>1. Sumario executivo</h2>
+    <p>O backend do CIP e uma API Express em TypeScript responsavel por integrar o dashboard do Grupo MKR ao Sankhya ERP e a servicos externos. Ele executa a coleta de dados, normaliza informacoes de negocio, grava um snapshot local em SQLite e disponibiliza endpoints REST para consumo do frontend.</p>
+
+    <div class="two-col">
+      <div class="card">
+        <h3>O que ja foi entregue</h3>
+        <ul>
+          <li>API REST estruturada em <span class="mono">/api</span>.</li>
+          <li>Autenticacao por TOTP e token de sessao assinado.</li>
+          <li>Cliente Sankhya com OAuth, cache de token e retry.</li>
+          <li>Snapshot SQLite com schema versionado.</li>
+          <li>Scheduler automatico de sincronizacao.</li>
+          <li>Dashboards de vendas, financeiro, estoque, clientes, RH e entregas.</li>
+          <li>Integracao Via Certa para alunos ativos.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Valor pratico</h3>
+        <ul>
+          <li>Reduz dependencia de consultas diretas ao Sankhya em tempo real.</li>
+          <li>Evita exposicao de credenciais no navegador.</li>
+          <li>Melhora tempo de resposta das telas do dashboard.</li>
+          <li>Cria base local para analises, rankings e indicadores consolidados.</li>
+          <li>Permite evoluir o produto por modulos sem reescrever a integracao.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>Tecnologias utilizadas</h3>
+    <table>
+      <tr>
+        <th style="width: 30%">Componente</th>
+        <th>Uso no backend</th>
+      </tr>
+      <tr>
+        <td>Node.js 22 + TypeScript</td>
+        <td>Base da API e dos sincronizadores.</td>
+      </tr>
+      <tr>
+        <td>Express 5</td>
+        <td>Servidor HTTP, middlewares, rotas e tratamento de erros.</td>
+      </tr>
+      <tr>
+        <td>better-sqlite3</td>
+        <td>Banco local usado como snapshot operacional.</td>
+      </tr>
+      <tr>
+        <td>Zod</td>
+        <td>Validacao de ambiente e parametros de rotas.</td>
+      </tr>
+      <tr>
+        <td>Pino</td>
+        <td>Logs estruturados da API e dos ciclos de sincronizacao.</td>
+      </tr>
+      <tr>
+        <td>Sankhya Gateway</td>
+        <td>Origem principal dos dados ERP via OAuth e CRUDServiceProvider.</td>
+      </tr>
+    </table>
+
+    <div class="footer-note">Este documento e uma versao executiva. A documentacao tecnica detalhada fica em <span class="mono">doc/BACKEND_COMPLETO.md</span>.</div>
+  </section>
+
+  <section class="page">
+    <header class="running">
+      <span>Backend CIP - Grupo MKR</span>
+      <span>Arquitetura</span>
+    </header>
+
+    <h2>2. Arquitetura da solucao</h2>
+    <p>A arquitetura foi desenhada para separar tres responsabilidades: integracao com sistemas externos, persistencia de snapshot e entrega de dados prontos para as telas do dashboard.</p>
+
+    <div class="flow">
+      <div class="flow-box">
+        <h3>Sankhya Gateway</h3>
+        <p>ERP de origem. O backend autentica via OAuth, consulta entidades e trata paginacao, retry e renovacao de token.</p>
+      </div>
+      <div class="flow-arrow">></div>
+      <div class="flow-box">
+        <h3>Backend CIP</h3>
+        <p>Camada Node.js que sincroniza, normaliza regras de negocio, calcula indicadores e expoe APIs REST.</p>
+      </div>
+      <div class="flow-arrow">></div>
+      <div class="flow-box">
+        <h3>Frontend / Usuarios</h3>
+        <p>Consome apenas a API interna. Nao acessa diretamente o Sankhya nem recebe credenciais sensiveis.</p>
+      </div>
+    </div>
+
+    <h3>Componentes internos</h3>
+    <table>
+      <tr>
+        <th style="width: 27%">Camada</th>
+        <th style="width: 31%">Arquivos principais</th>
+        <th>Responsabilidade</th>
+      </tr>
+      <tr>
+        <td>Bootstrap</td>
+        <td class="mono">server.ts, config.ts</td>
+        <td>Inicializacao da API, CORS, cache headers, logger, migrations, scheduler e middlewares globais.</td>
+      </tr>
+      <tr>
+        <td>Autenticacao</td>
+        <td class="mono">auth.ts</td>
+        <td>TOTP, criacao de token de sessao, validacao Bearer e protecao das rotas.</td>
+      </tr>
+      <tr>
+        <td>Banco</td>
+        <td class="mono">db/connection.ts, db/migrate.ts, db/schema.sql</td>
+        <td>Conexao SQLite, schema, indices, migracoes incrementais e metadados.</td>
+      </tr>
+      <tr>
+        <td>Sankhya</td>
+        <td class="mono">sankhya/client.ts, crud.ts, decoder.ts</td>
+        <td>OAuth, requisicoes ao gateway, CRUDServiceProvider, paginacao e decoder de respostas.</td>
+      </tr>
+      <tr>
+        <td>Sync</td>
+        <td class="mono">sync/*.ts</td>
+        <td>Sincronizacao das entidades e controle de status em <span class="mono">sync_state</span>.</td>
+      </tr>
+      <tr>
+        <td>Services</td>
+        <td class="mono">services/*.ts</td>
+        <td>Consultas SQL, regras de negocio e montagem dos DTOs consumidos pelo frontend.</td>
+      </tr>
+      <tr>
+        <td>Rotas</td>
+        <td class="mono">routes/index.ts, routes/dashboard.ts</td>
+        <td>Contratos REST, validacao dos parametros e resposta JSON.</td>
+      </tr>
+    </table>
+
+    <h3>Decisoes de arquitetura</h3>
+    <ul>
+      <li><strong>Snapshot local:</strong> evita consultas pesadas no Sankhya para cada acesso ao dashboard.</li>
+      <li><strong>Backend como unica ponte:</strong> o navegador nao recebe credenciais nem conhece a API Sankhya diretamente.</li>
+      <li><strong>Services separados das rotas:</strong> facilita evoluir regras de negocio sem misturar com HTTP.</li>
+      <li><strong>Sync state por entidade:</strong> permite monitorar frescor, erros e volume sincronizado.</li>
+    </ul>
+  </section>
+
+  <section class="page">
+    <header class="running">
+      <span>Backend CIP - Grupo MKR</span>
+      <span>Dados e sincronizacao</span>
+    </header>
+
+    <h2>3. Dados e sincronizacao</h2>
+    <p>O backend sincroniza dados do Sankhya e grava o resultado em SQLite. A partir desse snapshot, os services calculam os indicadores usados pelo dashboard.</p>
+
+    <h3>Entidades sincronizadas</h3>
+    <table>
+      <tr>
+        <th style="width: 22%">Sync</th>
+        <th style="width: 22%">Origem</th>
+        <th style="width: 24%">Destino</th>
+        <th>Observacao</th>
+      </tr>
+      <tr>
+        <td><span class="mono">empresas</span></td>
+        <td>Seed local</td>
+        <td><span class="mono">empresas</span></td>
+        <td>Usado porque a entidade Empresa esta bloqueada no Sankhya.</td>
+      </tr>
+      <tr>
+        <td><span class="mono">tipos_operacao</span></td>
+        <td>TipoOperacao</td>
+        <td><span class="mono">tipos_operacao</span></td>
+        <td>Base para classificar movimentos e faturamento.</td>
+      </tr>
+      <tr>
+        <td><span class="mono">naturezas</span></td>
+        <td>Natureza</td>
+        <td><span class="mono">naturezas</span></td>
+        <td>Plano de contas usado na DRE.</td>
+      </tr>
+      <tr>
+        <td><span class="mono">tipos_titulo</span></td>
+        <td>TipoTitulo</td>
+        <td><span class="mono">tipos_titulo</span></td>
+        <td>Descricao de titulos financeiros.</td>
+      </tr>
+      <tr>
+        <td><span class="mono">parceiros</span></td>
+        <td>Parceiro</td>
+        <td><span class="mono">parceiros</span></td>
+        <td>Clientes e fornecedores ativos.</td>
+      </tr>
+      <tr>
+        <td><span class="mono">vendedores</span></td>
+        <td>Vendedor</td>
+        <td><span class="mono">vendedores</span></td>
+        <td>Usado em filtros, rankings e BI de RH.</td>
+      </tr>
+      <tr>
+        <td><span class="mono">produtos</span></td>
+        <td>Produto</td>
+        <td><span class="mono">produtos</span></td>
+        <td>Cadastro base para produtos e estoque.</td>
+      </tr>
+      <tr>
+        <td><span class="mono">pedidos</span></td>
+        <td>CabecalhoNota</td>
+        <td><span class="mono">pedidos</span></td>
+        <td>Notas liberadas desde 01/01/2025.</td>
+      </tr>
+      <tr>
+        <td><span class="mono">titulos</span></td>
+        <td>Financeiro</td>
+        <td><span class="mono">titulos</span></td>
+        <td>Titulos desde 01/01/2026.</td>
+      </tr>
+      <tr>
+        <td><span class="mono">estoque</span></td>
+        <td>Estoque</td>
+        <td><span class="mono">produto_estoque</span></td>
+        <td>Recarga completa do estoque.</td>
+      </tr>
+    </table>
+
+    <h3>Agenda de sincronizacao</h3>
+    <div class="two-col">
+      <div class="card">
+        <h3>Sync inicial</h3>
+        <p>Ao subir, o backend prepara o banco, executa empresas e tenta carregar dimensoes e fatos ausentes.</p>
+        <ul>
+          <li>Empresas sempre rodam no inicio.</li>
+          <li>Dimensoes rodam se nao houver snapshot.</li>
+          <li>Pedidos, titulos e estoque rodam se faltarem dados.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Sync periodico</h3>
+        <p>O scheduler separa cargas frequentes e cargas mais lentas.</p>
+        <ul>
+          <li><strong>Hot:</strong> pedidos e titulos a cada 5 minutos.</li>
+          <li><strong>Slow:</strong> dimensoes a cada 30 minutos.</li>
+          <li><strong>Manual:</strong> estoque pode ser atualizado via script.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="note">
+      <strong>Ponto de atencao:</strong> produtos e estoque nao estao no ciclo periodico completo no codigo atual. O estoque possui script manual e participa do sync inicial quando o snapshot esta ausente.
+    </div>
+  </section>
+
+  <section class="page">
+    <header class="running">
+      <span>Backend CIP - Grupo MKR</span>
+      <span>Regras de negocio</span>
+    </header>
+
+    <h2>4. Regras de negocio implementadas</h2>
+
+    <h3>Faturamento real</h3>
+    <p>O backend nao considera todo movimento de venda como faturamento. Foi criada uma whitelist de TOPs para evitar inflar os indicadores com remessas, ajustes, bonificacoes ou comodato.</p>
+    <div class="card">
+      <p><strong>Regra aplicada:</strong></p>
+      <p class="mono">CODTIPOPER IN (FATURAMENTO_TOPS) AND STATUSNOTA = 'L' AND DTFATUR IS NOT NULL</p>
+      <p class="small">TOPs mapeados: 1100, 1107, 1111, 1716, 1733, 1763, 1776, 1795, 1797, 1801, 1802, 1705, 1766, 1769, 1770.</p>
+    </div>
+
+    <h3>Comodato</h3>
+    <p>Comodato foi separado do faturamento e possui indicador proprio de saidas, retornos e saldo ativo.</p>
+    <table>
+      <tr>
+        <th style="width: 30%">Categoria</th>
+        <th>TOPs</th>
+      </tr>
+      <tr>
+        <td>Saida de comodato</td>
+        <td>1109, 1772</td>
+      </tr>
+      <tr>
+        <td>Retorno de comodato</td>
+        <td>1203</td>
+      </tr>
+      <tr>
+        <td>Saldo ativo</td>
+        <td>Historico de saidas menos historico de retornos.</td>
+      </tr>
+    </table>
+
+    <h3>DRE e financeiro</h3>
+    <p>A DRE simplificada combina a receita calculada por notas faturadas com despesas extraidas dos titulos financeiros, classificadas pelo prefixo da natureza.</p>
+    <table>
+      <tr>
+        <th style="width: 25%">Prefixo CODNAT</th>
+        <th>Categoria</th>
+        <th style="width: 28%">Entra no total operacional?</th>
+      </tr>
+      <tr>
+        <td>1</td>
+        <td>Receitas</td>
+        <td>Nao, compoe receita bruta</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>Custos / Estoques</td>
+        <td>Sim</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>Despesas Administrativas</td>
+        <td>Sim</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td>Despesas Comerciais</td>
+        <td>Sim</td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td>Impostos / Tributos</td>
+        <td>Sim</td>
+      </tr>
+      <tr>
+        <td>6, 7, 8</td>
+        <td>Investimentos, dividendos e servicos</td>
+        <td>Nao entram no operacional simplificado</td>
+      </tr>
+    </table>
+
+    <h3>Filtros padrao</h3>
+    <ul>
+      <li><strong>Empresa:</strong> aceita <span class="mono">todas</span>, um codigo ou lista separada por virgula.</li>
+      <li><strong>Vendedor:</strong> aceita <span class="mono">todos</span>, um codigo ou lista separada por virgula.</li>
+      <li><strong>Datas:</strong> rotas com data usam formato <span class="mono">YYYY-MM-DD</span>.</li>
+      <li><strong>Paginas:</strong> rotas paginadas usam <span class="mono">page</span> iniciado em zero e <span class="mono">pageSize</span> limitado.</li>
+    </ul>
+  </section>
+
+  <section class="page">
+    <header class="running">
+      <span>Backend CIP - Grupo MKR</span>
+      <span>APIs entregues</span>
+    </header>
+
+    <h2>5. APIs e modulos entregues</h2>
+    <p>Todas as rotas ficam sob o prefixo <span class="mono">/api</span>. As rotas publicas sao apenas health e autenticacao inicial; as demais exigem token Bearer de sessao.</p>
+
+    <h3>Rotas publicas e autenticacao</h3>
+    <table>
+      <tr>
+        <th style="width: 31%">Rota</th>
+        <th>Uso</th>
+      </tr>
+      <tr>
+        <td class="mono">GET /api/health</td>
+        <td>Status da API, banco, sync e contagens principais.</td>
+      </tr>
+      <tr>
+        <td class="mono">GET /api/auth/setup</td>
+        <td>Dados para cadastrar autenticador TOTP.</td>
+      </tr>
+      <tr>
+        <td class="mono">POST /api/auth/validate</td>
+        <td>Valida codigo TOTP e gera token de sessao.</td>
+      </tr>
+      <tr>
+        <td class="mono">GET /api/auth/session</td>
+        <td>Confere se a sessao atual continua valida.</td>
+      </tr>
+    </table>
+
+    <h3>Rotas de dashboard</h3>
+    <table>
+      <tr>
+        <th style="width: 43%">Grupo</th>
+        <th>Principais rotas</th>
+      </tr>
+      <tr>
+        <td>Cadastros</td>
+        <td class="mono">/api/empresas, /api/vendedores</td>
+      </tr>
+      <tr>
+        <td>Empresas e vendas</td>
+        <td class="mono">/api/dashboard/empresa/faturamento, /faturamento-por-empresa, /resumo, /comodato</td>
+      </tr>
+      <tr>
+        <td>Vendedores</td>
+        <td class="mono">/api/dashboard/vendedores/ranking, /hoje</td>
+      </tr>
+      <tr>
+        <td>Financeiro</td>
+        <td class="mono">/api/dashboard/financeiro/dre, /resumo, /fluxo-caixa, /distribuicao-despesas, /contas</td>
+      </tr>
+      <tr>
+        <td>Estoque</td>
+        <td class="mono">/api/dashboard/estoque, /api/dashboard/produtos</td>
+      </tr>
+      <tr>
+        <td>Clientes, RH e entregas</td>
+        <td class="mono">/api/dashboard/clientes, /rh, /entregas</td>
+      </tr>
+      <tr>
+        <td>Via Certa</td>
+        <td class="mono">/api/viacerta/alunos-ativos</td>
+      </tr>
+      <tr>
+        <td>Compatibilidade</td>
+        <td class="mono">/api/receber, /api/pagar</td>
+      </tr>
+    </table>
+
+    <h3>Principais respostas de negocio</h3>
+    <ul>
+      <li><strong>Faturamento:</strong> dia, semana de 7 dias, mes atual, ano atual e distribuicao por empresa.</li>
+      <li><strong>Financeiro:</strong> DRE, fluxo de caixa, despesas por categoria e contas abertas.</li>
+      <li><strong>Estoque:</strong> saldos, alertas abaixo do minimo, saldos negativos e agrupamento por local.</li>
+      <li><strong>Clientes:</strong> compradores do ano, receita, ticket medio, receber aberto e top clientes.</li>
+      <li><strong>RH:</strong> vendedores ativos, ranking, faturamento por vendedor e evolucao mensal.</li>
+      <li><strong>Entregas:</strong> SLA de 3 dias, atrasos, transportadoras, frete, volumes e entregas recentes.</li>
+    </ul>
+  </section>
+
+  <section class="page">
+    <header class="running">
+      <span>Backend CIP - Grupo MKR</span>
+      <span>Seguranca e operacao</span>
+    </header>
+
+    <h2>6. Seguranca, configuracao e operacao</h2>
+
+    <h3>Seguranca</h3>
+    <div class="two-col">
+      <div class="card">
+        <h3>Protecao do dashboard</h3>
+        <ul>
+          <li>TOTP baseado em segredo Base32.</li>
+          <li>Token de sessao assinado com HMAC-SHA256.</li>
+          <li>Expiracao padrao de 8 horas.</li>
+          <li>Rotas de negocio exigem Bearer token.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Protecao da integracao</h3>
+        <ul>
+          <li>Credenciais Sankhya ficam no ambiente do backend.</li>
+          <li>Frontend nunca acessa Sankhya diretamente.</li>
+          <li>CORS e configurado por origem permitida.</li>
+          <li>Erros sao tratados por middleware centralizado.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>Variaveis principais</h3>
+    <table>
+      <tr>
+        <th style="width: 30%">Variavel</th>
+        <th>Finalidade</th>
+      </tr>
+      <tr>
+        <td class="mono">SANKHYA_BASE_URL</td>
+        <td>URL base do Gateway Sankhya.</td>
+      </tr>
+      <tr>
+        <td class="mono">SANKHYA_CLIENT_ID / SECRET / TOKEN</td>
+        <td>Credenciais da aplicacao no Sankhya.</td>
+      </tr>
+      <tr>
+        <td class="mono">APP_TOTP_SECRET</td>
+        <td>Segredo do autenticador.</td>
+      </tr>
+      <tr>
+        <td class="mono">APP_SESSION_SECRET</td>
+        <td>Chave de assinatura das sessoes.</td>
+      </tr>
+      <tr>
+        <td class="mono">DATABASE_PATH</td>
+        <td>Caminho do snapshot SQLite.</td>
+      </tr>
+      <tr>
+        <td class="mono">CORS_ORIGINS</td>
+        <td>Lista de origens do frontend permitidas.</td>
+      </tr>
+      <tr>
+        <td class="mono">SYNC_ENABLED</td>
+        <td>Liga ou desliga o scheduler automatico.</td>
+      </tr>
+    </table>
+
+    <h3>Deploy</h3>
+    <p>O backend esta preparado para Railway via <span class="mono">backend/railway.json</span>.</p>
+    <ul>
+      <li>Build: <span class="mono">npm install && npm run build</span>.</li>
+      <li>Start: <span class="mono">npm run start</span>.</li>
+      <li>Healthcheck: <span class="mono">/api/health</span>.</li>
+      <li>Politica de restart: <span class="mono">ON_FAILURE</span>.</li>
+    </ul>
+
+    <div class="note">
+      <strong>Atencao em producao:</strong> o SQLite precisa de armazenamento persistente caso o snapshot deva sobreviver a deploys e reinicios. Sem volume persistente, o banco sera recriado e dependera do sync inicial.
+    </div>
+  </section>
+
+  <section class="page">
+    <header class="running">
+      <span>Backend CIP - Grupo MKR</span>
+      <span>Pendencias e proximos passos</span>
+    </header>
+
+    <h2>7. Pendencias conhecidas e recomendacoes</h2>
+
+    <h3>Pendencias tecnicas ja mapeadas</h3>
+    <table>
+      <tr>
+        <th style="width: 35%">Item</th>
+        <th>Impacto</th>
+        <th style="width: 22%">Prioridade sugerida</th>
+      </tr>
+      <tr>
+        <td>Sync de itens de pedido</td>
+        <td>A tabela existe, mas ainda nao ha sincronizador ativo. Limita analises detalhadas por item/produto.</td>
+        <td><span class="tag">Media</span></td>
+      </tr>
+      <tr>
+        <td>Estoque fora do ciclo periodico completo</td>
+        <td>Hoje depende de sync inicial ou script manual para atualizacao recorrente.</td>
+        <td><span class="tag">Media</span></td>
+      </tr>
+      <tr>
+        <td>Empresa bloqueada no Sankhya</td>
+        <td>Uso de seed local e stubs. Ideal liberar permissao da entidade Empresa.</td>
+        <td><span class="tag">Media</span></td>
+      </tr>
+      <tr>
+        <td>Whitelist manual de TOPs</td>
+        <td>Novos tipos de operacao de faturamento precisam ser incluidos manualmente.</td>
+        <td><span class="tag">Alta</span></td>
+      </tr>
+      <tr>
+        <td>Validar data real de caixa</td>
+        <td>Confirmar se <span class="mono">DHBAIXA</span> e suficiente ou se deve usar <span class="mono">DHCONCIL</span>/<span class="mono">DTCONTAB</span>.</td>
+        <td><span class="tag">Alta</span></td>
+      </tr>
+      <tr>
+        <td>Testes automatizados</td>
+        <td>Reduz risco ao alterar TOPs, SQLs de indicadores e decoder Sankhya.</td>
+        <td><span class="tag">Alta</span></td>
+      </tr>
+      <tr>
+        <td>Rota administrativa de refresh</td>
+        <td>Permitiria forcar sincronizacao sem reiniciar servidor ou aguardar intervalo.</td>
+        <td><span class="tag">Baixa</span></td>
+      </tr>
+    </table>
+
+    <h3>Recomendacoes para a proxima etapa</h3>
+    <ol>
+      <li><strong>Confirmar regras financeiras com o time responsavel:</strong> principalmente TOPs de faturamento e data correta de caixa realizado.</li>
+      <li><strong>Definir estrategia de persistencia do SQLite em producao:</strong> volume no Railway ou migracao futura para Postgres.</li>
+      <li><strong>Colocar estoque no scheduler periodico:</strong> se a tela de estoque for operacional e precisar de dados sempre frescos.</li>
+      <li><strong>Criar testes para regras criticas:</strong> decoder do Sankhya, filtros de faturamento, DRE e contas abertas.</li>
+      <li><strong>Formalizar monitoramento:</strong> acompanhar tempo de sync, quantidade de linhas, erros por entidade e atraso do snapshot.</li>
+    </ol>
+
+    <h3>Resumo final</h3>
+    <p>O backend ja possui uma base solida para operar o dashboard: integra com o Sankhya, guarda snapshot local, expoe APIs organizadas, protege as rotas com autenticacao propria e consolida indicadores importantes para a gestao. As pendencias restantes sao evolucoes normais de maturidade: testes, observabilidade, refinamento de regras financeiras e ampliacao de alguns sincronizadores.</p>
+
+    <div class="footer-note">
+      Arquivos de referencia no repositorio: <span class="mono">doc/BACKEND_COMPLETO.md</span>, <span class="mono">doc/ROTAS.md</span>, <span class="mono">doc/DEPLOYMENT.md</span>, <span class="mono">backend/src</span>.
+    </div>
+  </section>
+</body>
+</html>

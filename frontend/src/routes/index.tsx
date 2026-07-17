@@ -1,4965 +1,740 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect, useMemo } from "react";
 import {
-  LayoutDashboard,
-  Wallet,
-  Package,
-  ShoppingCart,
-  Boxes,
-  Truck,
-  Users,
-  UserCog,
-  Check,
   AlertTriangle,
-  TrendingUp,
-  TrendingDown,
-  BarChart2,
-  LineChart as LineIcon,
-  AreaChart as AreaIcon,
-  AlignLeft,
-  PieChart as PieIcon,
-  Layers,
-  LogOut,
-  Menu,
-  X,
-  Building2,
-  Settings,
-  KeyRound,
-  ShieldCheck,
-  ShieldAlert,
-  Smartphone,
-  ScanLine,
-  CircleCheck,
+  ArrowDownRight,
+  ArrowUpRight,
+  Banknote,
+  CalendarDays,
+  FileCheck2,
+  FileText,
+  Layers3,
+  ReceiptText,
+  SearchCheck,
+  WalletCards,
+  type LucideIcon,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { useIsMobile } from "@/hooks/use-mobile";
-import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  ComposedChart,
-  ReferenceLine,
   Area,
   AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ComposedChart,
+  Pie,
+  Cell as PieCell,
+  PieChart,
+  ReferenceDot,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from "recharts";
-import { useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import type { EmpresaDashboardDto, VendedorDto } from "@/lib/api/types.dashboard";
-import { ApiError } from "@/lib/api/client";
-import { formatBRL, formatBRLCompact, formatMesAnoPt } from "@/lib/format";
-import { useEmpresas } from "@/hooks/api/useEmpresas";
-import { useVendedores } from "@/hooks/api/useVendedores";
-import { useVendedoresRanking, type VendedoresPeriodo } from "@/hooks/api/useVendedoresRanking";
-import { useVendedoresLancamentosHoje } from "@/hooks/api/useVendedoresLancamentosHoje";
-import { useFaturamentoConsolidado } from "@/hooks/api/useFaturamentoConsolidado";
-import { useFaturamentoPorEmpresa } from "@/hooks/api/useFaturamentoPorEmpresa";
-import { useEmpresasResumo } from "@/hooks/api/useEmpresasResumo";
-import type { FinanceiroDreFiltroDatas, FinanceiroDrePeriodo } from "@/lib/api/types.dashboard";
-import type { EmpresaSeleção } from "@/lib/empresaSelecao";
-import type { VendedorSeleção } from "@/lib/vendedorSelecao";
-import { useFinanceiroResumo } from "@/hooks/api/useFinanceiroResumo";
-import { useEstoque } from "@/hooks/api/useEstoque";
-import { useProdutos } from "@/hooks/api/useProdutos";
-import { useClientesBI } from "@/hooks/api/useClientesBI";
-import { useRateio } from "@/hooks/api/useRateio";
-import { useRhBI } from "@/hooks/api/useRhBI";
-import { useEntregasBI } from "@/hooks/api/useEntregasBI";
-import { useViaCertaAlunosAtivos } from "@/hooks/api/useViaCertaAlunosAtivos";
-import { getApiBaseUrl } from "@/lib/api/env";
-import { getStoredAuthToken, setStoredAuthToken, clearStoredAuthToken } from "@/lib/auth";
+
+import { KpiCard } from "@/components/dashboard/KpiCard";
+import { PanelCard } from "@/components/dashboard/PanelCard";
+import { EmptyTableRow } from "@/components/dashboard/EmptyTableRow";
+import { QueryState } from "@/components/dashboard/QueryState";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useRateioDashboard } from "@/hooks/use-dashboard-data";
+import { useExecutivoDashboard, type ExecutivoDashboard } from "@/hooks/use-executivo-dashboard";
+import { useFilters } from "@/lib/filters-context";
+import { formatCompactCurrency, formatCurrency, formatDate, formatInt, formatPercent } from "@/lib/format";
+import { usePageSnapshot } from "@/lib/snapshot-context";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "CIP - Central de Inteligência e Performance Grupo MKR" },
+      { title: "Sankhya 3.0 - Central CEO" },
       {
         name: "description",
-        content: "Painel executivo C-level com dados do CIP - Central de Inteligência e Performance Grupo MKR.",
+        content: "Central de relatorios de vendas e financeiro conectada ao Sankhya.",
       },
     ],
   }),
-  component: Dashboard,
+  component: CentralCeoPage,
 });
 
-/* ============================================================
- *  PALETTE & TOKENS  — single source of truth
- * ============================================================ */
-const C = {
-  bg: "#000000",
-  surface: "#0A0A0A",
-  border: "rgba(255,255,255,0.06)",
-  borderStrong: "rgba(255,255,255,0.12)",
-  gold: "#F5D547",
-  goldSoft: "rgba(245,213,71,0.12)",
-  green: "#2EBD8F",
-  red: "#E05555",
-  amber: "#F5D547",
-  blue: "#4DA3FF",
-  text: "#E8E6E0",
-  muted: "#6B6F78",
-  mutedStrong: "#9AA0AB",
-};
+type PeriodPreset = "hoje" | "semana" | "mes" | "ano" | "periodo";
 
-/* ============================================================
- *  HARDCODED DATA — swap for API later
- * ============================================================ */
-const DATA = {
-  dashboard: {
-    kpis: [
-      {
-        label: "Receita Total",
-        value: "R$ 2,4M",
-        delta: "+12,4%",
-        up: true,
-        color: C.gold,
-        spark: [12, 15, 14, 18, 16, 21, 19, 24, 22, 26, 28, 31],
-      },
-      {
-        label: "Pedidos Ativos",
-        value: "1.847",
-        delta: "+8,1%",
-        up: true,
-        color: C.green,
-        spark: [40, 42, 38, 45, 50, 48, 52, 55, 53, 58, 60, 62],
-      },
-      {
-        label: "Ticket Médio",
-        value: "R$ 1.298",
-        delta: "-2,3%",
-        up: false,
-        color: C.blue,
-        spark: [30, 28, 32, 31, 29, 27, 28, 26, 27, 25, 26, 24],
-      },
-      {
-        label: "Inadimplência",
-        value: "3,2%",
-        delta: "+0,8pp",
-        up: false,
-        color: C.red,
-        alert: true,
-        spark: [10, 12, 11, 13, 15, 14, 18, 17, 20, 22, 24, 26],
-      },
-    ],
-    receitaMeta: [
-      { m: "Jun", real: 1.6, meta: 1.5 },
-      { m: "Jul", real: 1.7, meta: 1.6 },
-      { m: "Ago", real: 1.8, meta: 1.7 },
-      { m: "Set", real: 1.95, meta: 1.8 },
-      { m: "Out", real: 2.1, meta: 1.9 },
-      { m: "Nov", real: 2.0, meta: 2.0 },
-      { m: "Dez", real: 2.3, meta: 2.1 },
-      { m: "Jan", real: 2.15, meta: 2.2 },
-      { m: "Fev", real: 2.25, meta: 2.25 },
-      { m: "Mar", real: 2.35, meta: 2.3 },
-      { m: "Abr", real: 2.4, meta: 2.35 },
-      { m: "Mai", real: 2.45, meta: 2.4 },
-    ],
-    mix: [
-      { name: "Indústria", value: 48, color: C.gold },
-      { name: "Atacado", value: 32, color: C.blue },
-      { name: "Varejo", value: 20, color: C.green },
-    ],
-    topProdutos: [
-      {
-        sku: "MK-1042",
-        nome: "Chapa Aço Carbono 4mm",
-        receita: "R$ 384.200",
-        pct: "+18%",
-        up: true,
-      },
-      { sku: "MK-2089", nome: "Tubo Galvanizado 2”", receita: "R$ 296.500", pct: "+12%", up: true },
-      { sku: "MK-3310", nome: "Perfil U Reforçado", receita: "R$ 241.800", pct: "+9%", up: true },
-      { sku: "MK-4501", nome: "Tela Soldada 50x100", receita: "R$ 198.300", pct: "-3%", up: false },
-      {
-        sku: "MK-5022",
-        nome: "Fio Máquina Trefilado",
-        receita: "R$ 174.900",
-        pct: "+6%",
-        up: true,
-      },
-    ],
-    status: [
-      { label: "Estoque", pct: 87, tone: "green" },
-      { label: "Entregas", pct: 94, tone: "green" },
-      { label: "Satisfação", pct: 78, tone: "amber" },
-      { label: "Compras", pct: 61, tone: "red" },
-    ],
-    alertas: [
-      {
-        level: "Crítico",
-        tone: "red",
-        text: "3 SKUs abaixo do estoque mínimo na filial Curitiba.",
-      },
-      {
-        level: "Atenção",
-        tone: "amber",
-        text: "Margem da linha Construção caiu 2,1pp na última semana.",
-      },
-      {
-        level: "Positivo",
-        tone: "green",
-        text: "Cliente Polimax renovou contrato anual de R$ 1,8M.",
-      },
-    ],
-  },
-  estoque: {
-    kpis: [
-      { label: "Valor em Estoque", value: "R$ 4,28M", delta: "+2,1%", up: true, color: C.gold },
-      {
-        label: "Abaixo do Mínimo",
-        value: "3",
-        delta: "Crítico",
-        up: false,
-        color: C.red,
-        alert: true,
-      },
-      { label: "Giro de Estoque", value: "5,8x", delta: "+0,4", up: true, color: C.green },
-      { label: "Cobertura Média", value: "62 dias", delta: "-3 dias", up: true, color: C.blue },
-    ],
-    niveis: [
-      { cat: "Aço", atual: 820, min: 600 },
-      { cat: "Tubos", atual: 540, min: 400 },
-      { cat: "Perfis", atual: 380, min: 450 },
-      { cat: "Telas", atual: 290, min: 200 },
-      { cat: "Fios", atual: 180, min: 250 },
-      { cat: "Acessórios", atual: 720, min: 500 },
-    ],
-    alertas: [
-      { item: "Perfil U 100x40", atual: 38, min: 80, status: "red" },
-      { item: "Fio Trefilado 2,4mm", atual: 92, min: 120, status: "amber" },
-      { item: "Tela Sold. 15x15", atual: 145, min: 100, status: "green" },
-      { item: "Tubo Galv. 1.1/2”", atual: 64, min: 90, status: "amber" },
-      { item: "Chapa 6mm", atual: 22, min: 60, status: "red" },
-    ],
-  },
-  entregas: {
-    kpis: [
-      { label: "No Prazo", value: "94,2%", delta: "+1,3pp", up: true, color: C.green },
-      { label: "Em Trânsito", value: "187", delta: "+12", up: true, color: C.blue },
-      { label: "Tempo Médio", value: "2,4 dias", delta: "-0,3", up: true, color: C.gold },
-      { label: "Devoluções", value: "1,8%", delta: "-0,2pp", up: true, color: C.amber },
-    ],
-    historico: Array.from({ length: 12 }, (_, i) => {
-      const meses = [
-        "Jun",
-        "Jul",
-        "Ago",
-        "Set",
-        "Out",
-        "Nov",
-        "Dez",
-        "Jan",
-        "Fev",
-        "Mar",
-        "Abr",
-        "Mai",
-      ];
-      return {
-        m: meses[i],
-        prazo: 80 + i,
-        atrasado: 10 - Math.floor(i / 3),
-        transito: 12 - Math.floor(i / 4),
-      };
-    }),
-    transp: [
-      { nome: "TransLog Sul", pct: 96, tone: "green" },
-      { nome: "Rodoexpress", pct: 92, tone: "green" },
-      { nome: "Cargas Brasil", pct: 81, tone: "amber" },
-      { nome: "ViaRápida", pct: 68, tone: "red" },
-    ],
-  },
-  clientes: {
-    kpis: [
-      { label: "Clientes Ativos", value: "3.482", delta: "+124", up: true, color: C.gold },
-      { label: "NPS", value: "72", delta: "Excelente", up: true, color: C.green },
-      { label: "LTV Médio", value: "R$ 48K", delta: "+8,2%", up: true, color: C.blue },
-      { label: "Churn Rate", value: "4,1%", delta: "+0,6pp", up: false, color: C.red, alert: true },
-    ],
-    flow: [
-      { m: "Dez", novos: 142, churn: -38 },
-      { m: "Jan", novos: 128, churn: -42 },
-      { m: "Fev", novos: 156, churn: -35 },
-      { m: "Mar", novos: 178, churn: -48 },
-      { m: "Abr", novos: 164, churn: -52 },
-      { m: "Mai", novos: 192, churn: -61 },
-    ],
-    seg: [
-      { name: "Premium", value: 18, color: C.gold },
-      { name: "Recorrente", value: 42, color: C.blue },
-      { name: "Ocasional", value: 28, color: C.green },
-      { name: "Inativo", value: 12, color: C.muted },
-    ],
-  },
-  produtos: {
-    kpis: [
-      { label: "SKUs Ativos", value: "1.284", delta: "+18", up: true, color: C.gold },
-      { label: "Mais Vendido", value: "MK-1042", delta: "Aço Carbono", up: true, color: C.green },
-      { label: "Margem Média", value: "28,4%", delta: "+1,1pp", up: true, color: C.blue },
-      { label: "Baixo Giro", value: "47", delta: "SKUs", up: false, color: C.red, alert: true },
-    ],
-    cats: Array.from({ length: 12 }, (_, i) => {
-      const meses = [
-        "Jun",
-        "Jul",
-        "Ago",
-        "Set",
-        "Out",
-        "Nov",
-        "Dez",
-        "Jan",
-        "Fev",
-        "Mar",
-        "Abr",
-        "Mai",
-      ];
-      return {
-        m: meses[i],
-        Aço: 80 + i * 4,
-        Tubos: 60 + i * 2,
-        Perfis: 50 + i * 3,
-        Telas: 40 + i,
-      };
-    }),
-    margem: [
-      { cat: "Aço Premium", v: 38 },
-      { cat: "Perfis", v: 32 },
-      { cat: "Telas", v: 28 },
-      { cat: "Tubos", v: 24 },
-      { cat: "Fios", v: 18 },
-      { cat: "Acessórios", v: 14 },
-    ],
-  },
-  compras: {
-    kpis: [
-      { label: "Volume", value: "R$ 1,68M", delta: "+9,4%", up: true, color: C.gold },
-      { label: "Fornecedores Ativos", value: "84", delta: "+3", up: true, color: C.green },
-      { label: "Economia Negociada", value: "R$ 142K", delta: "+22%", up: true, color: C.blue },
-      { label: "Pedidos Pendentes", value: "27", delta: "-4", up: true, color: C.amber },
-    ],
-    top: [
-      { nome: "Gerdau", v: 420, color: C.gold },
-      { nome: "ArcelorMittal", v: 360, color: C.blue },
-      { nome: "Usiminas", v: 280, color: C.green },
-      { nome: "CSN", v: 210, color: "#8E6FB5" },
-      { nome: "Aperam", v: 160, color: C.amber },
-    ],
-    rating: [
-      { nome: "Gerdau", score: 4.8, tone: "green" },
-      { nome: "ArcelorMittal", score: 4.5, tone: "green" },
-      { nome: "Usiminas", score: 3.9, tone: "amber" },
-      { nome: "CSN", score: 3.1, tone: "red" },
-    ],
-  },
-  rh: {
-    kpis: [
-      { label: "Colaboradores", value: "428", delta: "+12", up: true, color: C.gold },
-      { label: "Satisfação", value: "82%", delta: "+3pp", up: true, color: C.green },
-      { label: "Produtividade", value: "94 idx", delta: "+1,8", up: true, color: C.blue },
-      { label: "Turnover", value: "8,4%", delta: "+1,2pp", up: false, color: C.amber, alert: true },
-    ],
-    headcount: [
-      { dep: "Operações", v: 142 },
-      { dep: "Comercial", v: 88 },
-      { dep: "Logística", v: 64 },
-      { dep: "Administrativo", v: 52 },
-      { dep: "TI", v: 38 },
-      { dep: "RH", v: 24 },
-    ],
-    abs: Array.from({ length: 12 }, (_, i) => {
-      const meses = [
-        "Jun",
-        "Jul",
-        "Ago",
-        "Set",
-        "Out",
-        "Nov",
-        "Dez",
-        "Jan",
-        "Fev",
-        "Mar",
-        "Abr",
-        "Mai",
-      ];
-      return { m: meses[i], v: 3 + Math.sin(i / 2) * 1.2 + (i % 4) * 0.3 };
-    }),
-  },
-};
+const finalidadesDocumento = [
+  { codigo: 40200000, nome: "MY ROBOT SHOPPING" },
+  { codigo: 40300000, nome: "MY ROBOT CRICIUMA" },
+  { codigo: 40400000, nome: "MAKER EDUCACAO/ROBOTICS" },
+  { codigo: 40500000, nome: "E-COMMERCE" },
+  { codigo: 40600000, nome: "MBA KIDS" },
+  { codigo: 40700000, nome: "MAKER STORE" },
+  { codigo: 40100000, nome: "MY ROBOT FRANQUEADORA" },
+];
 
-/* ============================================================
- *  PRIMITIVES
- * ============================================================ */
-function Card({
-  children,
-  topAccent,
-  className = "",
-}: {
-  children: React.ReactNode;
-  topAccent?: string;
-  className?: string;
-}) {
-  return (
-    <div
-      className={`relative rounded-[2px] ${className}`}
-      style={{
-        background: C.surface,
-        border: `1px solid ${C.border}`,
-        padding: 24,
-        width: "100%",
-        boxSizing: "border-box",
-      }}
-    >
-      {topAccent && (
-        <div className="absolute left-0 right-0 top-0 h-px" style={{ background: topAccent }} />
-      )}
-      {children}
-    </div>
-  );
-}
-
-function Sparkline({ data, color }: { data: number[]; color: string }) {
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const w = 88;
-  const h = 28;
-  const bw = w / data.length - 1;
-  return (
-    <svg width={w} height={h}>
-      {data.map((v, i) => {
-        const bh = ((v - min) / (max - min || 1)) * h * 0.9 + h * 0.1;
-        return (
-          <rect
-            key={i}
-            x={i * (bw + 1)}
-            y={h - bh}
-            width={bw}
-            height={bh}
-            fill={color}
-            opacity={0.55 + (i / data.length) * 0.45}
-          />
-        );
-      })}
-    </svg>
-  );
-}
-
-type Kpi = {
-  label: string;
-  value: string;
-  color: string;
-  alert?: boolean;
-  spark?: number[];
-  delta?: string;
-  up?: boolean;
-};
-
-function KpiCard({ k }: { k: Kpi }) {
-  const accent = k.alert ? C.red : k.color;
-  const footer = k.delta !== undefined || k.spark;
-  return (
-    <Card topAccent={accent}>
-      <div className="flex flex-col gap-4">
-        <div
-          className="font-geist text-[10px] uppercase tracking-[0.18em]"
-          style={{ color: C.muted }}
-        >
-          {k.label}
-        </div>
-        <div
-          className="font-fraunces font-light leading-none"
-          style={{ color: C.text, fontSize: 38, letterSpacing: "-0.03em" }}
-        >
-          {k.value}
-        </div>
-        {footer ? (
-          <div className="flex items-end justify-between">
-            {k.delta !== undefined ? (
-              <div
-                className="font-geist flex items-center gap-1 text-[11px]"
-                style={{ color: k.up !== undefined ? (k.up ? C.green : C.red) : C.mutedStrong }}
-              >
-                {k.up !== undefined ? (
-                  k.up ? (
-                    <TrendingUp size={12} />
-                  ) : (
-                    <TrendingDown size={12} />
-                  )
-                ) : null}
-                {k.delta}
-              </div>
-            ) : (
-              <span />
-            )}
-            {k.spark && <Sparkline data={k.spark} color={k.color} />}
-          </div>
-        ) : null}
-      </div>
-    </Card>
-  );
-}
-
-function SectionHead({
-  title,
-  sub,
-  actions,
-}: {
-  title: string;
-  sub: string;
-  actions?: React.ReactNode;
-}) {
-  return (
-    <div className="mb-3 flex items-start justify-between gap-3">
-      <div>
-        <div
-          className="font-geist text-[10px] uppercase tracking-[0.22em]"
-          style={{ color: C.muted }}
-        >
-          {sub}
-        </div>
-        <h3
-          className="font-fraunces font-light"
-          style={{ color: C.text, fontSize: 18, letterSpacing: "-0.02em", marginTop: 4 }}
-        >
-          {title}
-        </h3>
-      </div>
-      {actions && <div className="flex shrink-0 items-center gap-1">{actions}</div>}
-    </div>
-  );
-}
-
-type ChartTypeKey = "bar" | "line" | "area" | "hbar" | "donut" | "sbar";
-
-import type { LucideIcon } from "lucide-react";
-const CHART_ICONS: Record<ChartTypeKey, LucideIcon> = {
-  bar: BarChart2,
-  line: LineIcon,
-  area: AreaIcon,
-  hbar: AlignLeft,
-  donut: PieIcon,
-  sbar: Layers,
-};
-
-function ChartSwitcher<T extends ChartTypeKey>({
-  value,
-  onChange,
-  options,
-}: {
-  value: T;
-  onChange: (v: T) => void;
-  options: T[];
-}) {
-  return (
-    <div className="flex items-center gap-1">
-      {options.map((opt) => {
-        const Icon = CHART_ICONS[opt as ChartTypeKey] as LucideIcon;
-        const active = value === opt;
-        return (
-          <button
-            key={opt}
-            type="button"
-            onClick={() => onChange(opt)}
-            aria-label={opt}
-            className="flex h-7 w-7 items-center justify-center transition-colors"
-            style={{
-              borderRadius: 6,
-              background: active ? "rgba(245,213,71,0.15)" : "transparent",
-              border: `1px solid ${active ? "rgba(245,213,71,0.35)" : "transparent"}`,
-              color: active ? C.gold : "rgba(255,255,255,0.28)",
-            }}
-            onMouseEnter={(e) => {
-              if (!active) e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-            }}
-            onMouseLeave={(e) => {
-              if (!active) e.currentTarget.style.background = "transparent";
-            }}
-          >
-            <Icon size={14} strokeWidth={1.75} />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+const chartColors = [
+  "var(--color-chart-1)",
+  "var(--color-chart-2)",
+  "var(--color-chart-3)",
+  "var(--color-chart-4)",
+  "var(--color-chart-5)",
+];
 
 const tooltipStyle = {
   contentStyle: {
-    background: "#0F1218",
-    border: `1px solid ${C.borderStrong}`,
-    borderRadius: 2,
-    fontSize: 11,
-    fontFamily: "Geist, sans-serif",
-    color: C.text,
+    backgroundColor: "var(--color-popover)",
+    border: "1px solid var(--color-border)",
+    borderRadius: 10,
+    fontSize: 12,
+    color: "var(--color-foreground)",
+    padding: "8px 10px",
   },
-  labelStyle: { color: C.mutedStrong, fontSize: 10, textTransform: "uppercase" as const },
-  itemStyle: { color: C.text },
-  cursor: { fill: "rgba(255,255,255,0.03)" },
-};
+  labelStyle: { color: "var(--color-muted-foreground)", fontSize: 10, textTransform: "uppercase" as const },
+  itemStyle: { color: "var(--color-foreground)" },
+} as const;
 
-const axisStyle = { fill: C.muted, fontSize: 10, fontFamily: "Geist, sans-serif" };
-
-/* ============================================================
- *  KPI ROW
- * ============================================================ */
-function KpiRow({ items }: { items: Kpi[] }) {
-  return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-      {items.map((k) => (
-        <KpiCard key={k.label} k={k} />
-      ))}
-    </div>
-  );
+function iso(date: Date) {
+  return date.toISOString().slice(0, 10);
 }
 
-function KpiRowSkeleton() {
-  return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-      {Array.from({ length: 4 }).map((_, i) => (
-        <Card key={i}>
-          <div className="flex animate-pulse flex-col gap-4">
-            <div className="h-3 w-24 rounded bg-white/10" />
-            <div className="h-10 w-40 max-w-full rounded bg-white/10" />
-          </div>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-/* ============================================================
- *  SECTIONS
- * ============================================================ */
-type RangeKey = "1d" | "1w" | "1m" | "all";
-const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
-  { key: "1d", label: "1 Dia" },
-  { key: "1w", label: "1 Semana" },
-  { key: "1m", label: "1 Mês" },
-  { key: "all", label: "Tudo" },
-];
-
-const SLICE_COUNT: Record<RangeKey, number> = { "1d": 1, "1w": 3, "1m": 6, all: 12 };
-
-function sliceByRange<T>(arr: T[], range: RangeKey): T[] {
-  const n = SLICE_COUNT[range];
-  return arr.slice(-Math.min(n, arr.length));
-}
-
-function RangeFilterBar({ value, onChange }: { value: RangeKey; onChange: (k: RangeKey) => void }) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="font-geist text-[10px] uppercase tracking-[0.2em]" style={{ color: C.muted }}>
-        Período
-      </div>
-      <RangeFilter value={value} onChange={onChange} />
-    </div>
-  );
-}
-
-function RangeFilter({ value, onChange }: { value: RangeKey; onChange: (k: RangeKey) => void }) {
-  return (
-    <div
-      className="inline-flex items-center gap-1 p-1"
-      style={{
-        border: `1px solid ${C.border}`,
-        borderRadius: 8,
-        background: "rgba(255,255,255,0.02)",
-      }}
-    >
-      {RANGE_OPTIONS.map((opt) => {
-        const active = value === opt.key;
-        return (
-          <button
-            key={opt.key}
-            onClick={() => onChange(opt.key)}
-            className="px-2 py-1.5 font-geist text-[10px] uppercase tracking-[0.1em] transition-colors sm:px-3 sm:text-[11px] sm:tracking-[0.12em]"
-            style={{
-              borderRadius: 6,
-              background: active ? C.goldSoft : "transparent",
-              color: active ? C.gold : C.mutedStrong,
-              border: active ? `1px solid ${C.gold}40` : "1px solid transparent",
-            }}
-          >
-            {opt.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function DashboardSection() {
-  const d = DATA.dashboard;
-  const [t1, setT1] = useState<"line" | "bar" | "area">("line");
-  const [t2, setT2] = useState<"donut" | "bar">("donut");
-  const [range, setRange] = useState<RangeKey>("all");
-  const filteredReceita = sliceByRange(d.receitaMeta, range);
-
-  return (
-    <div className="flex flex-col gap-4">
-      <RangeFilterBar value={range} onChange={setRange} />
-
-      <KpiRow items={d.kpis} />
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
-        <Card>
-          <SectionHead
-            title="Receita vs Meta"
-            sub="ÚLTIMOS 12 MESES"
-            actions={
-              <ChartSwitcher value={t1} onChange={setT1} options={["bar", "line", "area"]} />
-            }
-          />
-          <div className="mb-3 flex gap-5 font-geist text-[11px]" style={{ color: C.mutedStrong }}>
-            <span className="flex items-center gap-2">
-              <span className="inline-block h-[2px] w-4" style={{ background: C.gold }} /> Realizado
-            </span>
-            <span className="flex items-center gap-2">
-              <span
-                className="inline-block h-[2px] w-4"
-                style={{ borderTop: `2px dashed ${C.blue}` }}
-              />{" "}
-              Meta
-            </span>
-          </div>
-          <div style={{ height: 240 }}>
-            <ResponsiveContainer key={t1}>
-              {t1 === "line" ? (
-                <LineChart
-                  data={filteredReceita}
-                  margin={{ top: 8, right: 8, left: -12, bottom: 0 }}
-                >
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="m" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip {...tooltipStyle} />
-                  <Line
-                    type="monotone"
-                    dataKey="real"
-                    stroke={C.gold}
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="meta"
-                    stroke={C.blue}
-                    strokeWidth={1.5}
-                    strokeDasharray="4 4"
-                    dot={false}
-                  />
-                </LineChart>
-              ) : t1 === "area" ? (
-                <AreaChart
-                  data={filteredReceita}
-                  margin={{ top: 8, right: 8, left: -12, bottom: 0 }}
-                >
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="m" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip {...tooltipStyle} />
-                  <Area
-                    type="monotone"
-                    dataKey="real"
-                    stroke={C.gold}
-                    strokeWidth={2}
-                    fill={C.gold}
-                    fillOpacity={0.12}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="meta"
-                    stroke={C.blue}
-                    strokeWidth={1.5}
-                    strokeDasharray="4 4"
-                    fill={C.blue}
-                    fillOpacity={0.06}
-                  />
-                </AreaChart>
-              ) : (
-                <BarChart
-                  data={filteredReceita}
-                  margin={{ top: 8, right: 8, left: -12, bottom: 0 }}
-                >
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="m" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip {...tooltipStyle} />
-                  <Bar dataKey="real" fill={C.gold} radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="meta" fill={C.blue} radius={[3, 3, 0, 0]} />
-                </BarChart>
-              )}
-            </ResponsiveContainer>
-          </div>
-        </Card>
-
-        <Card>
-          <SectionHead
-            title="Mix de Receita"
-            sub="DISTRIBUIÇÃO"
-            actions={<ChartSwitcher value={t2} onChange={setT2} options={["donut", "bar"]} />}
-          />
-          <div className="relative" style={{ height: 240 }}>
-            <ResponsiveContainer key={t2}>
-              {t2 === "donut" ? (
-                <PieChart>
-                  <Pie
-                    data={d.mix}
-                    dataKey="value"
-                    innerRadius={70}
-                    outerRadius={100}
-                    paddingAngle={2}
-                    stroke="none"
-                  >
-                    {d.mix.map((s, i) => (
-                      <Cell key={i} fill={s.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip {...tooltipStyle} />
-                </PieChart>
-              ) : (
-                <BarChart data={d.mix} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="name" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip {...tooltipStyle} />
-                  <Bar dataKey="value" radius={[3, 3, 0, 0]}>
-                    {d.mix.map((s, i) => (
-                      <Cell key={i} fill={s.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              )}
-            </ResponsiveContainer>
-            {t2 === "donut" && (
-              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <div
-                  className="font-geist text-[9px] uppercase tracking-[0.2em]"
-                  style={{ color: C.muted }}
-                >
-                  Total
-                </div>
-                <div
-                  className="font-fraunces font-light"
-                  style={{ color: C.text, fontSize: 24, letterSpacing: "-0.03em" }}
-                >
-                  R$ 2,4M
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="mt-3 flex flex-col gap-1.5 font-geist text-[11px]">
-            {d.mix.map((s) => (
-              <div
-                key={s.name}
-                className="flex items-center justify-between"
-                style={{ color: C.mutedStrong }}
-              >
-                <span className="flex items-center gap-2">
-                  <span className="h-2 w-2" style={{ background: s.color }} />
-                  {s.name}
-                </span>
-                <span style={{ color: C.text }}>{s.value}%</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card>
-          <SectionHead title="Top Produtos" sub="RECEITA NO MÊS" />
-          <table className="w-full font-geist text-[12px]">
-            <tbody>
-              {d.topProdutos.map((p) => (
-                <tr key={p.sku} style={{ borderTop: `1px solid ${C.border}` }}>
-                  <td className="py-2.5 pr-2" style={{ color: C.muted, fontSize: 10 }}>
-                    {p.sku}
-                  </td>
-                  <td className="py-2.5 pr-2" style={{ color: C.text }}>
-                    {p.nome}
-                  </td>
-                  <td
-                    className="py-2.5 pr-2 text-right tabular-nums"
-                    style={{ color: C.mutedStrong }}
-                  >
-                    {p.receita}
-                  </td>
-                  <td
-                    className="py-2.5 text-right tabular-nums"
-                    style={{ color: p.up ? C.green : C.red }}
-                  >
-                    {p.pct}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-
-        <Card>
-          <SectionHead title="Status Operacional" sub="INDICADORES" />
-          <div className="flex flex-col gap-4">
-            {d.status.map((s) => {
-              const tone = s.tone === "green" ? C.green : s.tone === "amber" ? C.amber : C.red;
-              return (
-                <div key={s.label}>
-                  <div className="mb-1.5 flex justify-between font-geist text-[11px]">
-                    <span style={{ color: C.mutedStrong }}>{s.label}</span>
-                    <span className="tabular-nums" style={{ color: C.text }}>
-                      {s.pct}%
-                    </span>
-                  </div>
-                  <div className="h-1" style={{ background: "rgba(255,255,255,0.05)" }}>
-                    <div className="h-full" style={{ width: `${s.pct}%`, background: tone }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-
-        <Card>
-          <SectionHead title="Alertas do Dia" sub="ATIVIDADE" />
-          <div className="flex flex-col gap-3">
-            {d.alertas.map((a, i) => {
-              const tone = a.tone === "red" ? C.red : a.tone === "amber" ? C.amber : C.green;
-              return (
-                <div
-                  key={i}
-                  className="p-3"
-                  style={{
-                    background: `${tone}10`,
-                    border: `1px solid ${tone}33`,
-                    borderLeftWidth: 2,
-                  }}
-                >
-                  <div
-                    className="font-geist text-[9px] uppercase tracking-[0.2em]"
-                    style={{ color: tone }}
-                  >
-                    {a.level}
-                  </div>
-                  <div
-                    className="mt-1 font-geist text-[12px] leading-snug"
-                    style={{ color: C.text }}
-                  >
-                    {a.text}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
- *  EMPRESAS / UNIDADES — API backend (SQLite snapshot pedidos)
- * ============================================================ */
-type EmpresaChartRow = {
-  CODEMP: number;
-  name: string;
-  value: number;
-  faturamento: number;
-  color: string;
-};
-
-const EMPRESA_CHART_COLORS = [
-  "#F5D547",
-  "#4DA3FF",
-  "#B57EDC",
-  "#2EBD8F",
-  "#F39C7A",
-  "#E05555",
-  "#7ED4E0",
-] as const;
-
-function shortEmpresaLabel(nome: string, maxLen = 18): string {
-  const trimmed = nome.trim();
-  if (trimmed.length <= maxLen) return trimmed;
-  return `${trimmed.slice(0, maxLen - 1)}…`;
-}
-
-function EmpresaSelector({
-  lista,
-  value,
-  onChange,
-  disabled,
-}: {
-  lista: EmpresaDashboardDto[];
-  value: EmpresaSeleção;
-  onChange: (v: EmpresaSeleção) => void;
-  disabled?: boolean;
-}) {
-  const isMobile = useIsMobile();
-
-  const label = (cod: EmpresaSeleção) =>
-    cod === "todas"
-      ? "Todas as Empresas"
-      : (lista.find((e) => e.CODEMP === cod)?.NOMEFANTASIA ?? "—");
-
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="font-geist text-[10px] uppercase tracking-[0.2em]" style={{ color: C.muted }}>
-        Empresa
-      </div>
-
-      {isMobile ? (
-        <Select
-          value={value === "todas" ? "todas" : String(value)}
-          onValueChange={(v) => onChange(v === "todas" ? "todas" : Number(v))}
-          disabled={disabled}
-        >
-          <SelectTrigger
-            className="h-9 w-full min-w-[200px] font-geist text-[11px] uppercase tracking-[0.1em]"
-            style={{
-              border: `1px solid ${C.border}`,
-              borderRadius: 8,
-              background: "rgba(255,255,255,0.02)",
-              color: C.gold,
-            }}
-          >
-            <SelectValue>{label(value)}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todas" className="font-geist text-[11px] uppercase tracking-[0.1em]">
-              Todas as Empresas
-            </SelectItem>
-            {lista.map((e) => (
-              <SelectItem
-                key={e.CODEMP}
-                value={String(e.CODEMP)}
-                className="font-geist text-[11px] uppercase tracking-[0.1em]"
-              >
-                {e.NOMEFANTASIA}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ) : (
-        <div
-          className="flex flex-wrap items-center gap-1 p-1"
-          style={{
-            border: `1px solid ${C.border}`,
-            borderRadius: 8,
-            background: "rgba(255,255,255,0.02)",
-          }}
-        >
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => onChange("todas")}
-            className="px-2 py-1.5 font-geist text-[10px] uppercase tracking-[0.1em] transition-colors sm:px-3 sm:text-[11px]"
-            style={{
-              borderRadius: 6,
-              background: value === "todas" ? C.goldSoft : "transparent",
-              color: value === "todas" ? C.gold : C.mutedStrong,
-              border: value === "todas" ? `1px solid ${C.gold}40` : "1px solid transparent",
-              opacity: disabled ? 0.5 : 1,
-            }}
-          >
-            Todas as Empresas
-          </button>
-          {lista.map((e) => {
-            const active = value === e.CODEMP;
-            return (
-              <button
-                key={e.CODEMP}
-                type="button"
-                disabled={disabled}
-                onClick={() => onChange(e.CODEMP)}
-                className="px-2 py-1.5 font-geist text-[10px] uppercase tracking-[0.1em] transition-colors sm:px-3 sm:text-[11px]"
-                style={{
-                  borderRadius: 6,
-                  background: active ? C.goldSoft : "transparent",
-                  color: active ? C.gold : C.mutedStrong,
-                  border: active ? `1px solid ${C.gold}40` : "1px solid transparent",
-                  opacity: disabled ? 0.5 : 1,
-                }}
-              >
-                {e.NOMEFANTASIA}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function VendedorSelector({
-  lista,
-  value,
-  onChange,
-  disabled,
-}: {
-  lista: VendedorDto[];
-  value: VendedorSeleção;
-  onChange: (v: VendedorSeleção) => void;
-  disabled?: boolean;
-}) {
-  const label =
-    value === "todos"
-      ? "Todos os Vendedores"
-      : (lista.find((v) => v.CODVEND === value)?.APELIDO ?? "—");
-
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="font-geist text-[10px] uppercase tracking-[0.2em]" style={{ color: C.muted }}>
-        Vendedor
-      </div>
-
-      <Select
-        value={value === "todos" ? "todos" : String(value)}
-        onValueChange={(v) => onChange(v === "todos" ? "todos" : Number(v))}
-        disabled={disabled}
-      >
-        <SelectTrigger
-          className="h-9 w-full min-w-[220px] font-geist text-[11px] uppercase tracking-[0.1em] sm:w-auto"
-          style={{
-            border: `1px solid ${C.border}`,
-            borderRadius: 8,
-            background: "rgba(255,255,255,0.02)",
-            color: C.gold,
-          }}
-        >
-          <SelectValue>{label}</SelectValue>
-        </SelectTrigger>
-        <SelectContent className="max-h-80">
-          <SelectItem value="todos" className="font-geist text-[11px] uppercase tracking-[0.1em]">
-            Todos os Vendedores
-          </SelectItem>
-          {lista.map((v) => (
-            <SelectItem
-              key={v.CODVEND}
-              value={String(v.CODVEND)}
-              className="font-geist text-[11px] uppercase tracking-[0.1em]"
-            >
-              {v.APELIDO}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
-
-function ChartPlaceholder({ message }: { message: string }) {
-  return (
-    <div
-      className="flex items-center justify-center font-geist text-[12px]"
-      style={{ height: 240, color: C.mutedStrong }}
-    >
-      {message}
-    </div>
-  );
-}
-
-function localDateInputValue(date = new Date()): string {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function formatDatePt(date: string): string {
-  const [yyyy, mm, dd] = date.split("-");
-  return `${dd}/${mm}/${yyyy}`;
-}
-
-function EmpresasDashboardSection() {
-  const queryClient = useQueryClient();
-  const [empresa, setEmpresa] = useState<EmpresaSeleção>("todas");
-  const [vendedor, setVendedor] = useState<VendedorSeleção>("todos");
-  const [t2, setT2] = useState<"donut" | "bar">("donut");
-
-  const qResumo = useEmpresasResumo(empresa, vendedor);
-  const qEmp = { ...qResumo, data: qResumo.data ? { empresas: qResumo.data.empresas } : undefined };
-  const qVend = {
-    ...qResumo,
-    data: qResumo.data ? { vendedores: qResumo.data.vendedores } : undefined,
-  };
-  const qFat = { ...qResumo, data: qResumo.data?.faturamento };
-  const qMix = { ...qResumo, data: qResumo.data?.faturamento_por_empresa };
-
-  const listaEmpresas = useMemo(() => {
-    const raw = qEmp.data?.empresas ?? [];
-    return [...raw].sort((a, b) => a.ordem - b.ordem || a.CODEMP - b.CODEMP);
-  }, [qEmp.data?.empresas]);
-
-  const listaVendedores = useMemo(() => {
-    return qVend.data?.vendedores ?? [];
-  }, [qVend.data?.vendedores]);
-
-  const vendedoresDisabled = qVend.isPending || !!qVend.error || listaVendedores.length === 0;
-
-  const mixRows: EmpresaChartRow[] = useMemo(() => {
-    if (!qMix.data?.empresas.length) return [];
-    return qMix.data.empresas.map((row, i) => ({
-      CODEMP: row.CODEMP,
-      name: shortEmpresaLabel(row.NOMEFANTASIA),
-      value: row.percentual,
-      faturamento: row.faturamento,
-      color: EMPRESA_CHART_COLORS[i % EMPRESA_CHART_COLORS.length]!,
-    }));
-  }, [qMix.data]);
-
-  const empresaLabel =
-    empresa === "todas"
-      ? "Todas as Empresas"
-      : (listaEmpresas.find((e) => e.CODEMP === empresa)?.NOMEFANTASIA ?? "…");
-
-  const vendedorLabel =
-    vendedor === "todos"
-      ? null
-      : (listaVendedores.find((v) => v.CODVEND === vendedor)?.APELIDO ?? "…");
-
-  const path = vendedorLabel
-    ? `Maker > ${empresaLabel} · Vendedor: ${vendedorLabel}`
-    : `Maker > ${empresaLabel}`;
-
-  const snapshotAt = qFat.data?.snapshot_at ?? qMix.data?.snapshot_at ?? null;
-
-  const aguardandoSync =
-    qFat.isSuccess &&
-    qFat.data.snapshot_at === null &&
-    qFat.data.dia === 0 &&
-    qFat.data.semana_7d === 0 &&
-    qFat.data.mes_atual === 0 &&
-    qFat.data.ano_atual === 0;
-
-  const syncAntigo =
-    qFat.isSuccess &&
-    !!qFat.data.snapshot_at &&
-    Date.now() - new Date(qFat.data.snapshot_at).getTime() > 30 * 60 * 1000;
-
-  const showFatSkeleton = !qFat.data && qFat.isPending;
-
-  const fatKpis: Kpi[] =
-    !qFat.data || aguardandoSync
-      ? aguardandoSync && qFat.data
-        ? [
-            { label: "Faturamento 1 Dia", value: "Aguardando sync", color: C.gold },
-            { label: "Faturamento 1 Semana", value: "Aguardando sync", color: C.green },
-            { label: "Faturamento 1 Mês", value: "Aguardando sync", color: C.blue },
-            { label: "Total 2026", value: "Aguardando sync", color: C.amber },
-          ]
-        : []
-      : [
-          { label: "Faturamento Dia", value: formatBRLCompact(qFat.data.dia), color: C.gold },
-          {
-            label: "Faturamento 1 Semana",
-            value: formatBRLCompact(qFat.data.semana_7d),
-            color: C.green,
-          },
-          {
-            label: "Faturamento 1 Mês",
-            value: formatBRLCompact(qFat.data.mes_atual),
-            color: C.blue,
-          },
-          {
-            label: "Total 2026",
-            value: formatBRLCompact(qFat.data.ano_atual),
-            color: C.amber,
-          },
-        ];
-
-  const financeiroAno = qResumo.data?.financeiro_ano;
-  const margemOperacional =
-    financeiroAno && Number.isFinite(financeiroAno.margem_pct)
-      ? `${financeiroAno.margem_pct.toFixed(1)}%`
-      : "0,0%";
-  const operacionalKpis: Kpi[] =
-    !financeiroAno || aguardandoSync
-      ? []
-      : [
-          {
-            label: "Receita bruta 2026",
-            value: formatBRLCompact(financeiroAno.receita_bruta),
-            color: C.gold,
-          },
-          {
-            label: "Despesas 2026",
-            value: formatBRLCompact(financeiroAno.despesas_total),
-            color: C.red,
-          },
-          {
-            label: "Sobra operacional",
-            value: formatBRLCompact(financeiroAno.resultado_operacional),
-            color: financeiroAno.resultado_operacional >= 0 ? C.green : C.red,
-          },
-          {
-            label: "Margem operacional",
-            value: margemOperacional,
-            color: financeiroAno.resultado_operacional >= 0 ? C.green : C.red,
-          },
-        ];
-
-  const mixTooltipFormatter = (item: { payload?: unknown }) => {
-    const row = item.payload as EmpresaChartRow | undefined;
-    if (!row) return ["", ""];
-    return [`${formatBRL(row.faturamento)} (${row.value.toFixed(1)}%)`, row.name];
-  };
-
-  const empresasDisabled = qEmp.isPending || !!qEmp.error || listaEmpresas.length === 0;
-
-  return (
-    <div className="mt-10 flex flex-col gap-4 border-t pt-8" style={{ borderColor: C.border }}>
-      {qEmp.error && (
-        <div
-          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-geist text-[11px]"
-          style={{ border: `1px solid ${C.red}55`, background: `${C.red}12`, color: C.red }}
-        >
-          <span>
-            {qEmp.error instanceof ApiError
-              ? qEmp.error.message
-              : "Não foi possível carregar empresas."}
-          </span>
-          <button
-            type="button"
-            className="rounded px-2 py-1 font-geist uppercase tracking-[0.12em]"
-            style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
-            onClick={() => void queryClient.invalidateQueries({ queryKey: ["empresasResumo"] })}
-          >
-            Tentar novamente
-          </button>
-        </div>
-      )}
-
-      {syncAntigo && qFat.data?.snapshot_at && (
-        <div
-          className="px-3 py-2 font-geist text-[11px]"
-          style={{
-            border: `1px solid rgba(245,213,71,0.35)`,
-            background: "rgba(245,213,71,0.08)",
-            color: C.amber,
-          }}
-        >
-          Dados podem estar desatualizados — última sincronização dos pedidos:{" "}
-          {new Intl.DateTimeFormat("pt-BR", {
-            dateStyle: "short",
-            timeStyle: "short",
-          }).format(new Date(qFat.data.snapshot_at))}{" "}
-          (
-          {formatDistanceToNow(new Date(qFat.data.snapshot_at), {
-            locale: ptBR,
-            addSuffix: true,
-          })}
-          )
-        </div>
-      )}
-
-      {snapshotAt !== null && qFat.isSuccess && !syncAntigo && !aguardandoSync && (
-        <div
-          className="font-geist text-[10px] uppercase tracking-[0.14em]"
-          style={{ color: C.muted }}
-        >
-          Pedidos atualizados em{" "}
-          {new Intl.DateTimeFormat("pt-BR", {
-            dateStyle: "short",
-            timeStyle: "short",
-          }).format(new Date(snapshotAt))}
-        </div>
-      )}
-
-      <div className="flex flex-col gap-2">
-        <div className="flex items-baseline gap-3">
-          <h2
-            className="font-fraunces font-light"
-            style={{ color: C.text, fontSize: "clamp(18px, 4vw, 22px)", letterSpacing: "-0.02em" }}
-          >
-            Análise por Empresa
-          </h2>
-          <span
-            className="font-geist text-[10px] uppercase tracking-[0.2em]"
-            style={{ color: C.muted }}
-          >
-            Sankhya · Unidades
-          </span>
-        </div>
-        <div className="font-geist text-[12px]" style={{ color: C.mutedStrong }}>
-          {path}
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-3">
-        <EmpresaSelector
-          lista={listaEmpresas}
-          value={empresa}
-          onChange={setEmpresa}
-          disabled={empresasDisabled}
-        />
-        <VendedorSelector
-          lista={listaVendedores}
-          value={vendedor}
-          onChange={setVendedor}
-          disabled={vendedoresDisabled}
-        />
-      </div>
-
-      {qFat.error && (
-        <div
-          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-geist text-[11px]"
-          style={{ border: `1px solid ${C.red}55`, background: `${C.red}12`, color: C.red }}
-        >
-          <span>
-            {qFat.error instanceof ApiError
-              ? qFat.error.message
-              : "Não foi possível carregar faturamento."}
-          </span>
-          <button
-            type="button"
-            className="rounded px-2 py-1 uppercase tracking-[0.12em]"
-            style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
-            onClick={() =>
-              void queryClient.invalidateQueries({ queryKey: ["empresasResumo"] })
-            }
-          >
-            Tentar novamente
-          </button>
-        </div>
-      )}
-
-      {showFatSkeleton ? (
-        <KpiRowSkeleton />
-      ) : fatKpis.length > 0 ? (
-        <KpiRow items={fatKpis} />
-      ) : null}
-
-      {operacionalKpis.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <KpiRow items={operacionalKpis} />
-          {vendedor !== "todos" && (
-            <div
-              className="font-geist text-[10px] uppercase tracking-[0.14em]"
-              style={{ color: C.muted }}
-            >
-              Resultado operacional considera despesas da empresa selecionada; o filtro de vendedor
-              afeta apenas o faturamento.
-            </div>
-          )}
-        </div>
-      )}
-
-      {qMix.error && (
-        <div
-          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-geist text-[11px]"
-          style={{ border: `1px solid ${C.red}55`, background: `${C.red}12`, color: C.red }}
-        >
-          <span>
-            {qMix.error instanceof ApiError
-              ? qMix.error.message
-              : "Não foi possível carregar distribuição."}
-          </span>
-          <button
-            type="button"
-            className="rounded px-2 py-1 uppercase tracking-[0.12em]"
-            style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
-            onClick={() =>
-              void queryClient.invalidateQueries({ queryKey: ["empresasResumo"] })
-            }
-          >
-            Tentar novamente
-          </button>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
-        <Card>
-          <SectionHead title="Faturamento por Empresa" sub="DISTRIBUIÇÃO 2026" />
-          {!qMix.data && qMix.isPending ? (
-            <ChartPlaceholder message="Carregando gráfico…" />
-          ) : mixRows.length === 0 ? (
-            <ChartPlaceholder message="Sem dados para 2026 ou aguardando sincronização." />
-          ) : (
-            <div style={{ height: 240 }}>
-              <ResponsiveContainer>
-                <BarChart data={mixRows} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis
-                    dataKey="name"
-                    tick={{ ...axisStyle, fontSize: 9 }}
-                    axisLine={false}
-                    tickLine={false}
-                    interval={0}
-                  />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    {...tooltipStyle}
-                    formatter={(_value, _name, item) => mixTooltipFormatter(item)}
-                  />
-                  <Bar dataKey="faturamento" radius={[3, 3, 0, 0]}>
-                    {mixRows.map((row) => (
-                      <Cell key={row.CODEMP} fill={row.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </Card>
-
-        <Card>
-          <SectionHead
-            title="Mix de Receita"
-            sub="POR EMPRESA"
-            actions={<ChartSwitcher value={t2} onChange={setT2} options={["donut", "bar"]} />}
-          />
-          {!qMix.data && qMix.isPending ? (
-            <ChartPlaceholder message="Carregando gráfico…" />
-          ) : mixRows.length === 0 ? (
-            <ChartPlaceholder message="Sem dados para 2026 ou aguardando sincronização." />
-          ) : (
-            <>
-              <div className="relative" style={{ height: 240 }}>
-                <ResponsiveContainer key={t2}>
-                  {t2 === "donut" ? (
-                    <PieChart>
-                      <Pie
-                        data={mixRows}
-                        dataKey="value"
-                        innerRadius={70}
-                        outerRadius={100}
-                        paddingAngle={2}
-                        stroke="none"
-                      >
-                        {mixRows.map((row) => (
-                          <Cell key={row.CODEMP} fill={row.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        {...tooltipStyle}
-                        formatter={(_value, _name, item) => mixTooltipFormatter(item)}
-                      />
-                    </PieChart>
-                  ) : (
-                    <BarChart data={mixRows} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                      <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                      <XAxis
-                        dataKey="name"
-                        tick={{ ...axisStyle, fontSize: 9 }}
-                        axisLine={false}
-                        tickLine={false}
-                        interval={0}
-                      />
-                      <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                      <Tooltip
-                        {...tooltipStyle}
-                        formatter={(_value, _name, item) => mixTooltipFormatter(item)}
-                      />
-                      <Bar dataKey="value" radius={[3, 3, 0, 0]}>
-                        {mixRows.map((row) => (
-                          <Cell key={row.CODEMP} fill={row.color} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  )}
-                </ResponsiveContainer>
-                {t2 === "donut" && (
-                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                    <div
-                      className="font-geist text-[9px] uppercase tracking-[0.2em]"
-                      style={{ color: C.muted }}
-                    >
-                      Total (ano)
-                    </div>
-                    <div
-                      className="font-fraunces font-light"
-                      style={{
-                        color: C.text,
-                        fontSize: 22,
-                        letterSpacing: "-0.03em",
-                        textAlign: "center",
-                        paddingInline: 8,
-                      }}
-                    >
-                      {qMix.data && qMix.data.total > 0
-                        ? formatBRLCompact(qMix.data.total)
-                        : formatBRLCompact(0)}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="mt-3 flex flex-col gap-1.5 font-geist text-[11px]">
-                {mixRows.map((row) => (
-                  <div
-                    key={row.CODEMP}
-                    className="flex items-center justify-between"
-                    style={{ color: C.mutedStrong }}
-                  >
-                    <span className="flex items-center gap-2">
-                      <span className="h-2 w-2 shrink-0" style={{ background: row.color }} />
-                      {shortEmpresaLabel(
-                        listaEmpresas.find((e) => e.CODEMP === row.CODEMP)?.NOMEFANTASIA ??
-                          row.name,
-                        28,
-                      )}
-                    </span>
-                    <span className="tabular-nums" style={{ color: C.text }}>
-                      {row.value.toFixed(1)}%
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-const FIN_DIST_COLORS = ["#F5D547", "#4DA3FF", "#B57EDC", "#2EBD8F", "#E05555"] as const;
-
-const FIN_RECEITA_TOPS = [
-  { cod: 1116, label: "Ajuste estoque" },
-  { cod: 1117, label: "Bonificação" },
-  { cod: 1710, label: "Remessa feira" },
-  { cod: 1100, label: "NFE venda" },
-  { cod: 1792, label: "Demonstração" },
-] as const;
-
-const FLUXO_JANELAS = [
-  { meses: 12, label: "12 meses" },
-] as const;
-
-type FinanceiroCompetenciaModo = FinanceiroDrePeriodo | "intervalo";
-type ReceitaOperacaoModo = "custom" | "faturamento";
-
-function CompetenciaFinanceiraBar({
-  modo,
-  dataInicio,
-  dataFim,
-  onChange,
-  onDataInicioChange,
-  onDataFimChange,
-}: {
-  modo: FinanceiroCompetenciaModo;
-  dataInicio: string;
-  dataFim: string;
-  onChange: (p: FinanceiroCompetenciaModo) => void;
-  onDataInicioChange: (v: string) => void;
-  onDataFimChange: (v: string) => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="font-geist text-[10px] uppercase tracking-[0.2em]" style={{ color: C.muted }}>
-        Competência — DRE e despesas
-      </div>
-      <div
-        className="inline-flex flex-wrap items-center gap-1 p-1"
-        style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: "rgba(255,255,255,0.02)" }}
-      >
-        {[
-          { value: "mes", label: "Mês atual" },
-          { value: "ano", label: "Ano atual" },
-          { value: "intervalo", label: "Intervalo" },
-        ].map((opt) => {
-          const active = modo === opt.value;
-          return (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => onChange(opt.value as FinanceiroCompetenciaModo)}
-              className="px-2 py-1.5 font-geist text-[10px] uppercase tracking-[0.1em] transition-colors sm:px-3 sm:text-[11px]"
-              style={{
-                borderRadius: 6,
-                background: active ? C.goldSoft : "transparent",
-                color: active ? C.gold : C.mutedStrong,
-                border: active ? `1px solid ${C.gold}40` : "1px solid transparent",
-              }}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
-      </div>
-      {modo === "intervalo" && (
-        <div className="flex flex-wrap items-center gap-1">
-          <Input
-            type="date"
-            value={dataInicio}
-            onChange={(event) => onDataInicioChange(event.target.value)}
-            className="h-8 w-[138px] font-geist text-[11px]"
-            style={{ borderColor: C.borderStrong, background: "rgba(255,255,255,0.03)", color: C.text }}
-          />
-          <Input
-            type="date"
-            value={dataFim}
-            min={dataInicio || undefined}
-            onChange={(event) => onDataFimChange(event.target.value)}
-            className="h-8 w-[138px] font-geist text-[11px]"
-            style={{ borderColor: C.borderStrong, background: "rgba(255,255,255,0.03)", color: C.text }}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function FluxoJanelaBar({
-  meses,
-  onChange,
-}: {
-  meses: number;
-  onChange: (m: number) => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="font-geist text-[10px] uppercase tracking-[0.2em]" style={{ color: C.muted }}>
-        Fluxo de caixa — janela
-      </div>
-      <div
-        className="inline-flex flex-wrap items-center gap-1 p-1"
-        style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: "rgba(255,255,255,0.02)" }}
-      >
-        {FLUXO_JANELAS.map((opt) => {
-          const active = meses === opt.meses;
-          return (
-            <button
-              key={opt.meses}
-              type="button"
-              onClick={() => onChange(opt.meses)}
-              className="px-2 py-1.5 font-geist text-[10px] uppercase tracking-[0.1em] transition-colors sm:px-3 sm:text-[11px]"
-              style={{
-                borderRadius: 6,
-                background: active ? C.goldSoft : "transparent",
-                color: active ? C.gold : C.mutedStrong,
-                border: active ? `1px solid ${C.gold}40` : "1px solid transparent",
-              }}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function TipoOperacaoReceitaBar({
-  modo,
-  selected,
-  onModoChange,
-  onToggle,
-}: {
-  modo: ReceitaOperacaoModo;
-  selected: number[];
-  onModoChange: (modo: ReceitaOperacaoModo) => void;
-  onToggle: (cod: number) => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="font-geist text-[10px] uppercase tracking-[0.2em]" style={{ color: C.muted }}>
-        Tipo de operação — receita
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <div
-          className="inline-flex flex-wrap items-center gap-1 p-1"
-          style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: "rgba(255,255,255,0.02)" }}
-        >
-          {[
-            { value: "custom", label: "Selecionados" },
-            { value: "faturamento", label: "Faturamento real" },
-          ].map((opt) => {
-            const active = modo === opt.value;
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => onModoChange(opt.value as ReceitaOperacaoModo)}
-                className="px-2 py-1.5 font-geist text-[10px] uppercase tracking-[0.1em] transition-colors sm:px-3 sm:text-[11px]"
-                style={{
-                  borderRadius: 6,
-                  background: active ? C.goldSoft : "transparent",
-                  color: active ? C.gold : C.mutedStrong,
-                  border: active ? `1px solid ${C.gold}40` : "1px solid transparent",
-                }}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
-        </div>
-        {modo === "custom" && (
-          <div className="flex flex-wrap items-center gap-1">
-            {FIN_RECEITA_TOPS.map((opt) => {
-              const active = selected.includes(opt.cod);
-              return (
-                <button
-                  key={opt.cod}
-                  type="button"
-                  onClick={() => onToggle(opt.cod)}
-                  className="px-2 py-1.5 font-geist text-[10px] uppercase tracking-[0.1em] transition-colors sm:text-[11px]"
-                  style={{
-                    borderRadius: 6,
-                    background: active ? C.goldSoft : "rgba(255,255,255,0.02)",
-                    color: active ? C.gold : C.mutedStrong,
-                    border: active ? `1px solid ${C.gold}55` : `1px solid ${C.border}`,
-                  }}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function FinanceiroSection() {
-  const queryClient = useQueryClient();
-  const [empresa, setEmpresa] = useState<EmpresaSeleção>("todas");
-  const [competenciaModo, setCompetenciaModo] = useState<FinanceiroCompetenciaModo>("ano");
-  const [dataInicioComp, setDataInicioComp] = useState("2026-05-01");
-  const [dataFimComp, setDataFimComp] = useState("2026-05-22");
-  const [receitaOperacaoModo, setReceitaOperacaoModo] = useState<ReceitaOperacaoModo>("custom");
-  const [receitaTops, setReceitaTops] = useState<number[]>(FIN_RECEITA_TOPS.map((op) => op.cod));
-  const fluxoMeses = 12;
-  const [t1, setT1] = useState<"bar" | "line" | "area">("bar");
-  const [t2, setT2] = useState<"donut" | "bar">("donut");
-  const [t3, setT3] = useState<"area" | "line" | "bar">("area");
-
-  const qEmp = useEmpresas();
-  const listaEmpresas = useMemo(() => {
-    const raw = qEmp.data?.empresas ?? [];
-    return [...raw].sort((a, b) => a.ordem - b.ordem || a.CODEMP - b.CODEMP);
-  }, [qEmp.data?.empresas]);
-
-  const periodoComp: FinanceiroDrePeriodo = competenciaModo === "mes" ? "mes" : "ano";
-  const datasComp: FinanceiroDreFiltroDatas =
-    competenciaModo === "intervalo" && dataInicioComp && dataFimComp
-      ? { dataInicio: dataInicioComp, dataFim: dataFimComp }
-      : {};
-  const receitaCodTipOper =
-    receitaOperacaoModo === "custom" && receitaTops.length > 0
-      ? receitaTops.join(",")
-      : undefined;
-  const dreFiltros: FinanceiroDreFiltroDatas = {
-    ...datasComp,
-    codTipOper: receitaCodTipOper,
-  };
-
-  const qFinanceiro = useFinanceiroResumo(empresa, periodoComp, dreFiltros, fluxoMeses);
-  const qDre = { ...qFinanceiro, data: qFinanceiro.data?.dre };
-  const qDist = { ...qFinanceiro, data: qFinanceiro.data?.distribuicao_despesas };
-  const qFlux = { ...qFinanceiro, data: qFinanceiro.data?.fluxo_caixa };
-  const qContas = { ...qFinanceiro, data: qFinanceiro.data?.contas_receber };
-  const qRateio = useRateio(empresa, dataInicioComp, dataFimComp);
-
-  const snapshotAt =
-    qDre.data?.snapshot_at ?? qFlux.data?.snapshot_at ?? qDist.data?.snapshot_at ?? null;
-
-  const syncAntigo =
-    qDre.isSuccess &&
-    !!qDre.data.snapshot_at &&
-    Date.now() - new Date(qDre.data.snapshot_at).getTime() > 30 * 60 * 1000;
-
-  const semTitulosSync =
-    qDre.isSuccess &&
-    qDre.data.snapshot_at === null &&
-    qDre.data.receita_bruta === 0 &&
-    qDre.data.despesas_total === 0;
-
-  const empresaDisabled = qEmp.isPending || !!qEmp.error || listaEmpresas.length === 0;
-
-  const distribRows = useMemo(() => {
-    const cats = qDist.data?.categorias ?? [];
-    return cats.map((c, i) => ({
-      name: c.categoria,
-      value: c.percentual,
-      valorAbs: c.valor,
-      color: FIN_DIST_COLORS[i % FIN_DIST_COLORS.length]!,
-    }));
-  }, [qDist.data]);
-
-  const dreResumo = useMemo(() => {
-    const d = qDre.data;
-    if (!d) return [];
-    const resCor = d.resultado_operacional >= 0 ? C.green : C.red;
-    return [
-      { nome: "Receita bruta", valor: d.receita_bruta, cor: C.gold },
-      { nome: "Despesas totais", valor: d.despesas_total, cor: C.red },
-      { nome: "Resultado operac.", valor: d.resultado_operacional, cor: resCor },
-    ];
-  }, [qDre.data]);
-
-  const fluxoChartData = useMemo(
-    () =>
-      (qFlux.data?.serie ?? []).map((s) => ({
-        ...s,
-        labelMes: formatMesAnoPt(s.mes),
-      })),
-    [qFlux.data?.serie],
-  );
-
-  const showKpiSkeleton = !qDre.data && qDre.isPending;
-
-  const kpisFinance: Kpi[] =
-    semTitulosSync && qDre.data
-      ? [
-          { label: "Receita bruta", value: "Aguardando sync", color: C.gold },
-          { label: "Despesas totais", value: "Aguardando sync", color: C.red },
-          { label: "Resultado operac.", value: "Aguardando sync", color: C.green },
-          {
-            label: "Contas a receber (aberto)",
-            value: "Aguardando sync",
-            color: C.blue,
-          },
-        ]
-      : qDre.data
-        ? [
-            {
-              label: "Receita bruta",
-              value: formatBRLCompact(qDre.data.receita_bruta),
-              color: C.gold,
-            },
-            {
-              label: "Despesas totais",
-              value: formatBRLCompact(qDre.data.despesas_total),
-              color: C.red,
-            },
-            {
-              label: "Resultado operac.",
-              value: `${formatBRLCompact(qDre.data.resultado_operacional)} · ${qDre.data.margem_pct.toFixed(1)}%`,
-              color: qDre.data.resultado_operacional >= 0 ? C.green : C.red,
-            },
-            {
-              label: "Contas a receber (aberto)",
-              value:
-                qContas.data !== undefined
-                  ? formatBRLCompact(qContas.data.valor_total_aberto)
-                  : "…",
-              color: C.blue,
-            },
-          ]
-        : [];
-
-  const periodoSub =
-    competenciaModo === "intervalo"
-      ? `${dataInicioComp || "--"} a ${dataFimComp || "--"}`
-      : periodoComp === "mes"
-        ? "Competência mês civil atual"
-        : "Competência ano civil atual";
-
-  const toggleReceitaTop = (cod: number) => {
-    setReceitaTops((current) => {
-      if (current.includes(cod)) {
-        return current.length > 1 ? current.filter((id) => id !== cod) : current;
-      }
-      return [...current, cod];
-    });
-  };
-
-  return (
-    <div className="flex flex-col gap-4">
-      {qEmp.error && (
-        <div
-          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-geist text-[11px]"
-          style={{ border: `1px solid ${C.red}55`, background: `${C.red}12`, color: C.red }}
-        >
-          <span>
-            {qEmp.error instanceof ApiError ? qEmp.error.message : "Erro ao carregar empresas."}
-          </span>
-          <button
-            type="button"
-            className="rounded px-2 py-1 uppercase tracking-[0.12em]"
-            style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
-            onClick={() => void queryClient.invalidateQueries({ queryKey: ["empresas"] })}
-          >
-            Tentar novamente
-          </button>
-        </div>
-      )}
-
-      {syncAntigo && qDre.data?.snapshot_at && (
-        <div
-          className="px-3 py-2 font-geist text-[11px]"
-          style={{
-            border: `1px solid rgba(245,213,71,0.35)`,
-            background: "rgba(245,213,71,0.08)",
-            color: C.amber,
-          }}
-        >
-          Títulos podem estar desatualizados — última sync:{" "}
-          {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(
-            new Date(qDre.data.snapshot_at),
-          )}{" "}
-          (
-          {formatDistanceToNow(new Date(qDre.data.snapshot_at), {
-            locale: ptBR,
-            addSuffix: true,
-          })}
-          )
-        </div>
-      )}
-
-      {snapshotAt !== null && qDre.isSuccess && !syncAntigo && !semTitulosSync && (
-        <div className="font-geist text-[10px] uppercase tracking-[0.14em]" style={{ color: C.muted }}>
-          Títulos atualizados em{" "}
-          {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(
-            new Date(snapshotAt),
-          )}
-        </div>
-      )}
-
-      <EmpresaSelector
-        lista={listaEmpresas}
-        value={empresa}
-        onChange={setEmpresa}
-        disabled={empresaDisabled}
-      />
-
-      <CompetenciaFinanceiraBar
-        modo={competenciaModo}
-        dataInicio={dataInicioComp}
-        dataFim={dataFimComp}
-        onChange={setCompetenciaModo}
-        onDataInicioChange={setDataInicioComp}
-        onDataFimChange={setDataFimComp}
-      />
-      <TipoOperacaoReceitaBar
-        modo={receitaOperacaoModo}
-        selected={receitaTops}
-        onModoChange={setReceitaOperacaoModo}
-        onToggle={toggleReceitaTop}
-      />
-
-      {/* Rateio por projeto - tabela simples para visualização (Ladhine) */}
-      <div className="mt-3">
-        <Card>
-          <SectionHead title="Rateio por projeto" sub="Linhas rateadas (por projeto)" />
-          <div className="p-3 overflow-auto">
-            {qRateio.isLoading ? (
-              <div>Carregando rateio...</div>
-            ) : qRateio.error ? (
-              <div className="text-red-600">Erro ao carregar rateio</div>
-            ) : (
-              <table className="w-full text-sm table-auto">
-                <thead>
-                  <tr>
-                    <th className="text-left">Empresa</th>
-                    <th className="text-left">Data Baixa</th>
-                    <th className="text-left">Parceiro</th>
-                    <th className="text-left">Doc</th>
-                    <th className="text-right">Valor Doc</th>
-                    <th className="text-right">Projeto</th>
-                    <th className="text-right">Valor Rateado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {qRateio.data?.rows.map((r, i) => (
-                    <tr key={i} className="border-t">
-                      <td>{r.NOMEEMP ?? "-"}</td>
-                      <td>{r.DATA_BAIXA ?? "-"}</td>
-                      <td>{r.NOMEPARC ?? "-"}</td>
-                      <td>{r.NUMDOC ?? "-"}</td>
-                      <td className="text-right">{r.VLR_DOCUMENTO ? formatBRL(r.VLR_DOCUMENTO as number) : "-"}</td>
-                      <td className="text-right">{r.CODPROJ ?? "-"}</td>
-                      <td className="text-right">{r.VALOR_RATEADO ? formatBRL(r.VALOR_RATEADO as number) : "-"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </Card>
-      </div>
-
-      {(qDre.error || qDist.error || qFlux.error || qContas.error) && (
-        <div
-          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-geist text-[11px]"
-          style={{ border: `1px solid ${C.red}55`, background: `${C.red}12`, color: C.red }}
-        >
-          <span>
-            {qDre.error instanceof ApiError
-              ? qDre.error.message
-              : qDist.error instanceof ApiError
-                ? qDist.error.message
-                : qFlux.error instanceof ApiError
-                  ? qFlux.error.message
-                  : qContas.error instanceof ApiError
-                    ? qContas.error.message
-                    : "Erro ao carregar dados financeiros."}
-          </span>
-          <button
-            type="button"
-            className="rounded px-2 py-1 uppercase tracking-[0.12em]"
-            style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
-            onClick={() => {
-              void queryClient.invalidateQueries({ queryKey: ["financeiroResumo"] });
-            }}
-          >
-            Tentar novamente
-          </button>
-        </div>
-      )}
-
-      {showKpiSkeleton ? <KpiRowSkeleton /> : kpisFinance.length > 0 ? <KpiRow items={kpisFinance} /> : null}
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
-        <Card>
-          <SectionHead
-            title="DRE — resumo do período"
-            sub={periodoSub}
-            actions={
-              <ChartSwitcher value={t1} onChange={setT1} options={["bar", "line", "area"]} />
-            }
-          />
-          <div className="mb-1 font-geist text-[10px]" style={{ color: C.mutedStrong }}>
-            {qDre.data?.periodo ?? "—"} · Valores em R$ (competência, sem provisão)
-          </div>
-          {!qDre.data && qDre.isPending ? (
-            <ChartPlaceholder message="Carregando DRE…" />
-          ) : dreResumo.length === 0 ? (
-            <ChartPlaceholder message="Sem dados para o período." />
-          ) : (
-            <div style={{ height: 260 }}>
-              <ResponsiveContainer key={t1}>
-                {t1 === "bar" ? (
-                  <BarChart
-                    layout="vertical"
-                    data={dreResumo}
-                    margin={{ top: 8, right: 16, left: 4, bottom: 0 }}
-                  >
-                    <CartesianGrid stroke="rgba(255,255,255,0.04)" horizontal={false} />
-                    <XAxis
-                      type="number"
-                      tick={axisStyle}
-                      axisLine={false}
-                      tickLine={false}
-                      tickFormatter={(v) => formatBRLCompact(Number(v))}
-                    />
-                    <YAxis
-                      dataKey="nome"
-                      type="category"
-                      width={118}
-                      tick={axisStyle}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <Tooltip
-                      {...tooltipStyle}
-                      formatter={(v: number) => formatBRL(v)}
-                      labelFormatter={(_, p) => {
-                        const row = p?.[0]?.payload as (typeof dreResumo)[0] | undefined;
-                        return row?.nome ?? "";
-                      }}
-                    />
-                    <Bar dataKey="valor" radius={[0, 3, 3, 0]}>
-                      {dreResumo.map((row) => (
-                        <Cell key={row.nome} fill={row.cor} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                ) : t1 === "line" ? (
-                  <LineChart data={dreResumo} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                    <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                    <XAxis dataKey="nome" tick={axisStyle} axisLine={false} tickLine={false} />
-                    <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                    <Tooltip {...tooltipStyle} formatter={(v: number) => formatBRL(v)} />
-                    <Line
-                      type="monotone"
-                      dataKey="valor"
-                      stroke={C.gold}
-                      strokeWidth={2}
-                      dot={{ r: 4, stroke: C.gold, strokeWidth: 1, fill: C.bg }}
-                    />
-                  </LineChart>
-                ) : (
-                  <AreaChart data={dreResumo} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                    <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                    <XAxis dataKey="nome" tick={axisStyle} axisLine={false} tickLine={false} />
-                    <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                    <Tooltip {...tooltipStyle} formatter={(v: number) => formatBRL(v)} />
-                    <Area
-                      type="monotone"
-                      dataKey="valor"
-                      stroke={C.gold}
-                      strokeWidth={2}
-                      fill={C.gold}
-                      fillOpacity={0.15}
-                    />
-                  </AreaChart>
-                )}
-              </ResponsiveContainer>
-            </div>
-          )}
-        </Card>
-        <Card>
-          <SectionHead
-            title="Distribuição de despesas"
-            sub={periodoComp === "mes" ? "Mês atual" : "Ano atual"}
-            actions={<ChartSwitcher value={t2} onChange={setT2} options={["donut", "bar"]} />}
-          />
-          {!qDist.data && qDist.isPending ? (
-            <ChartPlaceholder message="Carregando…" />
-          ) : distribRows.length === 0 ? (
-            <ChartPlaceholder message="Sem despesas categorizadas no período." />
-          ) : (
-            <>
-              <div style={{ height: 220 }}>
-                <ResponsiveContainer key={t2}>
-                  {t2 === "donut" ? (
-                    <PieChart>
-                      <Pie
-                        data={distribRows}
-                        dataKey="value"
-                        nameKey="name"
-                        innerRadius={60}
-                        outerRadius={95}
-                        paddingAngle={2}
-                        stroke="none"
-                      >
-                        {distribRows.map((row) => (
-                          <Cell key={row.name} fill={row.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        {...tooltipStyle}
-                        formatter={(v: number, _n, item) => {
-                          const payload = item?.payload as (typeof distribRows)[0];
-                          const abs = payload?.valorAbs ?? 0;
-                          return [`${typeof v === "number" ? v.toFixed(1) : v}% (${formatBRL(abs)})`, payload?.name ?? ""];
-                        }}
-                      />
-                    </PieChart>
-                  ) : (
-                    <BarChart data={distribRows} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                      <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                      <XAxis dataKey="name" tick={{ ...axisStyle, fontSize: 9 }} axisLine={false} tickLine={false} interval={0} />
-                      <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                      <Tooltip {...tooltipStyle} formatter={(v: number) => `${v.toFixed(1)}%`} />
-                      <Bar dataKey="value" radius={[3, 3, 0, 0]}>
-                        {distribRows.map((row) => (
-                          <Cell key={row.name} fill={row.color} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  )}
-                </ResponsiveContainer>
-              </div>
-              <div className="mt-2 grid grid-cols-1 gap-1.5 font-geist text-[11px] sm:grid-cols-2">
-                {distribRows.map((row) => (
-                  <div
-                    key={row.name}
-                    className="flex items-center justify-between gap-2"
-                    style={{ color: C.mutedStrong }}
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: row.color }} />
-                      <span className="truncate">{row.name}</span>
-                    </span>
-                    <span className="shrink-0 tabular-nums" style={{ color: C.text }}>
-                      {row.value.toFixed(1)}%
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </Card>
-      </div>
-      <Card>
-        <SectionHead
-          title="Fluxo de caixa mensal"
-          sub="Saldo líquido (entradas − saídas) por mês baixado"
-          actions={<ChartSwitcher value={t3} onChange={setT3} options={["area", "line", "bar"]} />}
-        />
-        {!qFlux.data && qFlux.isPending ? (
-          <ChartPlaceholder message="Carregando fluxo…" />
-        ) : fluxoChartData.length === 0 ? (
-          <ChartPlaceholder message="Sem movimentações com DHBAIXA na janela." />
-        ) : (
-          <div style={{ height: 220 }}>
-            <ResponsiveContainer key={t3}>
-              {t3 === "area" ? (
-                <AreaChart data={fluxoChartData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="goldFillFin" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={C.gold} stopOpacity={0.25} />
-                      <stop offset="100%" stopColor={C.gold} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="labelMes" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    {...tooltipStyle}
-                    formatter={(v: number) => formatBRL(v)}
-                    labelFormatter={(l, p) => {
-                      const row = p?.[0]?.payload as (typeof fluxoChartData)[0] | undefined;
-                      return row
-                        ? `${l} · entradas ${formatBRL(row.entradas)} · saídas ${formatBRL(row.saidas)}`
-                        : String(l);
-                    }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="saldo"
-                    stroke={C.gold}
-                    strokeWidth={2}
-                    fill="url(#goldFillFin)"
-                  />
-                </AreaChart>
-              ) : t3 === "line" ? (
-                <LineChart data={fluxoChartData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="labelMes" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    {...tooltipStyle}
-                    formatter={(v: number) => formatBRL(v)}
-                    labelFormatter={(l, p) => {
-                      const row = p?.[0]?.payload as (typeof fluxoChartData)[0] | undefined;
-                      return row
-                        ? `${l} · entradas ${formatBRL(row.entradas)} · saídas ${formatBRL(row.saidas)}`
-                        : String(l);
-                    }}
-                  />
-                  <Line type="monotone" dataKey="saldo" stroke={C.gold} strokeWidth={2} dot={false} />
-                </LineChart>
-              ) : (
-                <BarChart data={fluxoChartData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="labelMes" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    {...tooltipStyle}
-                    formatter={(v: number) => formatBRL(v)}
-                    labelFormatter={(l, p) => {
-                      const row = p?.[0]?.payload as (typeof fluxoChartData)[0] | undefined;
-                      return row
-                        ? `${l} · entradas ${formatBRL(row.entradas)} · saídas ${formatBRL(row.saidas)}`
-                        : String(l);
-                    }}
-                  />
-                  <Bar dataKey="saldo" fill={C.gold} radius={[3, 3, 0, 0]} />
-                </BarChart>
-              )}
-            </ResponsiveContainer>
-          </div>
-        )}
-      </Card>
-    </div>
-  );
-}
-
-function EstoqueSection() {
-  const [empresa, setEmpresa] = useState<EmpresaSeleção>("todas");
-  const qEmp = useEmpresas();
-  const qEstoque = useEstoque(empresa);
-  const [t1, setT1] = useState<"bar" | "line" | "area">("bar");
-  const [range, setRange] = useState<RangeKey>("all");
-  const d = qEstoque.data ?? DATA.estoque;
-  const niveisData = sliceByRange(d.niveis, range);
-  const locais = "locais" in d ? d.locais : [];
-  const negativos = "negativos" in d ? d.negativos : [];
-  const listaEmpresas = useMemo(() => {
-    const raw = qEmp.data?.empresas ?? [];
-    return [...raw].sort((a, b) => a.ordem - b.ordem || a.CODEMP - b.CODEMP);
-  }, [qEmp.data?.empresas]);
-  const empresaDisabled = qEmp.isPending || !!qEmp.error || listaEmpresas.length === 0;
-  const formatQty = (value: number) =>
-    new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value);
-
-  return (
-    <div className="flex flex-col gap-4">
-      {qEstoque.error && (
-        <div
-          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-geist text-[11px]"
-          style={{ border: `1px solid ${C.red}55`, background: `${C.red}12`, color: C.red }}
-        >
-          <span>
-            {qEstoque.error instanceof ApiError
-              ? qEstoque.error.message
-              : "Erro ao carregar dados de estoque."}
-          </span>
-          <button
-            type="button"
-            className="rounded px-2 py-1 uppercase tracking-[0.12em]"
-            style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
-            onClick={() => void qEstoque.refetch()}
-          >
-            Tentar novamente
-          </button>
-        </div>
-      )}
-      <EmpresaSelector
-        lista={listaEmpresas}
-        value={empresa}
-        onChange={setEmpresa}
-        disabled={empresaDisabled}
-      />
-      <RangeFilterBar value={range} onChange={setRange} />
-      <KpiRow items={d.kpis} />
-      <Card>
-        <SectionHead
-          title="Níveis de Estoque por Categoria"
-          sub="ATUAL VS MÍNIMO"
-          actions={<ChartSwitcher value={t1} onChange={setT1} options={["bar", "line", "area"]} />}
-        />
-        <div style={{ height: 280 }}>
-          <ResponsiveContainer key={t1}>
-            <ComposedChart data={niveisData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-              <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-              <XAxis dataKey="cat" tick={axisStyle} axisLine={false} tickLine={false} />
-              <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-              <Tooltip {...tooltipStyle} />
-              {t1 === "bar" && <Bar dataKey="atual" fill={C.gold} radius={[3, 3, 0, 0]} />}
-              {t1 === "line" && (
-                <Line type="monotone" dataKey="atual" stroke={C.gold} strokeWidth={2} dot={false} />
-              )}
-              {t1 === "area" && (
-                <Area
-                  type="monotone"
-                  dataKey="atual"
-                  stroke={C.gold}
-                  strokeWidth={2}
-                  fill={C.gold}
-                  fillOpacity={0.12}
-                />
-              )}
-              <Line
-                type="stepAfter"
-                dataKey="min"
-                stroke={C.red}
-                strokeDasharray="4 4"
-                strokeWidth={1.5}
-                dot={false}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-      </Card>
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Card>
-          <SectionHead title="Estoque por Local" sub="EMPRESA · LOCAL · SALDO" />
-          <div className="overflow-x-auto">
-            <table className="w-full font-geist text-[12px]">
-              <thead>
-                <tr style={{ color: C.muted, fontSize: 10 }}>
-                  <th className="py-2 text-left font-normal uppercase tracking-wider">Empresa</th>
-                  <th className="py-2 text-left font-normal uppercase tracking-wider">Local</th>
-                  <th className="py-2 text-right font-normal uppercase tracking-wider">Itens</th>
-                  <th className="py-2 text-right font-normal uppercase tracking-wider">Saldo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {locais.map((row) => (
-                  <tr key={`${row.empresa}-${row.local}`} style={{ borderTop: `1px solid ${C.border}` }}>
-                    <td className="py-2.5" style={{ color: C.text }}>{row.empresa}</td>
-                    <td className="py-2.5" style={{ color: C.mutedStrong }}>{row.local}</td>
-                    <td className="py-2.5 text-right tabular-nums" style={{ color: C.muted }}>{row.linhas}</td>
-                    <td className="py-2.5 text-right tabular-nums" style={{ color: row.estoque < 0 ? C.red : C.gold }}>
-                      {formatQty(row.estoque)}
-                    </td>
-                  </tr>
-                ))}
-                {locais.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-4 text-center" style={{ color: C.muted }}>
-                      Sem dados de local para o filtro atual.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        <Card>
-          <SectionHead title="Saldos Negativos" sub="CONFERÊNCIA DE INVENTÁRIO" />
-          <div className="overflow-x-auto">
-            <table className="w-full font-geist text-[12px]">
-              <thead>
-                <tr style={{ color: C.muted, fontSize: 10 }}>
-                  <th className="py-2 text-left font-normal uppercase tracking-wider">Item</th>
-                  <th className="py-2 text-left font-normal uppercase tracking-wider">Origem</th>
-                  <th className="py-2 text-right font-normal uppercase tracking-wider">Saldo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {negativos.map((row) => (
-                  <tr key={`${row.empresa}-${row.local}-${row.item}`} style={{ borderTop: `1px solid ${C.border}` }}>
-                    <td className="max-w-[320px] py-2.5" style={{ color: C.text }}>
-                      <div className="truncate">{row.item}</div>
-                    </td>
-                    <td className="py-2.5" style={{ color: C.mutedStrong }}>
-                      <div>{row.empresa}</div>
-                      <div className="mt-1 text-[10px]" style={{ color: C.muted }}>
-                        {row.local} · {row.parceiro}
-                      </div>
-                    </td>
-                    <td className="py-2.5 text-right tabular-nums" style={{ color: C.red }}>
-                      {formatQty(row.estoque)}
-                    </td>
-                  </tr>
-                ))}
-                {negativos.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="py-4 text-center" style={{ color: C.muted }}>
-                      Nenhum saldo negativo encontrado para o filtro atual.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      </div>
-      <Card>
-        <SectionHead title="Alertas de Estoque" sub="ITENS CRÍTICOS" />
-        <table className="w-full font-geist text-[12px]">
-          <thead>
-            <tr style={{ color: C.muted, fontSize: 10 }}>
-              <th className="py-2 text-left font-normal uppercase tracking-wider">Item</th>
-              <th className="py-2 text-right font-normal uppercase tracking-wider">Atual</th>
-              <th className="py-2 text-right font-normal uppercase tracking-wider">Mínimo</th>
-              <th className="py-2 text-right font-normal uppercase tracking-wider">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {d.alertas.map((a) => {
-              const tone = a.status === "green" ? C.green : a.status === "amber" ? C.amber : C.red;
-              return (
-                <tr key={a.item} style={{ borderTop: `1px solid ${C.border}` }}>
-                  <td className="py-2.5" style={{ color: C.text }}>
-                    <div>{a.item}</div>
-                    {(a.empresa || a.local || a.parceiro) && (
-                      <div className="mt-1 text-[10px]" style={{ color: C.muted }}>
-                        {[a.empresa, a.local, a.parceiro].filter(Boolean).join(" · ")}
-                      </div>
-                    )}
-                  </td>
-                  <td className="py-2.5 text-right tabular-nums" style={{ color: C.mutedStrong }}>
-                    {a.atual}
-                  </td>
-                  <td className="py-2.5 text-right tabular-nums" style={{ color: C.muted }}>
-                    {a.min}
-                  </td>
-                  <td className="py-2.5 text-right">
-                    <span className="inline-flex items-center gap-2" style={{ color: tone }}>
-                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: tone }} />
-                      {a.status === "red" ? "Crítico" : a.status === "amber" ? "Atenção" : "OK"}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </Card>
-    </div>
-  );
-}
-
-function EntregasSection() {
-  const d = DATA.entregas;
-  const [t1, setT1] = useState<"sbar" | "line" | "area">("sbar");
-  const [range, setRange] = useState<RangeKey>("all");
-  const historicoData = sliceByRange(d.historico, range);
-  const series = [
-    { key: "prazo", color: C.green },
-    { key: "atrasado", color: C.red },
-    { key: "transito", color: C.amber },
-  ];
-  return (
-    <div className="flex flex-col gap-4">
-      <RangeFilterBar value={range} onChange={setRange} />
-      <KpiRow items={d.kpis} />
-      <Card>
-        <SectionHead
-          title="Performance de Entregas"
-          sub="12 MESES"
-          actions={<ChartSwitcher value={t1} onChange={setT1} options={["sbar", "line", "area"]} />}
-        />
-        <div style={{ height: 280 }}>
-          <ResponsiveContainer key={t1}>
-            {t1 === "sbar" ? (
-              <BarChart data={historicoData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="m" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} />
-                {series.map((s) => (
-                  <Bar key={s.key} dataKey={s.key} stackId="a" fill={s.color} />
-                ))}
-              </BarChart>
-            ) : t1 === "line" ? (
-              <LineChart data={historicoData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="m" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} />
-                {series.map((s) => (
-                  <Line
-                    key={s.key}
-                    type="monotone"
-                    dataKey={s.key}
-                    stroke={s.color}
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                ))}
-              </LineChart>
-            ) : (
-              <AreaChart data={historicoData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="m" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} />
-                {series.map((s) => (
-                  <Area
-                    key={s.key}
-                    type="monotone"
-                    dataKey={s.key}
-                    stackId="a"
-                    stroke={s.color}
-                    strokeWidth={2}
-                    fill={s.color}
-                    fillOpacity={0.12}
-                  />
-                ))}
-              </AreaChart>
-            )}
-          </ResponsiveContainer>
-        </div>
-      </Card>
-      <Card>
-        <SectionHead title="Transportadoras" sub="ON-TIME RATE" />
-        <div className="flex flex-col gap-4">
-          {d.transp.map((t) => {
-            const tone = t.tone === "green" ? C.green : t.tone === "amber" ? C.amber : C.red;
-            return (
-              <div key={t.nome}>
-                <div className="mb-1.5 flex justify-between font-geist text-[11px]">
-                  <span style={{ color: C.text }}>{t.nome}</span>
-                  <span className="tabular-nums" style={{ color: tone }}>
-                    {t.pct}%
-                  </span>
-                </div>
-                <div className="h-1.5" style={{ background: "rgba(255,255,255,0.05)" }}>
-                  <div className="h-full" style={{ width: `${t.pct}%`, background: tone }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function EntregasApiSection() {
-  const qEntregas = useEntregasBI();
-  const [chartMode, setChartMode] = useState<"sbar" | "line" | "area">("sbar");
-  const [search, setSearch] = useState("");
-  const data = qEntregas.data;
-  const historico = data?.historico ?? [];
-  const transportadoras = data?.transportadoras ?? [];
-  const recentes = data?.recentes ?? [];
-  const series = [
-    { key: "prazo", color: C.green },
-    { key: "atrasado", color: C.red },
-    { key: "transito", color: C.amber },
-  ];
-
-  const filteredRecentes = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const list = term
-      ? recentes.filter((row) =>
-          [row.cliente, row.empresa, row.transportadora, String(row.NUNOTA), String(row.NUMNOTA ?? "")]
-            .filter(Boolean)
-            .some((value) => String(value).toLowerCase().includes(term)),
-        )
-      : recentes;
-    return list.slice(0, 30);
-  }, [recentes, search]);
-
-  const kpis: Kpi[] = data
-    ? [
-        { label: "Notas logisticas", value: String(data.total_notas), color: C.gold },
-        { label: "No prazo", value: `${data.on_time_pct.toFixed(1)}%`, color: C.green },
-        {
-          label: "Atrasadas",
-          value: String(data.atrasadas),
-          color: data.atrasadas > 0 ? C.red : C.green,
-          alert: data.atrasadas > 0,
-        },
-        { label: "Frete total", value: formatBRLCompact(data.frete_total), color: C.blue },
-      ]
-    : DATA.entregas.kpis;
-
-  return (
-    <div className="flex flex-col gap-4">
-      {qEntregas.error && (
-        <div
-          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-geist text-[11px]"
-          style={{ border: `1px solid ${C.red}55`, background: `${C.red}12`, color: C.red }}
-        >
-          <span>{qEntregas.error instanceof ApiError ? qEntregas.error.message : "Erro ao carregar entregas."}</span>
-          <button
-            type="button"
-            className="rounded px-2 py-1 uppercase tracking-[0.12em]"
-            style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
-            onClick={() => void qEntregas.refetch()}
-          >
-            Tentar novamente
-          </button>
-        </div>
-      )}
-
-      <KpiRow items={kpis} />
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.45fr_1fr]">
-        <Card>
-          <SectionHead
-            title="Performance de Entregas"
-            sub={data ? `Ano ${data.ano} · SLA ${data.sla_dias} dias · prazo medio ${data.prazo_medio_dias} dias` : "Carregando"}
-            actions={<ChartSwitcher value={chartMode} onChange={setChartMode} options={["sbar", "line", "area"]} />}
-          />
-          <div style={{ height: 280 }}>
-            <ResponsiveContainer key={chartMode}>
-              {chartMode === "sbar" ? (
-                <BarChart data={historico} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
-                  {series.map((s) => (
-                    <Bar key={s.key} dataKey={s.key} stackId="a" fill={s.color} />
-                  ))}
-                </BarChart>
-              ) : chartMode === "line" ? (
-                <LineChart data={historico} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
-                  {series.map((s) => (
-                    <Line key={s.key} type="monotone" dataKey={s.key} stroke={s.color} strokeWidth={2} dot={false} />
-                  ))}
-                </LineChart>
-              ) : (
-                <AreaChart data={historico} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
-                  {series.map((s) => (
-                    <Area
-                      key={s.key}
-                      type="monotone"
-                      dataKey={s.key}
-                      stackId="a"
-                      stroke={s.color}
-                      fill={s.color}
-                      fillOpacity={0.12}
-                    />
-                  ))}
-                </AreaChart>
-              )}
-            </ResponsiveContainer>
-          </div>
-        </Card>
-
-        <Card>
-          <SectionHead title="Transportadoras" sub={`Volumes ${data?.volumes ?? 0}`} />
-          <div className="flex flex-col gap-3">
-            {transportadoras.map((row) => {
-              const tone = row.on_time_pct >= 90 ? C.green : row.on_time_pct >= 75 ? C.amber : C.red;
-              return (
-                <div key={row.nome}>
-                  <div className="mb-1.5 flex justify-between gap-3 font-geist text-[11px]">
-                    <span className="truncate" style={{ color: C.text }}>
-                      {row.nome}
-                    </span>
-                    <span className="tabular-nums" style={{ color: tone }}>
-                      {row.on_time_pct.toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="h-1.5" style={{ background: "rgba(255,255,255,0.05)" }}>
-                    <div className="h-full" style={{ width: `${Math.min(row.on_time_pct, 100)}%`, background: tone }} />
-                  </div>
-                  <div className="mt-1 flex justify-between text-[10px]" style={{ color: C.muted }}>
-                    <span>{row.total} notas</span>
-                    <span>{formatBRLCompact(row.frete)} frete</span>
-                  </div>
-                </div>
-              );
-            })}
-            {transportadoras.length === 0 && (
-              <div className="py-4 text-center font-geist text-sm" style={{ color: C.muted }}>
-                Sem transportadoras carregadas.
-              </div>
-            )}
-          </div>
-        </Card>
-      </div>
-
-      <Card>
-        <SectionHead title="Notas Recentes" sub="Cliente, prazo e frete" />
-        <Input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Buscar por nota, cliente, empresa ou transportadora"
-          className="mb-3 bg-[#09090B] text-white"
-        />
-        <div className="overflow-x-auto">
-          <table className="w-full font-geist text-[12px]">
-            <thead>
-              <tr style={{ color: C.muted, fontSize: 10 }}>
-                <th className="py-2 text-left font-normal uppercase tracking-wider">Nota</th>
-                <th className="py-2 text-left font-normal uppercase tracking-wider">Cliente</th>
-                <th className="py-2 text-right font-normal uppercase tracking-wider">Prazo</th>
-                <th className="py-2 text-right font-normal uppercase tracking-wider">Valor</th>
-                <th className="py-2 text-right font-normal uppercase tracking-wider">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRecentes.map((row) => {
-                const tone = row.status === "prazo" ? C.green : row.status === "atrasado" ? C.red : C.amber;
-                return (
-                  <tr key={row.NUNOTA} style={{ borderTop: `1px solid ${C.border}` }}>
-                    <td className="py-2.5" style={{ color: C.text }}>
-                      <div>{row.NUMNOTA ?? row.NUNOTA}</div>
-                      <div className="mt-1 text-[10px]" style={{ color: C.muted }}>
-                        {row.empresa} · {row.DTNEG}
-                      </div>
-                    </td>
-                    <td className="max-w-[420px] py-2.5" style={{ color: C.text }}>
-                      <div className="truncate">{row.cliente}</div>
-                      <div className="mt-1 text-[10px]" style={{ color: C.muted }}>
-                        {row.transportadora}
-                      </div>
-                    </td>
-                    <td className="py-2.5 text-right tabular-nums" style={{ color: C.mutedStrong }}>
-                      {row.prazo_dias == null ? "-" : `${row.prazo_dias}d`}
-                    </td>
-                    <td className="py-2.5 text-right tabular-nums" style={{ color: C.gold }}>
-                      {formatBRLCompact(row.valor)}
-                    </td>
-                    <td className="py-2.5 text-right">
-                      <span className="inline-flex items-center gap-2" style={{ color: tone }}>
-                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: tone }} />
-                        {row.status === "prazo" ? "No prazo" : row.status === "atrasado" ? "Atrasada" : "Transito"}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredRecentes.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-4 text-center" style={{ color: C.muted }}>
-                    Nenhuma nota encontrada.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function ClientesSection() {
-  const d = DATA.clientes;
-  const [t1, setT1] = useState<"bar" | "line" | "area">("bar");
-  const [t2, setT2] = useState<"donut" | "bar">("donut");
-  const [range, setRange] = useState<RangeKey>("all");
-  const flowData = sliceByRange(d.flow, range);
-  return (
-    <div className="flex flex-col gap-4">
-      <RangeFilterBar value={range} onChange={setRange} />
-      <KpiRow items={d.kpis} />
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
-        <Card>
-          <SectionHead
-            title="Novos vs Churn"
-            sub="POR MÊS"
-            actions={
-              <ChartSwitcher value={t1} onChange={setT1} options={["bar", "line", "area"]} />
-            }
-          />
-          <div style={{ height: 280 }}>
-            <ResponsiveContainer key={t1}>
-              {t1 === "bar" ? (
-                <BarChart
-                  data={flowData}
-                  margin={{ top: 8, right: 8, left: -12, bottom: 0 }}
-                  stackOffset="sign"
-                >
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="m" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <ReferenceLine y={0} stroke="rgba(255,255,255,0.15)" />
-                  <Tooltip {...tooltipStyle} />
-                  <Bar dataKey="novos" fill={C.green} radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="churn" fill={C.red} radius={[3, 3, 0, 0]} />
-                </BarChart>
-              ) : t1 === "line" ? (
-                <LineChart data={flowData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="m" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <ReferenceLine y={0} stroke="rgba(255,255,255,0.15)" />
-                  <Tooltip {...tooltipStyle} />
-                  <Line
-                    type="monotone"
-                    dataKey="novos"
-                    stroke={C.green}
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="churn"
-                    stroke={C.red}
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              ) : (
-                <AreaChart data={flowData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="m" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <ReferenceLine y={0} stroke="rgba(255,255,255,0.15)" />
-                  <Tooltip {...tooltipStyle} />
-                  <Area
-                    type="monotone"
-                    dataKey="novos"
-                    stroke={C.green}
-                    strokeWidth={2}
-                    fill={C.green}
-                    fillOpacity={0.12}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="churn"
-                    stroke={C.red}
-                    strokeWidth={2}
-                    fill={C.red}
-                    fillOpacity={0.12}
-                  />
-                </AreaChart>
-              )}
-            </ResponsiveContainer>
-          </div>
-        </Card>
-        <Card>
-          <SectionHead
-            title="Segmentação"
-            sub="BASE DE CLIENTES"
-            actions={<ChartSwitcher value={t2} onChange={setT2} options={["donut", "bar"]} />}
-          />
-          <div style={{ height: 220 }}>
-            <ResponsiveContainer key={t2}>
-              {t2 === "donut" ? (
-                <PieChart>
-                  <Pie
-                    data={d.seg}
-                    dataKey="value"
-                    innerRadius={60}
-                    outerRadius={95}
-                    paddingAngle={2}
-                    stroke="none"
-                  >
-                    {d.seg.map((s, i) => (
-                      <Cell key={i} fill={s.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip {...tooltipStyle} />
-                </PieChart>
-              ) : (
-                <BarChart data={d.seg} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="name" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip {...tooltipStyle} />
-                  <Bar dataKey="value" radius={[3, 3, 0, 0]}>
-                    {d.seg.map((s, i) => (
-                      <Cell key={i} fill={s.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              )}
-            </ResponsiveContainer>
-          </div>
-          <div className="mt-2 grid grid-cols-2 gap-1.5 font-geist text-[11px]">
-            {d.seg.map((s) => (
-              <div
-                key={s.name}
-                className="flex items-center justify-between"
-                style={{ color: C.mutedStrong }}
-              >
-                <span className="flex items-center gap-2">
-                  <span className="h-2 w-2" style={{ background: s.color }} />
-                  {s.name}
-                </span>
-                <span style={{ color: C.text }}>{s.value}%</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-function ClientesApiSection() {
-  const qClientes = useClientesBI();
-  const [chartMode, setChartMode] = useState<"bar" | "line" | "area">("bar");
-  const [segmentMode, setSegmentMode] = useState<"donut" | "bar">("donut");
-  const [search, setSearch] = useState("");
-  const data = qClientes.data;
-  const fluxo = data?.fluxo ?? [];
-  const segmentos = data?.segmentos ?? [];
-  const clientes = data?.top_clientes ?? [];
-  const filteredClientes = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const list = term
-      ? clientes.filter((cliente) =>
-          [cliente.NOMEPARC, cliente.cidade, cliente.uf, String(cliente.CODPARC)]
-            .filter(Boolean)
-            .some((value) => String(value).toLowerCase().includes(term)),
-        )
-      : clientes;
-    return list.slice(0, 30);
-  }, [clientes, search]);
-
-  const kpis: Kpi[] = data
-    ? [
-        { label: "Clientes na base", value: String(data.total_clientes), color: C.gold },
-        { label: "Compraram no ano", value: String(data.compradores_ano), color: C.green },
-        { label: "Receita ano", value: formatBRLCompact(data.receita_ano), color: C.blue },
-        {
-          label: "Receber vencido",
-          value: formatBRLCompact(data.receber_vencido),
-          color: data.receber_vencido > 0 ? C.red : C.green,
-          alert: data.receber_vencido > 0,
-        },
-      ]
-    : DATA.clientes.kpis;
-
-  return (
-    <div className="flex flex-col gap-4">
-      {qClientes.error && (
-        <div
-          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-geist text-[11px]"
-          style={{ border: `1px solid ${C.red}55`, background: `${C.red}12`, color: C.red }}
-        >
-          <span>{qClientes.error instanceof ApiError ? qClientes.error.message : "Erro ao carregar clientes."}</span>
-          <button
-            type="button"
-            className="rounded px-2 py-1 uppercase tracking-[0.12em]"
-            style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
-            onClick={() => void qClientes.refetch()}
-          >
-            Tentar novamente
-          </button>
-        </div>
-      )}
-
-      <KpiRow items={kpis} />
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
-        <Card>
-          <SectionHead
-            title="Clientes Novos e Recorrentes"
-            sub={data ? `Ano ${data.ano} · Ticket ${formatBRLCompact(data.ticket_medio)}` : "Carregando"}
-            actions={<ChartSwitcher value={chartMode} onChange={setChartMode} options={["bar", "line", "area"]} />}
-          />
-          <div style={{ height: 280 }}>
-            <ResponsiveContainer key={chartMode}>
-              {chartMode === "bar" ? (
-                <BarChart data={fluxo} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
-                  <Bar dataKey="novos" fill={C.green} radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="recorrentes" fill={C.gold} radius={[3, 3, 0, 0]} />
-                </BarChart>
-              ) : chartMode === "line" ? (
-                <LineChart data={fluxo} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
-                  <Line type="monotone" dataKey="novos" stroke={C.green} strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="recorrentes" stroke={C.gold} strokeWidth={2} dot={false} />
-                </LineChart>
-              ) : (
-                <AreaChart data={fluxo} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
-                  <Area type="monotone" dataKey="novos" stroke={C.green} fill={C.green} fillOpacity={0.12} />
-                  <Area type="monotone" dataKey="recorrentes" stroke={C.gold} fill={C.gold} fillOpacity={0.12} />
-                </AreaChart>
-              )}
-            </ResponsiveContainer>
-          </div>
-        </Card>
-
-        <Card>
-          <SectionHead
-            title="Segmentacao"
-            sub={`Aberto ${formatBRLCompact(data?.receber_aberto ?? 0)}`}
-            actions={<ChartSwitcher value={segmentMode} onChange={setSegmentMode} options={["donut", "bar"]} />}
-          />
-          <div style={{ height: 220 }}>
-            <ResponsiveContainer key={segmentMode}>
-              {segmentMode === "donut" ? (
-                <PieChart>
-                  <Pie data={segmentos} dataKey="value" innerRadius={58} outerRadius={92} paddingAngle={2} stroke="none">
-                    {segmentos.map((_, i) => (
-                      <Cell key={i} fill={[C.gold, C.blue, C.green, C.red][i % 4]} />
-                    ))}
-                  </Pie>
-                  <Tooltip {...tooltipStyle} />
-                </PieChart>
-              ) : (
-                <BarChart data={segmentos} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="name" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip {...tooltipStyle} />
-                  <Bar dataKey="value" fill={C.blue} radius={[3, 3, 0, 0]} />
-                </BarChart>
-              )}
-            </ResponsiveContainer>
-          </div>
-          <div className="mt-2 grid gap-1.5 font-geist text-[11px]">
-            {segmentos.map((seg, i) => (
-              <div key={seg.name} className="flex items-center justify-between" style={{ color: C.mutedStrong }}>
-                <span className="flex items-center gap-2">
-                  <span className="h-2 w-2" style={{ background: [C.gold, C.blue, C.green, C.red][i % 4] }} />
-                  {seg.name}
-                </span>
-                <span style={{ color: C.text }}>{seg.value}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      <Card>
-        <SectionHead title="Top Clientes" sub="Receita, ticket e aberto financeiro" />
-        <Input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Buscar por codigo, cliente, cidade ou UF"
-          className="mb-3 bg-[#09090B] text-white"
-        />
-        <div className="overflow-x-auto">
-          <table className="w-full font-geist text-[12px]">
-            <thead>
-              <tr style={{ color: C.muted, fontSize: 10 }}>
-                <th className="py-2 text-left font-normal uppercase tracking-wider">Cliente</th>
-                <th className="py-2 text-right font-normal uppercase tracking-wider">Receita</th>
-                <th className="py-2 text-right font-normal uppercase tracking-wider">Pedidos</th>
-                <th className="py-2 text-right font-normal uppercase tracking-wider">Ticket</th>
-                <th className="py-2 text-right font-normal uppercase tracking-wider">Aberto</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredClientes.map((cliente) => (
-                <tr key={cliente.CODPARC} style={{ borderTop: `1px solid ${C.border}` }}>
-                  <td className="max-w-[460px] py-2.5" style={{ color: C.text }}>
-                    <div className="truncate">{cliente.NOMEPARC}</div>
-                    <div className="mt-1 text-[10px]" style={{ color: C.muted }}>
-                      #{cliente.CODPARC}
-                      {cliente.ultima_compra ? ` · ultima compra ${cliente.ultima_compra}` : ""}
-                    </div>
-                  </td>
-                  <td className="py-2.5 text-right tabular-nums" style={{ color: C.gold }}>
-                    {formatBRLCompact(cliente.receita)}
-                  </td>
-                  <td className="py-2.5 text-right tabular-nums" style={{ color: C.mutedStrong }}>
-                    {cliente.pedidos}
-                  </td>
-                  <td className="py-2.5 text-right tabular-nums" style={{ color: C.mutedStrong }}>
-                    {formatBRLCompact(cliente.ticket_medio)}
-                  </td>
-                  <td className="py-2.5 text-right tabular-nums" style={{ color: cliente.receber_aberto > 0 ? C.red : C.green }}>
-                    {formatBRLCompact(cliente.receber_aberto)}
-                  </td>
-                </tr>
-              ))}
-              {filteredClientes.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-4 text-center" style={{ color: C.muted }}>
-                    Nenhum cliente encontrado.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-const MESES_PT = [
-  { value: "01", label: "Janeiro" },
-  { value: "02", label: "Fevereiro" },
-  { value: "03", label: "Março" },
-  { value: "04", label: "Abril" },
-  { value: "05", label: "Maio" },
-  { value: "06", label: "Junho" },
-  { value: "07", label: "Julho" },
-  { value: "08", label: "Agosto" },
-  { value: "09", label: "Setembro" },
-  { value: "10", label: "Outubro" },
-  { value: "11", label: "Novembro" },
-  { value: "12", label: "Dezembro" },
-] as const;
-
-function downloadCsv(filename: string, rows: Array<Record<string, string | number>>): void {
-  const headers = Object.keys(rows[0] ?? { mes: "", matricula: "", aulas_assistidas: "" });
-  const escapeCell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
-  const csv = [
-    headers.join(";"),
-    ...rows.map((row) => headers.map((header) => escapeCell(row[header] ?? "")).join(";")),
-  ].join("\r\n");
-  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function ViaCertaAlunosSection() {
+function presetRange(preset: PeriodPreset) {
   const now = new Date();
-  const [month, setMonth] = useState(String(now.getMonth() + 1).padStart(2, "0"));
-  const [year, setYear] = useState(String(now.getFullYear()));
-  const [search, setSearch] = useState("");
-  const qAlunos = useViaCertaAlunosAtivos(month, year);
-  const alunos = qAlunos.data?.alunos ?? [];
-  const filteredAlunos = useMemo(() => {
-    const term = search.trim();
-    return term ? alunos.filter((row) => String(row.matricula).includes(term)) : alunos;
-  }, [alunos, search]);
-  const anos = useMemo(() => {
-    const current = now.getFullYear();
-    return Array.from({ length: 5 }, (_, i) => String(current - i));
-  }, [now]);
-  const mediaAulas =
-    qAlunos.data && qAlunos.data.total_alunos > 0
-      ? qAlunos.data.total_aulas_assistidas / qAlunos.data.total_alunos
-      : 0;
-  const mesLabel = MESES_PT.find((m) => m.value === month)?.label ?? month;
-  const kpis: Kpi[] = qAlunos.data
-    ? [
-        { label: "Alunos ativos", value: String(qAlunos.data.total_alunos), color: C.gold },
-        { label: "Aulas assistidas", value: String(qAlunos.data.total_aulas_assistidas), color: C.green },
-        { label: "Média por aluno", value: mediaAulas.toFixed(1), color: C.blue },
-        { label: "Competência", value: `${mesLabel}/${year}`, color: C.gold },
-      ]
-    : [
-        { label: "Alunos ativos", value: "Carregando", color: C.gold },
-        { label: "Aulas assistidas", value: "Carregando", color: C.green },
-        { label: "Média por aluno", value: "Carregando", color: C.blue },
-        { label: "Competência", value: `${mesLabel}/${year}`, color: C.gold },
-      ];
-
-  return (
-    <div className="flex flex-col gap-4">
-      {qAlunos.error && (
-        <div
-          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-geist text-[11px]"
-          style={{ border: `1px solid ${C.red}55`, background: `${C.red}12`, color: C.red }}
-        >
-          <span>
-            {qAlunos.error instanceof ApiError
-              ? qAlunos.error.message
-              : "Erro ao carregar alunos ativos da Via Certa."}
-          </span>
-          <button
-            type="button"
-            className="rounded px-2 py-1 uppercase tracking-[0.12em]"
-            style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
-            onClick={() => void qAlunos.refetch()}
-          >
-            Tentar novamente
-          </button>
-        </div>
-      )}
-
-      <Card>
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="grid gap-2 sm:grid-cols-[180px_120px]">
-            <div>
-              <div className="mb-1 font-geist text-[10px] uppercase tracking-[0.18em]" style={{ color: C.muted }}>
-                Mês
-              </div>
-              <Select value={month} onValueChange={setMonth}>
-                <SelectTrigger className="h-9 bg-[#09090B] font-geist text-[12px] text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MESES_PT.map((m) => (
-                    <SelectItem key={m.value} value={m.value}>
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <div className="mb-1 font-geist text-[10px] uppercase tracking-[0.18em]" style={{ color: C.muted }}>
-                Ano
-              </div>
-              <Select value={year} onValueChange={setYear}>
-                <SelectTrigger className="h-9 bg-[#09090B] font-geist text-[12px] text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {anos.map((ano) => (
-                    <SelectItem key={ano} value={ano}>
-                      {ano}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <button
-            type="button"
-            disabled={alunos.length === 0}
-            onClick={() =>
-              downloadCsv(
-                `alunos-ativos-via-certa-${year}-${month}.csv`,
-                alunos.map((row) => ({
-                  mes: row.mes,
-                  matricula: row.matricula,
-                  aulas_assistidas: row.aulas_assistidas,
-                })),
-              )
-            }
-            className="h-9 rounded px-3 font-geist text-[11px] uppercase tracking-[0.12em] disabled:opacity-40"
-            style={{ border: `1px solid ${C.gold}66`, background: C.goldSoft, color: C.gold }}
-          >
-            Exportar CSV
-          </button>
-        </div>
-      </Card>
-
-      <KpiRow items={kpis} />
-
-      <Card>
-        <SectionHead title="Alunos ativos Via Certa" sub={`${mesLabel} de ${year}`} />
-        <Input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Buscar matrícula"
-          className="mb-3 bg-[#09090B] text-white"
-        />
-        <div className="overflow-x-auto">
-          <table className="w-full font-geist text-[12px]">
-            <thead>
-              <tr style={{ color: C.muted, fontSize: 10 }}>
-                <th className="py-2 text-left font-normal uppercase tracking-wider">Mês</th>
-                <th className="py-2 text-left font-normal uppercase tracking-wider">Matrícula</th>
-                <th className="py-2 text-right font-normal uppercase tracking-wider">Aulas assistidas</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredAlunos.map((aluno) => (
-                <tr key={`${aluno.mes}-${aluno.matricula}`} style={{ borderTop: `1px solid ${C.border}` }}>
-                  <td className="py-2.5" style={{ color: C.mutedStrong }}>
-                    {aluno.mes}
-                  </td>
-                  <td className="py-2.5 tabular-nums" style={{ color: C.text }}>
-                    {aluno.matricula}
-                  </td>
-                  <td className="py-2.5 text-right tabular-nums" style={{ color: C.gold }}>
-                    {aluno.aulas_assistidas}
-                  </td>
-                </tr>
-              ))}
-              {!qAlunos.isPending && filteredAlunos.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="py-4 text-center" style={{ color: C.muted }}>
-                    Nenhum aluno ativo encontrado para o período.
-                  </td>
-                </tr>
-              )}
-              {qAlunos.isPending && (
-                <tr>
-                  <td colSpan={3} className="py-4 text-center" style={{ color: C.muted }}>
-                    Carregando alunos ativos...
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
-  );
+  const end = iso(now);
+  if (preset === "hoje") return { dataInicio: end, dataFim: end };
+  if (preset === "semana") {
+    const start = new Date(now);
+    start.setDate(start.getDate() - 6);
+    return { dataInicio: iso(start), dataFim: end };
+  }
+  if (preset === "ano") {
+    const start = new Date(now.getFullYear(), 0, 1);
+    return { dataInicio: iso(start), dataFim: end };
+  }
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  return { dataInicio: iso(start), dataFim: end };
 }
 
-function ProdutosApiSection() {
-  const qProdutos = useProdutos();
-  const [search, setSearch] = useState("");
-  const [chartMode, setChartMode] = useState<"hbar" | "bar">("hbar");
-  const produtos = qProdutos.data?.produtos ?? [];
-  const ativos = produtos.filter((p) => p.ativo === 1);
-  const comEstoque = produtos.filter((p) => p.ESTOQUE > 0);
-  const saldosNegativos = produtos.filter((p) => p.ESTOQUE < 0);
-  const semMarca = produtos.filter((p) => !p.MARCA).length;
-  const totalEstoque = produtos.reduce((acc, p) => acc + p.ESTOQUE, 0);
-  const formatQty = (value: number) =>
-    new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value);
+function CentralCeoPage() {
+  const { filters, setFilters } = useFilters();
+  const query = useExecutivoDashboard(filters);
+  const rateioQuery = useRateioDashboard(filters);
+  const data = query.data;
+  usePageSnapshot(data?.snapshot_at);
 
-  const byUso = useMemo(() => {
-    const grouped = produtos.reduce<Record<string, { name: string; value: number; estoque: number }>>(
-      (map, produto) => {
-        const key = produto.USOPROD || "Sem uso";
-        if (!map[key]) map[key] = { name: key, value: 0, estoque: 0 };
-        map[key].value += 1;
-        map[key].estoque += produto.ESTOQUE;
-        return map;
-      },
-      {},
-    );
-    return Object.values(grouped).sort((a, b) => b.value - a.value).slice(0, 8);
-  }, [produtos]);
+  if (query.isPending || query.error) {
+    return <QueryState loading={query.isPending} error={query.error} retry={() => void query.refetch()} />;
+  }
 
-  const byMarca = useMemo(() => {
-    const grouped = produtos.reduce<Record<string, { name: string; value: number; estoque: number }>>(
-      (map, produto) => {
-        const key = produto.MARCA || "Sem marca";
-        if (!map[key]) map[key] = { name: key, value: 0, estoque: 0 };
-        map[key].value += 1;
-        map[key].estoque += produto.ESTOQUE;
-        return map;
-      },
-      {},
-    );
-    return Object.values(grouped).sort((a, b) => b.value - a.value).slice(0, 8);
-  }, [produtos]);
-
-  const filteredProdutos = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const list = term
-      ? produtos.filter((p) =>
-          [p.DESCRPROD, p.REFERENCIA, p.MARCA, p.USOPROD, p.CODVOL, String(p.CODPROD)]
-            .filter(Boolean)
-            .some((value) => String(value).toLowerCase().includes(term)),
-        )
-      : produtos;
-    return [...list].sort((a, b) => Math.abs(b.ESTOQUE) - Math.abs(a.ESTOQUE)).slice(0, 40);
-  }, [produtos, search]);
-
-  const kpis: Kpi[] = [
-    { label: "Produtos cadastrados", value: String(produtos.length), color: C.gold },
-    { label: "Produtos ativos", value: String(ativos.length), color: C.green },
-    { label: "Com estoque positivo", value: String(comEstoque.length), color: C.blue },
-    {
-      label: "Saldos negativos",
-      value: String(saldosNegativos.length),
-      color: saldosNegativos.length > 0 ? C.red : C.green,
-      alert: saldosNegativos.length > 0,
-    },
-  ];
-
-  return (
-    <div className="flex flex-col gap-4">
-      {qProdutos.error && (
-        <div
-          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-geist text-[11px]"
-          style={{ border: `1px solid ${C.red}55`, background: `${C.red}12`, color: C.red }}
-        >
-          <span>
-            {qProdutos.error instanceof ApiError
-              ? qProdutos.error.message
-              : "Erro ao carregar produtos."}
-          </span>
-          <button
-            type="button"
-            className="rounded px-2 py-1 uppercase tracking-[0.12em]"
-            style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
-            onClick={() => void qProdutos.refetch()}
-          >
-            Tentar novamente
-          </button>
-        </div>
-      )}
-
-      <KpiRow items={qProdutos.data ? kpis : DATA.produtos.kpis} />
-
-      <Card>
-        <SectionHead
-          title="Produtos por Uso"
-          sub={`Estoque total ${formatQty(totalEstoque)} · Sem marca ${semMarca}`}
-          actions={<ChartSwitcher value={chartMode} onChange={setChartMode} options={["hbar", "bar"]} />}
-        />
-        <div style={{ height: 280 }}>
-          <ResponsiveContainer key={chartMode}>
-            {chartMode === "hbar" ? (
-              <BarChart layout="vertical" data={byUso} margin={{ top: 8, right: 16, left: 20, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" horizontal={false} />
-                <XAxis type="number" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis dataKey="name" type="category" tick={axisStyle} axisLine={false} tickLine={false} width={95} />
-                <Tooltip {...tooltipStyle} />
-                <Bar dataKey="value" fill={C.gold} radius={[0, 3, 3, 0]} />
-              </BarChart>
-            ) : (
-              <BarChart data={byUso} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="name" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} />
-                <Bar dataKey="value" fill={C.gold} radius={[3, 3, 0, 0]} />
-              </BarChart>
-            )}
-          </ResponsiveContainer>
-        </div>
-      </Card>
-
-      <Card>
-        <SectionHead title="Produtos por Marca" sub="Top cadastros" />
-        <div className="grid gap-2">
-          {byMarca.map((row) => (
-            <div
-              key={row.name}
-              className="grid grid-cols-[1fr_auto] gap-3 rounded px-3 py-2"
-              style={{ background: "rgba(255,255,255,0.03)" }}
-            >
-              <div className="truncate" style={{ color: C.text }}>
-                {row.name}
-              </div>
-              <div className="tabular-nums" style={{ color: C.gold }}>
-                {row.value}
-              </div>
-            </div>
-          ))}
-          {byMarca.length === 0 && (
-            <div className="py-4 text-center font-geist text-sm" style={{ color: C.muted }}>
-              Sem produtos carregados.
-            </div>
-          )}
-        </div>
-      </Card>
-
-      <Card>
-        <SectionHead title="Catalogo de Produtos" sub="Cadastro + estoque" />
-        <Input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Buscar por codigo, descricao, marca, uso ou unidade"
-          className="mb-3 bg-[#09090B] text-white"
-        />
-        <div className="overflow-x-auto">
-          <table className="w-full font-geist text-[12px]">
-            <thead>
-              <tr style={{ color: C.muted, fontSize: 10 }}>
-                <th className="py-2 text-left font-normal uppercase tracking-wider">Produto</th>
-                <th className="py-2 text-left font-normal uppercase tracking-wider">Marca</th>
-                <th className="py-2 text-left font-normal uppercase tracking-wider">Uso</th>
-                <th className="py-2 text-right font-normal uppercase tracking-wider">Estoque</th>
-                <th className="py-2 text-right font-normal uppercase tracking-wider">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProdutos.map((produto) => (
-                <tr key={produto.CODPROD} style={{ borderTop: `1px solid ${C.border}` }}>
-                  <td className="max-w-[420px] py-2.5" style={{ color: C.text }}>
-                    <div className="truncate">{produto.DESCRPROD}</div>
-                    <div className="mt-1 text-[10px]" style={{ color: C.muted }}>
-                      #{produto.CODPROD} · {produto.CODVOL ?? produto.UNIDADE ?? "sem unidade"}
-                      {produto.REFERENCIA ? ` · ref. ${produto.REFERENCIA}` : ""}
-                    </div>
-                  </td>
-                  <td className="py-2.5" style={{ color: C.mutedStrong }}>
-                    {produto.MARCA ?? "Sem marca"}
-                  </td>
-                  <td className="py-2.5" style={{ color: C.mutedStrong }}>
-                    {produto.USOPROD ?? "-"}
-                  </td>
-                  <td className="py-2.5 text-right tabular-nums" style={{ color: produto.ESTOQUE < 0 ? C.red : C.gold }}>
-                    {formatQty(produto.ESTOQUE)}
-                  </td>
-                  <td className="py-2.5 text-right" style={{ color: produto.ativo ? C.green : C.muted }}>
-                    {produto.ativo ? "Ativo" : "Inativo"}
-                  </td>
-                </tr>
-              ))}
-              {filteredProdutos.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-4 text-center" style={{ color: C.muted }}>
-                    Nenhum produto encontrado.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function ProdutosSection() {
-  const d = DATA.produtos;
-  const [t1, setT1] = useState<"sbar" | "line" | "area">("sbar");
-  const [t2, setT2] = useState<"hbar" | "bar">("hbar");
-  const [range, setRange] = useState<RangeKey>("all");
-  const catsData = sliceByRange(d.cats, range);
-  const cats = [
-    { key: "Aço", color: C.gold },
-    { key: "Tubos", color: C.blue },
-    { key: "Perfis", color: C.green },
-    { key: "Telas", color: "#8E6FB5" },
-  ];
-  return (
-    <div className="flex flex-col gap-4">
-      <RangeFilterBar value={range} onChange={setRange} />
-      <KpiRow items={d.kpis} />
-      <Card>
-        <SectionHead
-          title="Vendas por Categoria"
-          sub="12 MESES"
-          actions={<ChartSwitcher value={t1} onChange={setT1} options={["sbar", "line", "area"]} />}
-        />
-        <div style={{ height: 280 }}>
-          <ResponsiveContainer key={t1}>
-            {t1 === "sbar" ? (
-              <BarChart data={catsData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="m" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} />
-                {cats.map((c) => (
-                  <Bar key={c.key} dataKey={c.key} stackId="a" fill={c.color} />
-                ))}
-              </BarChart>
-            ) : t1 === "line" ? (
-              <LineChart data={catsData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="m" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} />
-                {cats.map((c) => (
-                  <Line
-                    key={c.key}
-                    type="monotone"
-                    dataKey={c.key}
-                    stroke={c.color}
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                ))}
-              </LineChart>
-            ) : (
-              <AreaChart data={catsData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="m" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} />
-                {cats.map((c) => (
-                  <Area
-                    key={c.key}
-                    type="monotone"
-                    dataKey={c.key}
-                    stackId="a"
-                    stroke={c.color}
-                    strokeWidth={2}
-                    fill={c.color}
-                    fillOpacity={0.12}
-                  />
-                ))}
-              </AreaChart>
-            )}
-          </ResponsiveContainer>
-        </div>
-      </Card>
-      <Card>
-        <SectionHead
-          title="Margem por Categoria"
-          sub="ORDENADO"
-          actions={<ChartSwitcher value={t2} onChange={setT2} options={["hbar", "bar"]} />}
-        />
-        <div style={{ height: 260 }}>
-          <ResponsiveContainer key={t2}>
-            {t2 === "hbar" ? (
-              <BarChart
-                layout="vertical"
-                data={d.margem}
-                margin={{ top: 8, right: 16, left: 16, bottom: 0 }}
-              >
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" horizontal={false} />
-                <XAxis type="number" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis
-                  dataKey="cat"
-                  type="category"
-                  tick={axisStyle}
-                  axisLine={false}
-                  tickLine={false}
-                  width={90}
-                />
-                <Tooltip {...tooltipStyle} />
-                <Bar dataKey="v" fill={C.gold} radius={[0, 3, 3, 0]} />
-              </BarChart>
-            ) : (
-              <BarChart data={d.margem} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="cat" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} />
-                <Bar dataKey="v" fill={C.gold} radius={[3, 3, 0, 0]} />
-              </BarChart>
-            )}
-          </ResponsiveContainer>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function VendedoresSection() {
-  const [search, setSearch] = useState("");
-  const [selectedVendor, setSelectedVendor] = useState<VendedorSeleção>("todos");
-  const [dataReferencia, setDataReferencia] = useState(() => localDateInputValue());
-  const hoje = localDateInputValue();
-  const anoReferencia = dataReferencia.slice(0, 4);
-  const periodoVendas: VendedoresPeriodo = "dia";
-  const periodoLabel = `Dia ${formatDatePt(dataReferencia)}`;
-  const qVendedores = useVendedores();
-  const qRanking = useVendedoresRanking(dataReferencia, periodoVendas);
-  const qVendedoresHoje = useVendedoresLancamentosHoje(selectedVendor, dataReferencia);
-  const qKpis = useFaturamentoConsolidado("todas", selectedVendor, dataReferencia);
-  const qPorEmpresa = useFaturamentoPorEmpresa(selectedVendor, dataReferencia, periodoVendas);
-
-  const vendors = qVendedores.data?.vendedores ?? [];
-  const ranking = qRanking.data?.ranking ?? [];
-  const selectedVendorRow = selectedVendor === "todos" ? null : ranking.find((v) => v.CODVEND === selectedVendor);
-  const selectedPosition = selectedVendorRow
-    ? ranking.findIndex((v) => v.CODVEND === selectedVendor) + 1
-    : undefined;
-
-  const filteredRanking = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return term
-      ? ranking.filter((item) => item.APELIDO.toLowerCase().includes(term))
-      : ranking;
-  }, [ranking, search]);
-
-  const visibleRanking = filteredRanking.slice(0, 20);
-  const companies = qPorEmpresa.data?.empresas ?? [];
-  const companyChart = companies.slice(0, 8);
-  const selectedLabel = selectedVendor === "todos" ? "Todos os vendedores" : selectedVendorRow?.APELIDO ?? "Vendedor";
-
-  const kpis = [
-    {
-      label: "Dia selecionado",
-      value: formatBRL(qKpis.data?.dia ?? 0),
-      up: true,
-      color: C.gold,
-    },
-    {
-      label: "Últimos 7 dias",
-      value: formatBRL(qKpis.data?.semana_7d ?? 0),
-      up: true,
-      color: C.green,
-    },
-    {
-      label: "Mês selecionado",
-      value: formatBRL(qKpis.data?.mes_atual ?? 0),
-      up: true,
-      color: C.blue,
-    },
-    {
-      label: `Ano ${anoReferencia}`,
-      value: formatBRLCompact(qKpis.data?.ano_atual ?? 0),
-      up: true,
-      color: C.gold,
-    },
-  ];
-
-  return (
-    <div className="flex flex-col gap-4">
-      <Card>
-        <SectionHead
-          title="Vendedores"
-          sub={`Ranking e performance · ${periodoLabel}`}
-          actions={
-            qRanking.data ? (
-              <div className="font-geist text-[11px] uppercase tracking-[0.15em]" style={{ color: C.muted }}>
-                {periodoLabel}
-              </div>
-            ) : null
-          }
-        />
-
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="flex-1 space-y-4">
-            <div className="grid gap-3 sm:grid-cols-[minmax(240px,1fr)_auto]">
-              <div className="grid gap-3">
-                <div
-                  className="font-geist text-[10px] uppercase tracking-[0.2em]"
-                  style={{ color: C.muted }}
-                >
-                  Buscar vendedor
-                </div>
-                <Input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Digite nome do vendedor"
-                  className="mt-2 bg-[#09090B] text-white"
-                />
-                <VendedorSelector
-                  lista={vendors}
-                  value={selectedVendor}
-                  onChange={setSelectedVendor}
-                  disabled={qVendedores.isLoading || !!qVendedores.error}
-                />
-                <div className="flex flex-col gap-2">
-                  <div
-                    className="font-geist text-[10px] uppercase tracking-[0.2em]"
-                    style={{ color: C.muted }}
-                  >
-                    Selecione a data
-                  </div>
-                  <Input
-                    type="date"
-                    value={dataReferencia}
-                    min={`${anoReferencia}-01-01`}
-                    max={hoje}
-                    onChange={(event) => {
-                      if (event.target.value) setDataReferencia(event.target.value);
-                    }}
-                    className="h-11 w-[210px] bg-[#09090B] font-geist text-[12px] uppercase tracking-[0.08em] text-white"
-                  />
-                </div>
-                {qVendedores.error && (
-                  <div className="text-sm font-geist" style={{ color: C.red }}>
-                    Erro ao carregar lista de vendedores.
-                  </div>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setSearch("");
-                  setSelectedVendor("todos");
-                }}
-                className="rounded px-3 py-2 font-geist text-[11px] uppercase tracking-[0.12em]"
-                style={{
-                  border: `1px solid ${C.border}`,
-                  background: "rgba(255,255,255,0.04)",
-                  color: C.text,
-                }}
-              >
-                Ver todos
-              </button>
-            </div>
-
-            <div className="grid gap-4">
-              <div className="rounded-3xl border border-white/10 bg-[#09090B] p-4">
-                <div
-                  className="font-geist text-[10px] uppercase tracking-[0.2em]"
-                  style={{ color: C.muted }}
-                >
-                  Vendedor selecionado
-                </div>
-                <div className="mt-3 text-lg font-fraunces" style={{ color: C.text }}>
-                  {selectedLabel}
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2 text-[12px]" style={{ color: C.mutedStrong }}>
-                  <span>{selectedPosition ? `Posição #${selectedPosition}` : "Posição —"}</span>
-                  <span>•</span>
-                  <span>{periodoLabel}</span>
-                  <span className="font-semibold" style={{ color: C.text }}>
-                    {formatBRL(qPorEmpresa.data?.total ?? 0)}
-                  </span>
-                </div>
-              </div>
-              <KpiRow items={kpis} />
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.45fr_1fr]">
-        <Card>
-          <SectionHead title="Vendas por Empresa" sub={`Distribuição de receita · ${periodoLabel}`} />
-          <div className="mb-3 text-sm" style={{ color: C.muted }}>
-            Exibindo {selectedLabel.toLowerCase()}.
-          </div>
-          <div style={{ height: 300 }}>
-            <ResponsiveContainer>
-              <BarChart data={companyChart} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="NOMEFANTASIA" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} />
-                <Bar dataKey="faturamento" fill={C.gold} radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="grid gap-2 text-[12px]">
-            {companies.slice(0, 6).map((company) => (
-              <div
-                key={company.CODEMP}
-                className="flex items-center justify-between rounded-2xl px-3 py-2"
-                style={{ background: "rgba(255,255,255,0.03)" }}
-              >
-                <span style={{ color: C.text }}>{company.NOMEFANTASIA}</span>
-                <span className="tabular-nums" style={{ color: C.gold }}>
-                  {formatBRL(company.faturamento)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card>
-          <SectionHead title="Ranking de Vendedores" sub={`Top 20 por faturamento · ${periodoLabel}`} />
-          <div className="overflow-x-auto">
-            <table className="w-full font-geist text-[12px]">
-              <thead>
-                <tr style={{ color: C.muted, fontSize: 10 }}>
-                  <th className="py-2 text-left uppercase tracking-wider">#</th>
-                  <th className="py-2 text-left uppercase tracking-wider">Vendedor</th>
-                  <th className="py-2 text-right uppercase tracking-wider">Faturamento</th>
-                  <th className="py-2 text-right uppercase tracking-wider">%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleRanking.map((item, index) => {
-                  const isActive = selectedVendor !== "todos" && item.CODVEND === selectedVendor;
-                  return (
-                    <tr
-                      key={item.CODVEND}
-                      onClick={() => setSelectedVendor(item.CODVEND)}
-                      className="cursor-pointer"
-                      style={{
-                        background: isActive ? "rgba(245,213,71,0.08)" : "transparent",
-                        borderTop: `1px solid ${C.border}`,
-                      }}
-                    >
-                      <td className="py-2" style={{ color: C.mutedStrong }}>
-                        {index + 1}
-                      </td>
-                      <td className="py-2" style={{ color: C.text }}>
-                        {item.APELIDO}
-                      </td>
-                      <td className="py-2 text-right tabular-nums" style={{ color: C.gold }}>
-                        {formatBRL(item.faturamento)}
-                      </td>
-                      <td className="py-2 text-right" style={{ color: C.muted }}>
-                        {item.percentual.toFixed(1)}%
-                      </td>
-                    </tr>
-                  );
-                })}
-                {visibleRanking.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-4 text-center" style={{ color: C.muted }}>
-                      Nenhum vendedor encontrado.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          {qRanking.isError && (
-            <div
-              className="mt-3 rounded-3xl border border-red-500/20 bg-red-500/10 px-4 py-3 font-geist text-sm"
-              style={{ color: C.red }}
-            >
-              Erro ao carregar ranking de vendedores.
-            </div>
-          )}
-        </Card>
-      </div>
-
-      <Card>
-        <SectionHead title="Lançamentos do Dia" sub={`Quem lançou e o que vendeu em ${formatDatePt(dataReferencia)}`} />
-        {qVendedoresHoje.isLoading ? (
-          <div className="rounded-3xl border border-white/10 bg-[#09090B] p-6 text-sm font-geist" style={{ color: C.muted }}>
-            Carregando lançamentos do dia...
-          </div>
-        ) : qVendedoresHoje.isError ? (
-          <div className="rounded-3xl border border-red-500/20 bg-red-500/10 p-6 font-geist text-sm" style={{ color: C.red }}>
-            Erro ao carregar lançamentos do dia.
-          </div>
-        ) : qVendedoresHoje.data?.lancamentos.length ? (
-          <div className="grid gap-3">
-            {qVendedoresHoje.data.lancamentos.map((item) => (
-              <div key={item.NUNOTA} className="rounded-3xl border border-white/10 bg-[#09090B] p-4">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <div className="font-geist text-[10px] uppercase tracking-[0.2em]" style={{ color: C.muted }}>
-                      Vendedor
-                    </div>
-                    <div className="mt-1 text-sm font-fraunces" style={{ color: C.text }}>
-                      {item.APELIDO ?? "—"}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-geist text-[10px] uppercase tracking-[0.2em]" style={{ color: C.muted }}>
-                      Valor
-                    </div>
-                    <div className="mt-1 text-sm font-fraunces" style={{ color: C.gold }}>
-                      {formatBRL(item.valor)}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-3 text-[12px]" style={{ color: C.mutedStrong }}>
-                  Nota {item.NUMNOTA ?? item.NUNOTA}{item.SERIENOTA ? `/${item.SERIENOTA}` : ""} • {item.empresa}
-                </div>
-                <div className="mt-3 text-[12px]" style={{ color: C.muted }}>
-                  {item.itens || "Sem detalhe de produto disponível."}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-3xl border border-white/10 bg-[#09090B] p-6 text-sm font-geist" style={{ color: C.muted }}>
-            Nenhum lançamento de faturamento encontrado para a data selecionada.
-          </div>
-        )}
-      </Card>
-    </div>
-  );
-}
-
-function ComprasSection() {
-  const d = DATA.compras;
-  const [t1, setT1] = useState<"hbar" | "bar" | "line">("hbar");
-  const [range, setRange] = useState<RangeKey>("all");
-  return (
-    <div className="flex flex-col gap-4">
-      <RangeFilterBar value={range} onChange={setRange} />
-      <KpiRow items={d.kpis} />
-      <Card>
-        <SectionHead
-          title="Top Fornecedores"
-          sub="VOLUME EM R$ MIL"
-          actions={<ChartSwitcher value={t1} onChange={setT1} options={["hbar", "bar", "line"]} />}
-        />
-        <div style={{ height: 280 }}>
-          <ResponsiveContainer key={t1}>
-            {t1 === "hbar" ? (
-              <BarChart
-                layout="vertical"
-                data={d.top}
-                margin={{ top: 8, right: 16, left: 16, bottom: 0 }}
-              >
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" horizontal={false} />
-                <XAxis type="number" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis
-                  dataKey="nome"
-                  type="category"
-                  tick={axisStyle}
-                  axisLine={false}
-                  tickLine={false}
-                  width={110}
-                />
-                <Tooltip {...tooltipStyle} />
-                <Bar dataKey="v" radius={[0, 3, 3, 0]}>
-                  {d.top.map((t, i) => (
-                    <Cell key={i} fill={t.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            ) : t1 === "bar" ? (
-              <BarChart data={d.top} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="nome" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} />
-                <Bar dataKey="v" radius={[3, 3, 0, 0]}>
-                  {d.top.map((t, i) => (
-                    <Cell key={i} fill={t.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            ) : (
-              <LineChart data={d.top} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="nome" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} />
-                <Line
-                  type="monotone"
-                  dataKey="v"
-                  stroke={C.gold}
-                  strokeWidth={2}
-                  dot={{ fill: C.gold, r: 4 }}
-                />
-              </LineChart>
-            )}
-          </ResponsiveContainer>
-        </div>
-      </Card>
-      <Card>
-        <SectionHead title="Avaliação de Fornecedores" sub="SCORE / 5,0" />
-        <div className="flex flex-col gap-4">
-          {d.rating.map((r) => {
-            const tone = r.tone === "green" ? C.green : r.tone === "amber" ? C.amber : C.red;
-            const pct = (r.score / 5) * 100;
-            return (
-              <div key={r.nome}>
-                <div className="mb-1.5 flex justify-between font-geist text-[11px]">
-                  <span style={{ color: C.text }}>{r.nome}</span>
-                  <span className="tabular-nums" style={{ color: tone }}>
-                    {r.score.toFixed(1)} / 5,0
-                  </span>
-                </div>
-                <div className="h-1.5" style={{ background: "rgba(255,255,255,0.05)" }}>
-                  <div className="h-full" style={{ width: `${pct}%`, background: tone }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function RhSection() {
-  const d = DATA.rh;
-  const [t1, setT1] = useState<"hbar" | "bar" | "line">("hbar");
-  const [t2, setT2] = useState<"line" | "area" | "bar">("line");
-  const [range, setRange] = useState<RangeKey>("all");
-  const absData = sliceByRange(d.abs, range);
-  return (
-    <div className="flex flex-col gap-4">
-      <RangeFilterBar value={range} onChange={setRange} />
-      <KpiRow items={d.kpis} />
-      <Card>
-        <SectionHead
-          title="Headcount por Área"
-          sub="MAIO 2026"
-          actions={<ChartSwitcher value={t1} onChange={setT1} options={["hbar", "bar", "line"]} />}
-        />
-        <div style={{ height: 260 }}>
-          <ResponsiveContainer key={t1}>
-            {t1 === "hbar" ? (
-              <BarChart
-                layout="vertical"
-                data={d.headcount}
-                margin={{ top: 8, right: 16, left: 16, bottom: 0 }}
-              >
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" horizontal={false} />
-                <XAxis type="number" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis
-                  dataKey="dep"
-                  type="category"
-                  tick={axisStyle}
-                  axisLine={false}
-                  tickLine={false}
-                  width={110}
-                />
-                <Tooltip {...tooltipStyle} />
-                <Bar dataKey="v" fill={C.gold} radius={[0, 3, 3, 0]} />
-              </BarChart>
-            ) : t1 === "bar" ? (
-              <BarChart data={d.headcount} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="dep" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} />
-                <Bar dataKey="v" fill={C.gold} radius={[3, 3, 0, 0]} />
-              </BarChart>
-            ) : (
-              <LineChart data={d.headcount} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="dep" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} />
-                <Line
-                  type="monotone"
-                  dataKey="v"
-                  stroke={C.gold}
-                  strokeWidth={2}
-                  dot={{ fill: C.gold, r: 4 }}
-                />
-              </LineChart>
-            )}
-          </ResponsiveContainer>
-        </div>
-      </Card>
-      <Card>
-        <SectionHead
-          title="Absenteísmo Mensal"
-          sub="% — 12 MESES"
-          actions={<ChartSwitcher value={t2} onChange={setT2} options={["line", "area", "bar"]} />}
-        />
-        <div style={{ height: 240 }}>
-          <ResponsiveContainer key={t2}>
-            {t2 === "line" ? (
-              <LineChart data={absData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="m" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} />
-                <Line
-                  type="monotone"
-                  dataKey="v"
-                  stroke="#8E6FB5"
-                  strokeWidth={2}
-                  dot={{ fill: "#8E6FB5", r: 3 }}
-                />
-              </LineChart>
-            ) : t2 === "area" ? (
-              <AreaChart data={absData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="m" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} />
-                <Area
-                  type="monotone"
-                  dataKey="v"
-                  stroke="#8E6FB5"
-                  strokeWidth={2}
-                  fill="#8E6FB5"
-                  fillOpacity={0.12}
-                />
-              </AreaChart>
-            ) : (
-              <BarChart data={absData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="m" tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} />
-                <Bar dataKey="v" fill="#8E6FB5" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            )}
-          </ResponsiveContainer>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function RhApiSection() {
-  const qRh = useRhBI();
-  const [teamMode, setTeamMode] = useState<"hbar" | "bar" | "line">("hbar");
-  const [monthMode, setMonthMode] = useState<"line" | "area" | "bar">("line");
-  const [search, setSearch] = useState("");
-  const data = qRh.data;
-  const porEmpresa = data?.por_empresa ?? [];
-  const mensal = data?.mensal ?? [];
-  const ranking = data?.ranking ?? [];
-  const filteredRanking = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const list = term
-      ? ranking.filter((row) =>
-          [row.APELIDO, String(row.CODVEND)]
-            .filter(Boolean)
-            .some((value) => String(value).toLowerCase().includes(term)),
-        )
-      : ranking;
-    return list.slice(0, 30);
-  }, [ranking, search]);
-
-  const kpis: Kpi[] = data
-    ? [
-        { label: "Vendedores ativos", value: String(data.vendedores_ativos), color: C.gold },
-        { label: "Com venda no ano", value: String(data.vendedores_com_venda), color: C.green },
-        { label: "Faturamento ano", value: formatBRLCompact(data.faturamento_ano), color: C.blue },
-        { label: "Media por ativo", value: formatBRLCompact(data.media_por_vendedor_ativo), color: C.gold },
-      ]
-    : DATA.rh.kpis;
-
-  return (
-    <div className="flex flex-col gap-4">
-      {qRh.error && (
-        <div
-          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-geist text-[11px]"
-          style={{ border: `1px solid ${C.red}55`, background: `${C.red}12`, color: C.red }}
-        >
-          <span>{qRh.error instanceof ApiError ? qRh.error.message : "Erro ao carregar RH."}</span>
-          <button
-            type="button"
-            className="rounded px-2 py-1 uppercase tracking-[0.12em]"
-            style={{ border: `1px solid ${C.red}77`, background: "transparent" }}
-            onClick={() => void qRh.refetch()}
-          >
-            Tentar novamente
-          </button>
-        </div>
-      )}
-
-      <KpiRow items={kpis} />
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <Card>
-          <SectionHead
-            title="Equipe por Empresa"
-            sub={data ? `Ano ${data.ano} · Ticket ${formatBRLCompact(data.ticket_medio)}` : "Carregando"}
-            actions={<ChartSwitcher value={teamMode} onChange={setTeamMode} options={["hbar", "bar", "line"]} />}
-          />
-          <div style={{ height: 280 }}>
-            <ResponsiveContainer key={teamMode}>
-              {teamMode === "hbar" ? (
-                <BarChart layout="vertical" data={porEmpresa} margin={{ top: 8, right: 16, left: 18, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" horizontal={false} />
-                  <XAxis type="number" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis dataKey="NOMEFANTASIA" type="category" tick={axisStyle} axisLine={false} tickLine={false} width={120} />
-                  <Tooltip {...tooltipStyle} />
-                  <Bar dataKey="vendedores" fill={C.gold} radius={[0, 3, 3, 0]} />
-                </BarChart>
-              ) : teamMode === "bar" ? (
-                <BarChart data={porEmpresa} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="NOMEFANTASIA" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip {...tooltipStyle} />
-                  <Bar dataKey="vendedores" fill={C.gold} radius={[3, 3, 0, 0]} />
-                </BarChart>
-              ) : (
-                <LineChart data={porEmpresa} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis dataKey="NOMEFANTASIA" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                  <Tooltip {...tooltipStyle} />
-                  <Line type="monotone" dataKey="vendedores" stroke={C.gold} strokeWidth={2} dot={{ fill: C.gold, r: 4 }} />
-                </LineChart>
-              )}
-            </ResponsiveContainer>
-          </div>
-        </Card>
-
-        <Card>
-          <SectionHead title="Faturamento por Empresa" sub="Equipe comercial" />
-          <div className="grid gap-2">
-            {porEmpresa.map((row) => (
-              <div
-                key={row.CODEMP}
-                className="grid grid-cols-[1fr_auto] gap-3 rounded px-3 py-2"
-                style={{ background: "rgba(255,255,255,0.03)" }}
-              >
-                <div className="truncate" style={{ color: C.text }}>
-                  {row.NOMEFANTASIA}
-                  <div className="mt-1 text-[10px]" style={{ color: C.muted }}>
-                    {row.vendedores} vendedores
-                  </div>
-                </div>
-                <div className="tabular-nums" style={{ color: C.gold }}>
-                  {formatBRLCompact(row.faturamento)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      <Card>
-        <SectionHead
-          title="Produtividade Mensal"
-          sub="Vendedores, pedidos e faturamento"
-          actions={<ChartSwitcher value={monthMode} onChange={setMonthMode} options={["line", "area", "bar"]} />}
-        />
-        <div style={{ height: 260 }}>
-          <ResponsiveContainer key={monthMode}>
-            {monthMode === "line" ? (
-              <LineChart data={mensal} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
-                <Line type="monotone" dataKey="vendedores" stroke={C.green} strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="pedidos" stroke={C.gold} strokeWidth={2} dot={false} />
-              </LineChart>
-            ) : monthMode === "area" ? (
-              <AreaChart data={mensal} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
-                <Area type="monotone" dataKey="vendedores" stroke={C.green} fill={C.green} fillOpacity={0.12} />
-                <Area type="monotone" dataKey="pedidos" stroke={C.gold} fill={C.gold} fillOpacity={0.12} />
-              </AreaChart>
-            ) : (
-              <BarChart data={mensal} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="mes" tickFormatter={formatMesAnoPt} tick={axisStyle} axisLine={false} tickLine={false} />
-                <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} labelFormatter={formatMesAnoPt} />
-                <Bar dataKey="vendedores" fill={C.green} radius={[3, 3, 0, 0]} />
-                <Bar dataKey="pedidos" fill={C.gold} radius={[3, 3, 0, 0]} />
-              </BarChart>
-            )}
-          </ResponsiveContainer>
-        </div>
-      </Card>
-
-      <Card>
-        <SectionHead title="Ranking da Equipe" sub="Vendas, pedidos e ultima venda" />
-        <Input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Buscar vendedor"
-          className="mb-3 bg-[#09090B] text-white"
-        />
-        <div className="overflow-x-auto">
-          <table className="w-full font-geist text-[12px]">
-            <thead>
-              <tr style={{ color: C.muted, fontSize: 10 }}>
-                <th className="py-2 text-left font-normal uppercase tracking-wider">Vendedor</th>
-                <th className="py-2 text-right font-normal uppercase tracking-wider">Faturamento</th>
-                <th className="py-2 text-right font-normal uppercase tracking-wider">Pedidos</th>
-                <th className="py-2 text-right font-normal uppercase tracking-wider">Ticket</th>
-                <th className="py-2 text-right font-normal uppercase tracking-wider">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRanking.map((row) => (
-                <tr key={row.CODVEND} style={{ borderTop: `1px solid ${C.border}` }}>
-                  <td className="py-2.5" style={{ color: C.text }}>
-                    <div className="truncate">{row.APELIDO}</div>
-                    <div className="mt-1 text-[10px]" style={{ color: C.muted }}>
-                      #{row.CODVEND}
-                      {row.ultima_venda ? ` · ultima venda ${row.ultima_venda}` : ""}
-                    </div>
-                  </td>
-                  <td className="py-2.5 text-right tabular-nums" style={{ color: C.gold }}>
-                    {formatBRLCompact(row.faturamento)}
-                  </td>
-                  <td className="py-2.5 text-right tabular-nums" style={{ color: C.mutedStrong }}>
-                    {row.pedidos}
-                  </td>
-                  <td className="py-2.5 text-right tabular-nums" style={{ color: C.mutedStrong }}>
-                    {formatBRLCompact(row.ticket_medio)}
-                  </td>
-                  <td className="py-2.5 text-right" style={{ color: row.ativo ? C.green : C.muted }}>
-                    {row.ativo ? "Ativo" : "Inativo"}
-                  </td>
-                </tr>
-              ))}
-              {filteredRanking.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-4 text-center" style={{ color: C.muted }}>
-                    Nenhum vendedor encontrado.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function ConfiguracaoSection() {
-  const [code, setCode] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState<"idle" | "ok" | "error">("idle");
-  const hasSession = getStoredAuthToken().length > 0;
-
-  const validateAndSaveCode = async () => {
-    const cleanCode = code.replace(/\D/g, "");
-    if (cleanCode.length !== 6) {
-      setStatus("error");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const res = await fetch(`${getApiBaseUrl()}/api/auth/validate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ code: cleanCode }),
-      });
-      if (!res.ok) throw new Error("invalid_code");
-      const body = (await res.json()) as { accessToken?: unknown };
-      if (typeof body.accessToken !== "string") throw new Error("missing_session");
-      setStoredAuthToken(body.accessToken);
-      setCode("");
-      setStatus("ok");
-    } catch {
-      setStatus("error");
-    } finally {
-      setSaving(false);
-    }
+  const applyPreset = (preset: PeriodPreset) => {
+    if (preset === "periodo") return;
+    setFilters(presetRange(preset));
   };
 
-  const disconnectToken = () => {
-    clearStoredAuthToken();
-    setCode("");
-    setStatus("idle");
-    window.location.reload();
-  };
-
+  const comercial = data.comercial;
+  const financeiro = data.financeiro;
+  const periodoLabel = `${formatDate(data.periodo.dataInicio)} - ${formatDate(data.periodo.dataFim)}`;
+  const fluxoSerieBase =
+    financeiro.fluxo_caixa.length > 0
+      ? financeiro.fluxo_caixa
+      : [{ mes: "Sem dados", entradas: 0, saidas: 0, saldo: 0 }];
+  const fluxoSerie = fluxoSerieBase.map((item) => item);
+  let saldoAcumulado = 0;
+  let entradasAcumuladas = 0;
+  let saidasAcumuladas = 0;
+  const fluxoSerieAcumulada = fluxoSerie.map((item) => {
+    saldoAcumulado += item.saldo;
+    entradasAcumuladas += item.entradas;
+    saidasAcumuladas += item.saidas;
+    return {
+      ...item,
+      saldoAcumulado,
+      entradasAcumuladas,
+      saidasAcumuladas,
+    };
+  });
+  const saldoCaixa = saldoAcumulado;
+  const ultimoPontoSaldo = fluxoSerieAcumulada[fluxoSerieAcumulada.length - 1];
+  const ultimoSaldoLabel = formatCompactCurrency(ultimoPontoSaldo?.saldoAcumulado ?? 0);
+  const totalProjetos = comercial.por_projeto.reduce((acc, item) => acc + item.fechado, 0);
+  const projetoTopo = [...comercial.por_projeto].sort((a, b) => b.fechado - a.fechado)[0];
+  const saldoPendente = financeiro.conta_receber_aberto.valor - financeiro.conta_pagar_aberto.valor;
+  const rateioData = rateioQuery.data?.status === "OK" ? rateioQuery.data : null;
+  const rateioPorProjeto = rateioData?.rateio_por_projeto ?? [];
+  const rateioPorProjetoMap = new Map(rateioPorProjeto.map((item) => [item.codproj, item]));
+  const valorRateadoTotal = rateioData?.resumo.valor_rateado_total ?? 0;
+  const rateioSemRateio = rateioData?.resumo.sem_rateio ?? 0;
+  const rateioIncompleto = rateioData?.resumo.rateio_incompleto ?? 0;
   return (
-    <div className="grid gap-5">
-      <div
-        className="rounded-[8px] p-5 sm:p-7"
-        style={{ background: "#11161D", border: "1px solid rgba(255,255,255,0.10)" }}
-      >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex gap-4">
-            <div
-              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[18px]"
-              style={{ background: "rgba(77,163,255,0.14)", color: C.blue }}
-            >
-              <KeyRound size={26} strokeWidth={1.8} />
-            </div>
-            <div>
-              <h2 className="font-geist text-[22px] font-semibold" style={{ color: C.text }}>
-                iToken do usuario
-              </h2>
-              <p className="mt-2 max-w-3xl text-[14px] leading-6" style={{ color: C.mutedStrong }}>
-                Use o Google Authenticator para gerar codigos rotativos. Esses codigos liberam
-                uma sessao temporaria para abrir dados do dashboard e consultar a API.
-              </p>
-            </div>
-          </div>
-          <div
-            className="flex w-fit items-center gap-2 rounded-full px-3 py-1.5 text-[12px] font-semibold"
-            style={{
-              border: `1px solid ${hasSession ? C.green : "#B45309"}`,
-              background: hasSession ? "rgba(46,189,143,0.10)" : "rgba(180,83,9,0.10)",
-              color: hasSession ? C.green : "#F59E0B",
-            }}
-          >
-            {hasSession ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
-            {hasSession ? "Sessao ativa" : "Nao conectado"}
-          </div>
-        </div>
-
-        <div
-          className="mt-8 rounded-[8px] p-4 sm:p-6"
-          style={{ background: "#0D1117", border: "1px solid rgba(255,255,255,0.10)" }}
-        >
-          <div className="grid gap-6 lg:grid-cols-[200px_1fr]">
-            <div
-              className="flex aspect-square max-h-[210px] min-h-[170px] items-center justify-center rounded-[14px]"
-              style={{ background: "#F7F7F7" }}
-            >
-              <KeyRound size={58} strokeWidth={1.6} color="#2563EB" />
-            </div>
-            <div>
-              <h3 className="font-geist text-[18px] font-semibold" style={{ color: C.text }}>
-                Conectar com Google Authenticator
-              </h3>
-              <p className="mt-2 text-[13px] leading-6" style={{ color: C.mutedStrong }}>
-                Digite o codigo de 6 digitos gerado no aplicativo. A sessao fica salva apenas
-                enquanto o navegador estiver aberto.
-              </p>
-
-              <div className="mt-5 grid gap-4 xl:grid-cols-3">
-                {[
-                  { icon: Smartphone, title: "1. Configure o app", text: "Adicione APP_TOTP_SECRET no Railway e cadastre essa chave no Google Authenticator." },
-                  { icon: ScanLine, title: "2. Gere o codigo", text: "Abra o Google Authenticator e copie o codigo de 6 digitos da conta do painel." },
-                  { icon: CircleCheck, title: "3. Confirme", text: "Ao confirmar, todas as chamadas do painel usam uma sessao temporaria protegida." },
-                ].map((step) => {
-                  const Icon = step.icon;
-                  return (
-                    <div
-                      key={step.title}
-                      className="rounded-[8px] p-5"
-                      style={{ border: "1px solid rgba(255,255,255,0.10)", background: "#11161D" }}
-                    >
-                      <Icon size={21} color={C.blue} />
-                      <div className="mt-4 font-geist text-[15px] font-semibold" style={{ color: C.text }}>
-                        {step.title}
-                      </div>
-                      <p className="mt-2 text-[12px] leading-5" style={{ color: C.mutedStrong }}>
-                        {step.text}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="mt-6 grid gap-3 md:grid-cols-[1fr_auto_auto]">
-                <div className="relative">
-                  <Input
-                    value={code}
-                    type="password"
-                    inputMode="numeric"
-                    maxLength={6}
-                    onChange={(event) => {
-                      setCode(event.target.value.replace(/\D/g, "").slice(0, 6));
-                      setStatus("idle");
-                    }}
-                    placeholder="Codigo de 6 digitos"
-                    className="h-11 bg-[#09090B] pr-11 text-white"
-                    style={{ borderColor: status === "error" ? `${C.red}99` : undefined }}
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={validateAndSaveCode}
-                  disabled={saving}
-                  className="flex h-11 items-center justify-center gap-2 rounded-[8px] px-5 text-[13px] font-semibold"
-                  style={{ background: C.blue, color: "#05070A", opacity: saving ? 0.75 : 1 }}
-                >
-                  <ShieldCheck size={16} />
-                  {saving ? "Validando" : "Conectar"}
-                </button>
-                <button
-                  type="button"
-                  onClick={disconnectToken}
-                  className="flex h-11 items-center justify-center gap-2 rounded-[8px] px-5 text-[13px] font-semibold"
-                  style={{ border: `1px solid ${C.borderStrong}`, color: C.mutedStrong }}
-                >
-                  <LogOut size={16} />
-                  Desconectar
-                </button>
-              </div>
-
-              {status === "ok" && (
-                <p className="mt-3 text-[12px]" style={{ color: C.green }}>
-                  Codigo validado. Sessao conectada com sucesso.
-                </p>
-              )}
-              {status === "error" && (
-                <p className="mt-3 text-[12px]" style={{ color: C.red }}>
-                  Nao foi possivel validar esse codigo.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
- *  SIDEBAR
- * ============================================================ */
-type NavKey =
-  | "dashboard"
-  | "empresas"
-  | "financeiro"
-  | "produtos"
-  | "vendedores"
-  | "compras"
-  | "estoque"
-  | "entregas"
-  | "clientes"
-  | "viacerta"
-  | "rh"
-  | "configuracao";
-
-const NAV_GROUPS: {
-  label: string;
-  items: {
-    key: NavKey;
-    label: string;
-    icon: typeof LayoutDashboard;
-    badge?: { tone: string; content: React.ReactNode };
-  }[];
-}[] = [
-  {
-    label: "VISÃO GERAL",
-    items: [
-      { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { key: "empresas", label: "Empresas", icon: Building2 },
-    ],
-  },
-  {
-    label: "OPERAÇÕES",
-    items: [
-      { key: "financeiro", label: "Financeiro", icon: Wallet },
-      { key: "produtos", label: "Produtos", icon: Package },
-      { key: "vendedores", label: "Vendedores", icon: Users },
-      { key: "compras", label: "Compras", icon: ShoppingCart },
-      { key: "estoque", label: "Estoque", icon: Boxes, badge: { tone: C.red, content: "3" } },
-      {
-        key: "entregas",
-        label: "Entregas",
-        icon: Truck,
-        badge: { tone: C.green, content: <Check size={9} strokeWidth={3} /> },
-      },
-    ],
-  },
-  {
-    label: "GESTÃO",
-    items: [
-      { key: "clientes", label: "Clientes", icon: Users },
-      { key: "viacerta", label: "Alunos Via Certa", icon: Users },
-      { key: "rh", label: "RH", icon: UserCog },
-    ],
-  },
-  {
-    label: "SISTEMA",
-    items: [{ key: "configuracao", label: "Configuracao", icon: Settings }],
-  },
-];
-
-const PAGE_META: Record<NavKey, { title: string; sub: string }> = {
-  dashboard: { title: "Visão Executiva", sub: "Indicadores consolidados em tempo real" },
-  empresas: { title: "Empresas", sub: "Análise por empresa/unidade do Sankhya" },
-  financeiro: { title: "Financeiro", sub: "DRE, fluxo e contas a receber" },
-  produtos: { title: "Produtos", sub: "Performance e margem por SKU" },
-  vendedores: { title: "Vendedores", sub: "Ranking e performance de vendas 2026" },
-  compras: { title: "Compras", sub: "Fornecedores e suprimentos" },
-  estoque: { title: "Estoque", sub: "Níveis, giro e alertas críticos" },
-  entregas: { title: "Entregas", sub: "Logística e performance de transporte" },
-  clientes: { title: "Clientes", sub: "Base ativa, NPS e churn" },
-  viacerta: { title: "Alunos Via Certa", sub: "Relatório mensal de alunos ativos" },
-  rh: { title: "Recursos Humanos", sub: "Headcount, satisfação e produtividade" },
-  configuracao: { title: "Seguranca", sub: "Google Authenticator e protecao da API" },
-};
-
-function Sidebar({
-  active,
-  onSelect,
-  open,
-  onClose,
-}: {
-  active: NavKey;
-  onSelect: (k: NavKey) => void;
-  open: boolean;
-  onClose: () => void;
-}) {
-  const PURPLE = "#A855F7";
-  const PURPLE_SOFT = "rgba(168, 85, 247, 0.12)";
-  const SIDE_TEXT = "#FFFFFF";
-  const SIDE_MUTED = "rgba(255,255,255,0.6)";
-  const SIDE_LABEL = "rgba(255,255,255,0.4)";
-
-  return (
-    <>
-      {/* Mobile backdrop */}
-      <div
-        onClick={onClose}
-        className={`fixed inset-0 z-30 bg-black/60 transition-opacity lg:hidden ${
-          open ? "opacity-100" : "pointer-events-none opacity-0"
-        }`}
-      />
-      <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-[240px] flex-col transition-transform duration-200 lg:w-[200px] lg:translate-x-0 ${
-          open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        }`}
-        style={{ background: "#000000", borderRight: `1px solid ${C.border}` }}
-      >
-        <div className="flex items-start justify-between px-5 pt-7 pb-9">
-          <div>
-            <div
-              className="font-fraunces font-light"
-              style={{ color: PURPLE, fontSize: 18, letterSpacing: "-0.01em" }}
-            >
-              CIP - Central de Inteligência e Performance
-            </div>
-            <div
-              className="mt-1 font-geist text-[9px] uppercase tracking-[0.22em]"
-              style={{ color: SIDE_LABEL }}
-            >
-              Grupo MKR
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="lg:hidden"
-            style={{ color: SIDE_MUTED }}
-            aria-label="Fechar menu"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <nav className="flex-1 overflow-y-auto px-3">
-          {NAV_GROUPS.map((g) => (
-            <div key={g.label} className="mb-6">
-              <div
-                className="px-3 pb-2 font-geist text-[9px] uppercase tracking-[0.2em]"
-                style={{ color: SIDE_LABEL }}
-              >
-                {g.label}
-              </div>
-              {g.items.map((it) => {
-                const isActive = active === it.key;
-                const Icon = it.icon;
-                return (
-                  <button
-                    key={it.key}
-                    onClick={() => {
-                      onSelect(it.key);
-                      onClose();
-                    }}
-                    className="relative flex w-full items-center gap-3 px-3 py-2 font-geist text-[12px] transition-colors"
-                    style={{
-                      color: isActive ? SIDE_TEXT : SIDE_MUTED,
-                      background: isActive ? PURPLE_SOFT : "transparent",
-                    }}
-                  >
-                    {isActive && (
-                      <span
-                        className="absolute inset-y-0 left-0 w-[2px]"
-                        style={{ background: PURPLE }}
-                      />
-                    )}
-                    <Icon size={14} strokeWidth={1.5} />
-                    <span className="flex-1 text-left">{it.label}</span>
-                    {it.badge && (
-                      <span
-                        className="flex h-4 min-w-[16px] items-center justify-center px-1 font-geist text-[9px] font-medium"
-                        style={{
-                          background: `${it.badge.tone}22`,
-                          color: it.badge.tone,
-                          border: `1px solid ${it.badge.tone}55`,
-                        }}
-                      >
-                        {it.badge.content}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
-      </aside>
-    </>
-  );
-}
-
-/* ============================================================
- *  TOPBAR & SHELL
- * ============================================================ */
-function TopBar({ active, onMenu }: { active: NavKey; onMenu: () => void }) {
-  const meta = PAGE_META[active];
-  const [now, setNow] = useState<Date | null>(null);
-  useEffect(() => {
-    setNow(new Date());
-    const t = setInterval(() => setNow(new Date()), 30_000);
-    return () => clearInterval(t);
-  }, []);
-  const date = now
-    ? now.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })
-    : "";
-  const time = now
-    ? now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-    : "--:--";
-
-  return (
-    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div className="flex items-start gap-3">
-        <button
-          onClick={onMenu}
-          className="lg:hidden mt-1 flex h-9 w-9 items-center justify-center"
-          style={{ border: `1px solid ${C.border}`, color: C.text }}
-          aria-label="Abrir menu"
-        >
-          <Menu size={16} />
-        </button>
+    <div className="space-y-5">
+      <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <h1
-            className="font-fraunces font-light leading-tight"
-            style={{ color: C.text, fontSize: "clamp(18px, 5vw, 22px)", letterSpacing: "-0.02em" }}
-          >
-            {meta.title}
-          </h1>
-          <p className="mt-1 font-geist text-[11px] sm:text-[12px]" style={{ color: C.muted }}>
-            {meta.sub}
+          <div className="font-geist text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+            Sankhya 3.0 / Portal executivo
+          </div>
+          <h2 className="mt-1 font-semibold tracking-tight text-foreground text-2xl">
+            Relatorios do CEO
+          </h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Hoje, semanal, mensal e periodo - {periodoLabel}
           </p>
         </div>
+
+        <ToggleGroup
+          type="single"
+          defaultValue="periodo"
+          className="justify-start rounded-full border border-border/40 bg-surface p-1"
+          onValueChange={(value) => value && applyPreset(value as PeriodPreset)}
+        >
+          {[
+            ["hoje", "Hoje"],
+            ["semana", "Semanal"],
+            ["mes", "Mensal"],
+            ["ano", "Ano"],
+            ["periodo", "Periodo"],
+          ].map(([value, label]) => (
+            <ToggleGroupItem
+              key={value}
+              value={value}
+              className="h-8 rounded-full px-3 text-xs text-muted-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+            >
+              {label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </header>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <KpiCard
+          label="Pedido fechado"
+          value={formatCompactCurrency(comercial.fechado.valor)}
+          hint={`${formatInt(comercial.fechado.qtd)} documentos`}
+          tone="success"
+          icon={FileCheck2}
+        />
+        <KpiCard
+          label="Pedido negociacao"
+          value={formatCompactCurrency(comercial.negociacao.valor)}
+          hint={`${formatInt(comercial.negociacao.qtd)} em aberto`}
+          tone="warning"
+          icon={SearchCheck}
+        />
+        <KpiCard
+          label="Recebimentos"
+          value={formatCompactCurrency(financeiro.recebimentos.valor)}
+          hint={`${formatInt(financeiro.recebimentos.qtd)} baixas`}
+          tone="primary"
+          icon={ReceiptText}
+        />
+        <KpiCard
+          label="Receber x pagar"
+          value={formatCompactCurrency(saldoPendente)}
+          hint={`${formatCompactCurrency(financeiro.conta_receber_aberto.valor)} / ${formatCompactCurrency(financeiro.conta_pagar_aberto.valor)}`}
+          tone="danger"
+          icon={WalletCards}
+        />
       </div>
-      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-        <div
-          className="flex items-center gap-2 px-2.5 py-1.5 font-geist text-[11px]"
-          style={{ border: `1px solid ${C.border}`, color: C.mutedStrong }}
-        >
-          <span style={{ color: C.muted }}>{date}</span>
-          <span style={{ color: C.borderStrong }}>·</span>
-          <span className="tabular-nums" style={{ color: C.text }}>
-            {time}
-          </span>
+
+      <PanelCard
+        title="Saldo total"
+        description="Entradas, saidas e saldo acumulado"
+        action={
+          <div className="flex items-center gap-1 rounded-full border border-border/40 bg-background/40 p-1">
+            {["Ano", "Mes", "Semana", "Dia"].map((t, i) => (
+              <button
+                key={t}
+                type="button"
+                className={cn(
+                  "rounded-full px-3 py-1 text-[11px] font-medium transition-colors",
+                  i === 0 ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        }
+        bodyClassName="p-0"
+      >
+        <div className="p-5">
+          <div className="space-y-4">
+            <div>
+              <div>
+                <p className="text-xs text-muted-foreground">Saldo total</p>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-3xl font-semibold tracking-tight text-foreground lg:text-[40px]">
+                    {formatCompactCurrency(saldoCaixa)}
+                  </span>
+                  <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold", saldoCaixa >= 0 ? "bg-success/15 text-success" : "bg-danger/15 text-danger")}>
+                    {saldoCaixa >= 0 ? "+" : ""}
+                    {Math.abs((saldoCaixa / Math.max(financeiro.recebimentos.valor || 1, 1)) * 100).toFixed(1).replace(".", ",")}%
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  <span className="mr-3">
+                    <span className="mr-1 inline-block h-2 w-2 rounded-full bg-primary align-middle" />
+                    Receitas
+                  </span>
+                  <span>
+                    <span className="mr-1 inline-block h-2 w-2 rounded-full bg-muted-foreground/40 align-middle" />
+                    Despesas
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            <div className="h-[260px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={fluxoSerieAcumulada} margin={{ top: 30, right: 12, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="saldoFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.55} />
+                      <stop offset="100%" stopColor="#3B82F6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="mes" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} dy={6} />
+                  <YAxis hide />
+                  <Tooltip contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle} itemStyle={tooltipStyle.itemStyle} />
+                  <Area
+                    type="monotone"
+                    dataKey="saldoAcumulado"
+                    stroke="#3B82F6"
+                    strokeWidth={4}
+                    fill="url(#saldoFill)"
+                  />
+                  <ReferenceDot
+                    x={ultimoPontoSaldo?.mes}
+                    y={ultimoPontoSaldo?.saldoAcumulado}
+                    r={5}
+                    fill="#3B82F6"
+                    stroke="var(--color-background)"
+                    strokeWidth={3}
+                    label={{
+                      content: ({ viewBox }: { viewBox?: { x?: number; y?: number } }) => {
+                        if (!viewBox || viewBox.x == null || viewBox.y == null) return null;
+                        return (
+                          <text
+                            x={viewBox.x - 8}
+                            y={viewBox.y - 14}
+                            textAnchor="end"
+                            fill="var(--color-foreground)"
+                            fontSize={12}
+                            fontWeight={700}
+                          >
+                            {ultimoSaldoLabel}
+                          </text>
+                        );
+                      },
+                    }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
-        <div
-          className="flex items-center gap-2 px-2.5 py-1.5 font-geist text-[10px] uppercase tracking-[0.18em]"
-          style={{ border: `1px solid ${C.red}40`, background: `${C.red}10`, color: C.red }}
+      </PanelCard>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <PanelCard
+          title="Faturamento por projeto"
+          description="Distribuicao do periodo"
+          className="overflow-hidden"
+          bodyClassName="p-0"
         >
-          <span
-            className="animate-pulse-dot inline-block h-1.5 w-1.5 rounded-full"
-            style={{ background: C.red }}
-          />
-          Ao vivo
-        </div>
-        <button
-          onClick={() => {
-            clearStoredAuthToken();
-            window.location.reload();
-          }}
-          className="flex items-center gap-2 px-2.5 py-1.5 font-geist text-[10px] uppercase tracking-[0.18em] transition-colors"
-          style={{
-            border: `1px solid ${C.border}`,
-            color: C.mutedStrong,
-            background: "transparent",
-          }}
+          <div className="flex flex-col gap-6 p-5 lg:flex-row lg:items-center">
+            <div className="relative h-[180px] w-[180px] shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+              <Pie
+                    data={comercial.por_projeto}
+                    dataKey="fechado"
+                    nameKey="nome"
+                    innerRadius={62}
+                    outerRadius={82}
+                    stroke="var(--color-background)"
+                    strokeWidth={2}
+                    paddingAngle={2}
+                  >
+                    {comercial.por_projeto.map((_, index) => (
+                      <PieCell key={index} fill={chartColors[index % chartColors.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle} formatter={(v: number) => formatCurrency(v)} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="pointer-events-none absolute inset-0 grid place-items-center">
+                <div className="text-center">
+                  <div className="text-xl font-semibold text-foreground">
+                    {Math.round((projetoTopo?.fechado ?? 0) / Math.max(totalProjetos || 1, 1) * 100)}%
+                  </div>
+                  <div className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {projetoTopo?.nome ?? "Projeto"}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <ul className="flex-1 space-y-2.5">
+              {comercial.por_projeto.map((row, index) => {
+                const pct = (row.fechado / Math.max(totalProjetos || 1, 1)) * 100;
+                return (
+                  <li key={row.codproj} className="flex items-center gap-3 text-sm">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: chartColors[index % chartColors.length] }} />
+                    <span className="min-w-0 flex-1 truncate text-foreground">{row.nome}</span>
+                    <span className="text-xs text-muted-foreground">{pct.toFixed(1).replace(".", ",")}%</span>
+                    <span className="w-20 text-right text-xs font-medium text-foreground">
+                      {formatCompactCurrency(row.fechado)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </PanelCard>
+
+        <PanelCard
+          title="Evolucao mensal"
+          description="Entradas e saidas do caixa"
+          className="overflow-hidden"
+          bodyClassName="p-0"
         >
-          <LogOut size={12} strokeWidth={2} />
-          Sair
-        </button>
+          <div className="h-[320px] w-full p-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={fluxoSerie} barCategoryGap={18} margin={{ top: 10, right: 4, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="entradaFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#60A5FA" />
+                    <stop offset="100%" stopColor="#3B82F6" />
+                  </linearGradient>
+                  <linearGradient id="saidaFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#F87171" />
+                    <stop offset="100%" stopColor="#EF4444" />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" opacity={0.4} />
+                <XAxis dataKey="mes" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="var(--color-muted-foreground)" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => formatCompactCurrency(v as number)} width={44} />
+                <Tooltip contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle} itemStyle={tooltipStyle.itemStyle} formatter={(v: number) => formatCurrency(v)} />
+                <Bar dataKey="entradas" fill="url(#entradaFill)" radius={[3, 3, 0, 0]} barSize={10} />
+                <Bar dataKey="saidas" fill="url(#saidaFill)" radius={[3, 3, 0, 0]} barSize={10} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </PanelCard>
       </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <ReportListPanel
+          title="Relatorios Vendas do Sankhya"
+          sub="Portal de Vendas"
+          rows={[
+            {
+              icon: FileCheck2,
+              title: "Pedido de vendas - Pedido fechado",
+              meta: "Status pedido",
+              value: formatCurrency(comercial.fechado.valor),
+              count: comercial.fechado.qtd,
+              color: "var(--color-chart-2)",
+            },
+            {
+              icon: SearchCheck,
+              title: "Pedido de vendas - Pedido negociacao",
+              meta: "Status pedido",
+              value: formatCurrency(comercial.negociacao.valor),
+              count: comercial.negociacao.qtd,
+              color: "var(--color-chart-3)",
+            },
+            {
+              icon: FileText,
+              title: "Nota de vendas",
+              meta: "Portal de Vendas",
+              value: formatCurrency(comercial.nota_venda.valor),
+              count: comercial.nota_venda.qtd,
+              color: "var(--color-chart-1)",
+            },
+            {
+              icon: Layers3,
+              title: "Pedido fechado x nota de vendas",
+              meta: formatPercent(comercial.conversao_pct),
+              value: formatCurrency(comercial.fechado.valor - comercial.nota_venda.valor),
+              count: Math.abs(comercial.fechado.qtd - comercial.nota_venda.qtd),
+              color: "var(--color-chart-5)",
+            },
+          ]}
+        />
+
+        <ReportListPanel
+          title="Relatorios financeiros recebimentos"
+          sub="Financeiro"
+          rows={[
+            {
+              icon: ArrowUpRight,
+              title: "Recebimentos",
+              meta: "Baixas no periodo",
+              value: formatCurrency(financeiro.recebimentos.valor),
+              count: financeiro.recebimentos.qtd,
+              color: "var(--color-chart-1)",
+            },
+            {
+              icon: Banknote,
+              title: "Juros pagos, cartoes, factoring e operacoes",
+              meta: "Operacoes financeiras",
+              value: formatCurrency(financeiro.juros_antecipacoes.valor),
+              count: financeiro.juros_antecipacoes.qtd,
+              color: "var(--color-chart-3)",
+            },
+            {
+              icon: ArrowDownRight,
+              title: "Contas a pagar",
+              meta: "Aberto",
+              value: formatCurrency(financeiro.conta_pagar_aberto.valor),
+              count: financeiro.conta_pagar_aberto.qtd,
+              color: "var(--color-chart-4)",
+            },
+            {
+              icon: CalendarDays,
+              title: "Contas vencidas / atrasadas",
+              meta: "Carteira atual",
+              value: formatCurrency(financeiro.vencidas.valor),
+              count: financeiro.vencidas.qtd,
+              color: "var(--color-chart-4)",
+            },
+          ]}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+        <PanelCard
+          title="Finalidades / Projetos"
+          description="Vendas e rateio das despesas por finalidade"
+          action={
+            rateioData ? (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Badge variant="secondary" className="bg-primary/15 text-primary">
+                  {formatCurrency(valorRateadoTotal)} rateado
+                </Badge>
+                {rateioSemRateio > 0 && (
+                  <Badge variant="secondary" className="gap-1 bg-warning/15 text-warning">
+                    <AlertTriangle className="h-3 w-3" />
+                    {formatInt(rateioSemRateio)} sem rateio
+                  </Badge>
+                )}
+                {rateioIncompleto > 0 && (
+                  <Badge variant="secondary" className="gap-1 bg-danger/15 text-danger">
+                    <AlertTriangle className="h-3 w-3" />
+                    {formatInt(rateioIncompleto)} incompleto
+                  </Badge>
+                )}
+              </div>
+            ) : undefined
+          }
+          bodyClassName="p-0"
+        >
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Projeto</TableHead>
+                  <TableHead>Finalidade</TableHead>
+                  <TableHead className="text-right">Pedido fechado</TableHead>
+                  <TableHead className="text-right">Nota venda</TableHead>
+                  <TableHead className="text-right">Negociacao</TableHead>
+                  <TableHead className="hidden text-right md:table-cell">Despesas rateadas</TableHead>
+                  <TableHead className="hidden text-right md:table-cell">Valor rateado</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {finalidadesDocumento.map((item) => {
+                  const projeto = data.referencias.projetos.find((p) => p.CODPROJ === item.codigo);
+                  const venda = comercial.por_projeto.find((p) => p.codproj === item.codigo);
+                  const rateio = rateioPorProjetoMap.get(item.codigo);
+                  return (
+                    <TableRow key={item.codigo} className="hover:bg-surface-elevated/60">
+                      <TableCell className="font-mono text-[11px] text-muted-foreground">{item.codigo}</TableCell>
+                      <TableCell className="font-medium text-foreground">
+                        {projeto?.DESCRPROJ ?? projeto?.IDENTIFICACAO ?? item.nome}
+                      </TableCell>
+                      <TableCell className="text-right text-foreground">{formatCompactCurrency(venda?.fechado ?? 0)}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{formatCompactCurrency(venda?.nota_venda ?? 0)}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{formatCompactCurrency(venda?.negociacao ?? 0)}</TableCell>
+                      <TableCell className="hidden text-right text-muted-foreground md:table-cell">
+                        {rateio ? formatInt(rateio.despesas) : "—"}
+                      </TableCell>
+                      <TableCell className="hidden text-right md:table-cell">
+                        {rateio ? (
+                          <div>
+                            <div className="font-semibold text-foreground">{formatCompactCurrency(rateio.valor_rateado)}</div>
+                            <div className="text-[10px] text-muted-foreground">{formatPercent(rateio.percentual)} do rateio</div>
+                          </div>
+                        ) : "—"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </PanelCard>
+
+        <PanelCard
+          title="Fluxo para proximos meses"
+          description={formatCurrency(saldoCaixa)}
+          bodyClassName="p-0"
+        >
+          <div className="space-y-3 p-4">
+            {financeiro.fluxo_caixa.slice(-6).map((item) => {
+              const total = Math.max(item.entradas, item.saidas, 1);
+              return (
+                <div key={item.mes} className="rounded-xl border border-border/40 bg-background/40 p-3">
+                  <div className="mb-2 flex items-center justify-between text-xs">
+                    <span className="font-medium text-foreground">{item.mes}</span>
+                    <span className={cn("font-semibold", item.saldo >= 0 ? "text-success" : "text-danger")}>
+                      {formatCompactCurrency(item.saldo)}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                    <div className="h-1.5 rounded-full bg-muted">
+                      <div className="h-1.5 rounded-full bg-success" style={{ width: `${Math.min((item.entradas / total) * 100, 100)}%` }} />
+                    </div>
+                    <span className="w-20 text-right text-[11px] text-muted-foreground">{formatCompactCurrency(item.entradas)}</span>
+                    <div className="h-1.5 rounded-full bg-muted">
+                      <div className="h-1.5 rounded-full bg-danger" style={{ width: `${Math.min((item.saidas / total) * 100, 100)}%` }} />
+                    </div>
+                    <span className="w-20 text-right text-[11px] text-muted-foreground">{formatCompactCurrency(item.saidas)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </PanelCard>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <AccountsPanel title="Contas a receber" data={financeiro.contas_receber.titulos} />
+        <AccountsPanel title="Contas a pagar" data={financeiro.contas_pagar.titulos} />
+      </div>
+
+      <PanelCard title="Movimentos financeiros do periodo" description={`${financeiro.movimentos.length} registros`} bodyClassName="p-0">
+        <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Data</TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>Parceiro</TableHead>
+                  <TableHead>Natureza</TableHead>
+                  <TableHead>Projeto</TableHead>
+                  <TableHead className="text-right">Valor</TableHead>
+                </TableRow>
+              </TableHeader>
+            <TableBody>
+              {financeiro.movimentos.length === 0 && <EmptyTableRow colSpan={6} />}
+              {financeiro.movimentos.map((row) => (
+                <TableRow key={row.nufin} className="hover:bg-surface-elevated/60">
+                  <TableCell className="text-muted-foreground">{formatDate(row.data_baixa)}</TableCell>
+                  <TableCell>
+                    <span
+                      className="border px-2 py-1 text-[10px] uppercase tracking-[0.14em]"
+                      style={{
+                        borderColor: row.tipo === "receber" ? "rgba(77,163,255,0.35)" : "rgba(224,85,85,0.35)",
+                        color: row.tipo === "receber" ? "var(--color-chart-1)" : "var(--color-chart-4)",
+                        background: row.tipo === "receber" ? "rgba(77,163,255,0.08)" : "rgba(224,85,85,0.08)",
+                      }}
+                    >
+                      {row.tipo}
+                    </span>
+                  </TableCell>
+                  <TableCell className="max-w-[220px] truncate font-medium text-foreground">{row.parceiro}</TableCell>
+                  <TableCell className="max-w-[240px] truncate text-muted-foreground">{row.natureza}</TableCell>
+                  <TableCell className="max-w-[220px] truncate text-muted-foreground">{row.projeto}</TableCell>
+                  <TableCell className="text-right font-semibold text-foreground">{formatCurrency(row.valor)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </PanelCard>
     </div>
   );
 }
 
-function Dashboard() {
-  const [active, setActive] = useState<NavKey>("dashboard");
-  const [navOpen, setNavOpen] = useState(false);
-
-  const sections: Record<NavKey, React.ReactNode> = {
-    dashboard: <DashboardSection />,
-    empresas: <EmpresasDashboardSection />,
-    financeiro: <FinanceiroSection />,
-    produtos: <ProdutosApiSection />,
-    vendedores: <VendedoresSection />,
-    compras: <ComprasSection />,
-    estoque: <EstoqueSection />,
-    entregas: <EntregasApiSection />,
-    clientes: <ClientesApiSection />,
-    viacerta: <ViaCertaAlunosSection />,
-    rh: <RhApiSection />,
-    configuracao: <ConfiguracaoSection />,
-  };
-
+function ReportListPanel({
+  title,
+  sub,
+  rows,
+}: {
+  title: string;
+  sub: string;
+  rows: Array<{
+    icon: LucideIcon;
+    title: string;
+    meta: string;
+    value: string;
+    count: number;
+    color: string;
+  }>;
+}) {
   return (
-    <div className="font-geist min-h-screen" style={{ background: C.bg, color: C.text }}>
-      <Sidebar
-        active={active}
-        onSelect={setActive}
-        open={navOpen}
-        onClose={() => setNavOpen(false)}
-      />
-      <main className="px-4 py-5 sm:px-6 sm:py-6 lg:ml-[200px] lg:px-8 lg:py-8">
-        <TopBar active={active} onMenu={() => setNavOpen(true)} />
-        {sections[active]}
-      </main>
-    </div>
+    <PanelCard title={title} description={sub} bodyClassName="p-0">
+      <div className="divide-y divide-border/40">
+        {rows.map((row) => (
+          <div key={row.title} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-5 py-3">
+            <span className="grid h-9 w-9 place-items-center rounded-md border" style={{ borderColor: `${row.color}55`, background: `${row.color}14`, color: row.color }}>
+              <row.icon className="h-4 w-4" strokeWidth={1.7} />
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-medium text-foreground">{row.title}</div>
+              <div className="mt-0.5 text-[11px] text-muted-foreground">{row.meta}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-[13px] font-semibold text-foreground">{row.value}</div>
+              <div className="text-[11px] text-muted-foreground">{formatInt(row.count)}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </PanelCard>
+  );
+}
+
+function AccountsPanel({
+  title,
+  data,
+}: {
+  title: string;
+  data: ExecutivoDashboard["financeiro"]["contas_receber"]["titulos"];
+}) {
+  return (
+    <PanelCard title={title} description="Carteira aberta" bodyClassName="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Parceiro</TableHead>
+                  <TableHead>Vencimento</TableHead>
+                  <TableHead>Natureza</TableHead>
+                  <TableHead className="text-right">Valor aberto</TableHead>
+                </TableRow>
+              </TableHeader>
+          <TableBody>
+            {data.length === 0 && <EmptyTableRow colSpan={4} />}
+            {data.map((row) => (
+              <TableRow key={row.NUFIN} className="hover:bg-surface-elevated/60">
+                <TableCell className="max-w-[220px] truncate font-medium text-foreground">{row.NOMEPARC ?? "Sem parceiro"}</TableCell>
+                <TableCell className={cn(row.dias_atraso > 0 ? "font-semibold text-danger" : "text-muted-foreground")}>
+                  {formatDate(row.DTVENC)}
+                </TableCell>
+                <TableCell className="max-w-[240px] truncate text-muted-foreground">{row.DESCRNAT ?? "Sem natureza"}</TableCell>
+                <TableCell className="text-right font-semibold text-foreground">{formatCurrency(row.valor_aberto)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </PanelCard>
   );
 }

@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "sync:all": "tsx scripts/sync-all.ts",
     "sync:estoque": "tsx scripts/sync-estoque.ts",
     "sankhya:inventory": "tsx scripts/sankhya-raw-extract.ts --mode=inventory",
     "sankhya:sample": "tsx scripts/sankhya-raw-extract.ts --mode=sample --maxPages=1 --maxRows=100",

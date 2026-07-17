@@ -155,10 +155,23 @@ CREATE TABLE IF NOT EXISTS naturezas (
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS projetos (
   CODPROJ      INTEGER PRIMARY KEY,
+  CODPROJPAI   INTEGER,
+  GRAU         INTEGER,
+  ANALITICO    TEXT,
   IDENTIFICACAO TEXT,
   DESCRPROJ    TEXT,
   ativo        INTEGER NOT NULL DEFAULT 1,
   synced_at    TEXT NOT NULL
+);
+
+-- ----------------------------------------------------------------------------
+-- centros_resultado: dimensão de centros de resultado (TSICUS)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS centros_resultado (
+  CODCENCUS   INTEGER PRIMARY KEY,
+  DESCRCENCUS TEXT NOT NULL,
+  ativo       INTEGER NOT NULL DEFAULT 1,
+  synced_at   TEXT NOT NULL
 );
 
 -- ----------------------------------------------------------------------------
@@ -214,6 +227,7 @@ CREATE TABLE IF NOT EXISTS titulos_rateio (
 
 CREATE INDEX IF NOT EXISTS idx_titulos_rateio_nufin ON titulos_rateio(NUFIN);
 CREATE INDEX IF NOT EXISTS idx_titulos_rateio_proj ON titulos_rateio(CODPROJ);
+CREATE INDEX IF NOT EXISTS idx_centros_resultado_descr ON centros_resultado(DESCRCENCUS);
 
 
 -- ----------------------------------------------------------------------------

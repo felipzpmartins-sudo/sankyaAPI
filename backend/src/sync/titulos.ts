@@ -40,7 +40,7 @@ const FIELDS = [
  * 12m rolantes, ampliar para 2025-01-01 numa próxima iteração — o primeiro
  * sync dessa janela maior leva ~10min (volume da TGFFIN).
  */
-const DATA_INICIO = "01/01/2026";
+const DATA_INICIO = "01/01/2025";
 
 function upsertEmpresaStub(codemp: number): void {
   getDb()
@@ -74,7 +74,7 @@ export async function syncTitulos(): Promise<void> {
           DTNEG, DTVENC, DHBAIXA, DHCONCIL, DTCONTAB,
             VLRDESDOB, VLRBAIXA, valor_aberto, is_em_aberto, synced_at)
        VALUES
-          @NUFIN, @CODEMP, @CODPARC, @CODCENCUS, @CODPROJ, @CODTIPTIT, @CODNAT, @RECDESP, @PROVISAO, @tipo,
+          (@NUFIN, @CODEMP, @CODPARC, @CODCENCUS, @CODPROJ, @CODTIPTIT, @CODNAT, @RECDESP, @PROVISAO, @tipo,
           @DTNEG, @DTVENC, @DHBAIXA, @DHCONCIL, @DTCONTAB,
           @VLRDESDOB, @VLRBAIXA, @valor_aberto, @is_em_aberto, @synced_at)
        ON CONFLICT(NUFIN) DO UPDATE SET
