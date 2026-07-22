@@ -47,6 +47,13 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useRateioDashboard } from "@/hooks/use-dashboard-data";
 import { useExecutivoDashboard, type ExecutivoDashboard } from "@/hooks/use-executivo-dashboard";
+import {
+  barTooltipCursor,
+  chartTooltipItemStyle,
+  chartTooltipLabelStyle,
+  chartTooltipStyle,
+  lineTooltipCursor,
+} from "@/lib/chart-style";
 import { useFilters } from "@/lib/filters-context";
 import { formatCompactCurrency, formatCurrency, formatDate, formatInt, formatPercent } from "@/lib/format";
 import { usePageSnapshot } from "@/lib/snapshot-context";
@@ -78,25 +85,11 @@ const finalidadesDocumento = [
 ];
 
 const chartColors = [
-  "var(--color-chart-1)",
-  "var(--color-chart-2)",
-  "var(--color-chart-3)",
-  "var(--color-chart-4)",
-  "var(--color-chart-5)",
+  "#0F3A5F",
+  "#3B82F6",
+  "#7DD3FC",
+  "#22D3EE",
 ];
-
-const tooltipStyle = {
-  contentStyle: {
-    backgroundColor: "var(--color-popover)",
-    border: "1px solid var(--color-border)",
-    borderRadius: 10,
-    fontSize: 12,
-    color: "var(--color-foreground)",
-    padding: "8px 10px",
-  },
-  labelStyle: { color: "var(--color-muted-foreground)", fontSize: 10, textTransform: "uppercase" as const },
-  itemStyle: { color: "var(--color-foreground)" },
-} as const;
 
 function iso(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -292,25 +285,32 @@ function CentralCeoPage() {
                 <AreaChart data={fluxoSerieAcumulada} margin={{ top: 30, right: 12, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="saldoFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.55} />
-                      <stop offset="100%" stopColor="#3B82F6" stopOpacity={0} />
+                      <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.55} />
+                      <stop offset="100%" stopColor="var(--color-chart-1)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <XAxis dataKey="mes" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} dy={6} />
                   <YAxis hide />
-                  <Tooltip contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle} itemStyle={tooltipStyle.itemStyle} />
+                  <Tooltip
+                    contentStyle={chartTooltipStyle}
+                    labelStyle={chartTooltipLabelStyle}
+                    itemStyle={chartTooltipItemStyle}
+                    cursor={lineTooltipCursor}
+                    formatter={(value: number) => formatCurrency(value)}
+                  />
                   <Area
                     type="monotone"
                     dataKey="saldoAcumulado"
-                    stroke="#3B82F6"
-                    strokeWidth={4}
+                    stroke="var(--color-chart-1)"
+                    strokeWidth={2.5}
                     fill="url(#saldoFill)"
+                    activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--color-background)" }}
                   />
                   <ReferenceDot
                     x={ultimoPontoSaldo?.mes}
                     y={ultimoPontoSaldo?.saldoAcumulado}
                     r={5}
-                    fill="#3B82F6"
+                    fill="var(--color-chart-1)"
                     stroke="var(--color-background)"
                     strokeWidth={3}
                     label={{
@@ -363,7 +363,12 @@ function CentralCeoPage() {
                       <PieCell key={index} fill={chartColors[index % chartColors.length]} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle} formatter={(v: number) => formatCurrency(v)} />
+                  <Tooltip
+                    contentStyle={chartTooltipStyle}
+                    labelStyle={chartTooltipLabelStyle}
+                    itemStyle={chartTooltipItemStyle}
+                    formatter={(v: number) => formatCurrency(v)}
+                  />
                 </PieChart>
               </ResponsiveContainer>
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
@@ -418,7 +423,13 @@ function CentralCeoPage() {
                 <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" opacity={0.4} />
                 <XAxis dataKey="mes" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
                 <YAxis stroke="var(--color-muted-foreground)" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => formatCompactCurrency(v as number)} width={44} />
-                <Tooltip contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle} itemStyle={tooltipStyle.itemStyle} formatter={(v: number) => formatCurrency(v)} />
+                <Tooltip
+                  contentStyle={chartTooltipStyle}
+                  labelStyle={chartTooltipLabelStyle}
+                  itemStyle={chartTooltipItemStyle}
+                  cursor={barTooltipCursor}
+                  formatter={(v: number) => formatCurrency(v)}
+                />
                 <Bar dataKey="entradas" fill="url(#entradaFill)" radius={[3, 3, 0, 0]} barSize={10} />
                 <Bar dataKey="saidas" fill="url(#saidaFill)" radius={[3, 3, 0, 0]} barSize={10} />
               </BarChart>

@@ -26,6 +26,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useDreDashboard } from "@/hooks/use-dashboard-data";
+import {
+  barTooltipCursor,
+  chartTooltipItemStyle,
+  chartTooltipLabelStyle,
+  chartTooltipStyle,
+  lineTooltipCursor,
+} from "@/lib/chart-style";
 import { useFilters } from "@/lib/filters-context";
 import {
   formatCompactCurrency,
@@ -51,14 +58,6 @@ export const Route = createFileRoute("/dre")({
   }),
   component: DrePage,
 });
-
-const chartTooltipStyle = {
-  backgroundColor: "var(--color-popover)",
-  border: "1px solid var(--color-border)",
-  borderRadius: 8,
-  fontSize: 12,
-  color: "var(--color-foreground)",
-} as const;
 
 function DrePage() {
   const { filters } = useFilters();
@@ -230,7 +229,13 @@ function DrePage() {
                   tickLine={false}
                   axisLine={false}
                 />
-                <Tooltip contentStyle={chartTooltipStyle} formatter={(v: number) => formatCurrency(v)} />
+                <Tooltip
+                  contentStyle={chartTooltipStyle}
+                  labelStyle={chartTooltipLabelStyle}
+                  itemStyle={chartTooltipItemStyle}
+                  cursor={lineTooltipCursor}
+                  formatter={(v: number) => formatCurrency(v)}
+                />
                 <Legend wrapperStyle={{ fontSize: 12, color: "var(--color-muted-foreground)" }} />
                 <Bar name="Entradas" dataKey="entradas" fill="var(--color-success)" radius={[4, 4, 0, 0]} />
                 <Bar name="Saídas" dataKey="saidas" fill="var(--color-danger)" radius={[4, 4, 0, 0]} />
@@ -271,7 +276,13 @@ function DrePage() {
                   tickLine={false}
                   axisLine={false}
                 />
-                <Tooltip contentStyle={chartTooltipStyle} formatter={(v: number) => formatCurrency(v)} />
+                <Tooltip
+                  contentStyle={chartTooltipStyle}
+                  labelStyle={chartTooltipLabelStyle}
+                  itemStyle={chartTooltipItemStyle}
+                  cursor={barTooltipCursor}
+                  formatter={(v: number) => formatCurrency(v)}
+                />
                 <Bar dataKey="valor" fill="var(--color-chart-1)" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>

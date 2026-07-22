@@ -213,6 +213,7 @@ function QualidadePage() {
           hint={formatCurrency(rateioResumo.valor_sem_rateio)}
           tone="warning"
           icon={AlertTriangle}
+          critical={rateioResumo.sem_rateio > 0}
         />
         <KpiCard
           label="Rateio incompleto"
@@ -220,12 +221,14 @@ function QualidadePage() {
           hint={formatCurrency(rateioResumo.valor_rateio_incompleto)}
           tone={rateioResumo.rateio_incompleto > 0 ? "danger" : "success"}
           icon={rateioResumo.rateio_incompleto > 0 ? XCircle : CheckCircle2}
+          critical={rateioResumo.rateio_incompleto > 0}
         />
         <KpiCard
           label="Projeto não informado"
           value={String(titulosSemProjeto)}
           hint={formatCurrency(valorSemProjeto)}
           tone={titulosSemProjeto > 0 ? "warning" : "success"}
+          critical={titulosSemProjeto > 0}
           icon={FolderKanban}
         />
       </div>

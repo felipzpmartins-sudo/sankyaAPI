@@ -3,22 +3,42 @@ import { ArrowDownRight, ArrowUpRight, type LucideIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
-type Tone = "default" | "success" | "danger" | "warning" | "primary";
+type Tone = "default" | "success" | "danger" | "warning" | "primary" | "neutral";
 
-const toneRing: Record<Tone, string> = {
-  default: "before:bg-primary/60",
-  success: "before:bg-success",
-  danger: "before:bg-danger",
-  warning: "before:bg-warning",
-  primary: "before:bg-primary",
+const toneIconWrap: Record<Tone, string> = {
+  default: "bg-primary/15 text-primary",
+  primary: "bg-primary/15 text-primary",
+  neutral: "bg-white/10 text-muted-foreground",
+  success: "bg-success/15 text-success",
+  warning: "bg-warning/15 text-warning",
+  danger: "bg-danger/15 text-danger",
 };
 
 const toneValue: Record<Tone, string> = {
-  default: "text-foreground",
-  success: "text-success",
-  danger: "text-danger",
-  warning: "text-warning",
-  primary: "text-primary",
+  default: "text-[#3B82F6]",
+  primary: "text-[#3B82F6]",
+  neutral: "text-[#F1F5F9]",
+  success: "text-[#10B981]",
+  warning: "text-[#F59E0B]",
+  danger: "text-[#EF4444]",
+};
+
+const toneGlow: Record<Tone, string> = {
+  default: "",
+  primary: "",
+  neutral: "",
+  success: "",
+  warning: "shadow-[0_0_32px_-8px_rgba(245,158,11,0.35)]",
+  danger: "shadow-[0_0_32px_-8px_rgba(239,68,68,0.4)]",
+};
+
+const toneValueShadow: Record<Tone, string> = {
+  default: "0 0 3px rgba(59,130,246,0.25)",
+  primary: "0 0 3px rgba(59,130,246,0.25)",
+  neutral: "none",
+  success: "0 0 3px rgba(16,185,129,0.25)",
+  warning: "0 0 3px rgba(245,158,11,0.25)",
+  danger: "0 0 3px rgba(239,68,68,0.25)",
 };
 
 export function KpiCard({
@@ -28,6 +48,7 @@ export function KpiCard({
   variation,
   tone = "default",
   icon: Icon,
+  critical = false,
 }: {
   label: string;
   value: string;
@@ -35,6 +56,7 @@ export function KpiCard({
   variation?: number | null;
   tone?: Tone;
   icon?: LucideIcon;
+  critical?: boolean;
 }) {
   const varTone =
     variation == null
@@ -48,20 +70,26 @@ export function KpiCard({
   return (
     <Card
       className={cn(
-        "relative overflow-hidden border-border/60 bg-surface p-5 transition-colors hover:bg-surface-elevated",
-        "before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:content-['']",
-        toneRing[tone],
+        "relative overflow-hidden p-5 transition-all",
+        critical && toneGlow[tone],
       )}
     >
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-3">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           {label}
         </span>
-        {Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
+        {Icon && (
+          <span className={cn("inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full", toneIconWrap[tone])}>
+            <Icon className="h-4 w-4" />
+          </span>
+        )}
       </div>
 
       <div className="mt-3 flex items-baseline gap-2">
-        <span className={cn("text-3xl font-bold tracking-tight lg:text-[34px]", toneValue[tone])}>
+        <span
+          className={cn("text-3xl font-bold tracking-tight lg:text-[34px]", toneValue[tone])}
+          style={{ textShadow: toneValueShadow[tone] }}
+        >
           {value}
         </span>
       </div>

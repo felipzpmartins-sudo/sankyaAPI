@@ -43,6 +43,8 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
 
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -93,6 +95,8 @@
   --input: oklch(0.35 0.03 258);
   --ring: oklch(0.63 0.19 258);
 
+  --text-primary: var(--foreground);
+  --text-secondary: var(--muted-foreground);
   --success: oklch(0.72 0.17 162);
   --warning: oklch(0.79 0.16 78);
   --danger: var(--destructive);
@@ -146,8 +150,8 @@
   }
 }
 
-[data-slot="card"]:not([data-sidebar] *):not(header *):not(table *) {
-  background-image: linear-gradient(135deg, #121A2E 0%, #17203A 100%);
+[data-slot="card"]:not([data-sidebar] *):not(header *):not(table *):not(thead *):not(tbody *) {
+  background-image: linear-gradient(135deg, #16181F 0%, #1B1E27 100%);
   background-color: transparent;
   border-color: rgba(255, 255, 255, 0.06);
 }
