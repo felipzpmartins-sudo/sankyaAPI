@@ -28,24 +28,25 @@ function hasSnapshot(entity: string): boolean {
   return Boolean(state?.last_synced_at && state.row_count > 0);
 }
 
-async function runIfMissing(entity: string, fn: SyncFn): Promise<void> {
+async function runIfMissing(entity: string, fn: SyncFn): Promise<boolean> {
   if (hasSnapshot(entity)) {
     logger.info({ entity }, "sync boot skip: snapshot existente");
-    return;
+    return true;
   }
-  await runSync(entity, fn);
+  return runSync(entity, fn);
 }
 
-async function runSync(entity: string, fn: SyncFn): Promise<void> {
+async function runSync(entity: string, fn: SyncFn): Promise<boolean> {
   if (inflight.has(entity)) {
     logger.warn({ entity }, "sync skip: ciclo anterior ainda em andamento");
-    return;
+    return false;
   }
   inflight.add(entity);
   const startedAt = Date.now();
   try {
     await fn();
     logger.info({ entity, ms: Date.now() - startedAt }, "sync ok");
+    return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const cause =
@@ -58,6 +59,7 @@ async function runSync(entity: string, fn: SyncFn): Promise<void> {
       { entity, err: message, cause, ms: Date.now() - startedAt },
       "sync falhou",
     );
+    return false;
   } finally {
     inflight.delete(entity);
   }
@@ -80,7 +82,7 @@ async function initialSync(): Promise<void> {
     runIfMissing("vendedores", syncVendedores),
     runIfMissing("produtos", syncProdutos),
   ]);
-  await Promise.all([
+  const [, titulosDisponiveis] = await Promise.all([
     runIfMissing("pedidos", syncPedidos),
     runIfMissing("titulos", syncTitulos),
     runIfMissing("estoque", syncEstoque),
@@ -90,15 +92,53 @@ async function initialSync(): Promise<void> {
   // em paralelo com syncTitulos faz a consulta terminar antes de os títulos
   // serem gravados e registra um snapshot vazio. Aguarde a dependência para
   // que o primeiro diagnóstico da implantação já seja consistente.
+  if (!titulosDisponiveis) {
+    logger.warn("sync de rateio adiado: titulos nao ficaram disponiveis");
+    return;
+  }
   await runIfMissing("rateio", syncRateio);
 }
 
 const timers: NodeJS.Timeout[] = [];
-let initialSyncInProgress = false;
+let initialSyncPromise: Promise<void> | null = null;
+let mainSyncInProgress = false;
+
+function ensureInitialSync(): Promise<void> {
+  if (initialSyncPromise) return initialSyncPromise;
+  const promise = initialSync().finally(() => {
+    if (initialSyncPromise === promise) initialSyncPromise = null;
+  });
+  initialSyncPromise = promise;
+  return promise;
+}
+
+async function runMainSync(): Promise<void> {
+  if (mainSyncInProgress) {
+    logger.info("sync principal adiado: ciclo anterior ainda em andamento");
+    return;
+  }
+
+  mainSyncInProgress = true;
+  try {
+    await runSync("pedidos", syncPedidos);
+    const titulosAtualizados = await runSync("titulos", syncTitulos);
+    if (!titulosAtualizados) {
+      logger.warn("sync de rateio adiado: atualizacao de titulos nao concluiu");
+      return;
+    }
+    await runSync("rateio", syncRateio);
+  } finally {
+    mainSyncInProgress = false;
+  }
+}
 
 export function startScheduler(): void {
   if (!config.SYNC_ENABLED) {
     logger.info("scheduler desligado (SYNC_ENABLED=false)");
+    return;
+  }
+  if (timers.length > 0) {
+    logger.warn("scheduler ja esta em execucao");
     return;
   }
 
@@ -110,14 +150,16 @@ export function startScheduler(): void {
     "scheduler iniciando",
   );
 
-  initialSyncInProgress = true;
-  void initialSync().finally(() => {
-    initialSyncInProgress = false;
+  void ensureInitialSync().catch((err) => {
+    logger.error(
+      { err: err instanceof Error ? err.message : String(err) },
+      "carga inicial falhou fora de um sincronismo de entidade",
+    );
   });
 
   timers.push(
     setInterval(() => {
-      if (initialSyncInProgress) {
+      if (initialSyncPromise) {
         logger.info("sync lento adiado: carga inicial ainda em andamento");
         return;
       }
@@ -133,15 +175,11 @@ export function startScheduler(): void {
 
   timers.push(
     setInterval(() => {
-      if (initialSyncInProgress) {
+      if (initialSyncPromise) {
         logger.info("sync principal adiado: carga inicial ainda em andamento");
         return;
       }
-      void (async () => {
-        await runSync("pedidos", syncPedidos);
-        await runSync("titulos", syncTitulos);
-        await runSync("rateio", syncRateio);
-      })();
+      void runMainSync();
     }, config.SYNC_INTERVAL_MS),
   );
 }
@@ -149,5 +187,4 @@ export function startScheduler(): void {
 export function stopScheduler(): void {
   for (const t of timers) clearInterval(t);
   timers.length = 0;
-  initialSyncInProgress = false;
 }
