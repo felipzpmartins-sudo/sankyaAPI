@@ -1,18 +1,9 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import {
-  BarChart3,
-  LineChart,
-  MoreHorizontal,
-  Search,
-  ShieldAlert,
-  Sparkles,
-  type LucideIcon,
-} from "lucide-react";
+import { BarChart3, LineChart, Search, ShieldAlert, Sparkles, type LucideIcon } from "lucide-react";
 
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -22,7 +13,6 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 
 type NavItem = {
   title: string;
@@ -32,9 +22,9 @@ type NavItem = {
 };
 
 const dashboards: NavItem[] = [
-  { title: "Central CEO", icon: BarChart3, url: "/" },
+  { title: "Resumo executivo", icon: BarChart3, url: "/" },
   { title: "DRE por Projeto", icon: LineChart, url: "/dre" },
-  { title: "Qualidade do Dado", icon: ShieldAlert, url: "/qualidade" },
+  { title: "Rateio por projeto", icon: ShieldAlert, url: "/qualidade" },
 ];
 
 function NavList({ items, currentPath }: { items: NavItem[]; currentPath: string }) {
@@ -67,7 +57,11 @@ function NavList({ items, currentPath }: { items: NavItem[]; currentPath: string
                   {content}
                 </Link>
               ) : (
-                <button type="button" className="flex w-full items-center gap-2.5 opacity-60" disabled>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2.5 opacity-60"
+                  disabled
+                >
                   {content}
                 </button>
               )}
@@ -118,27 +112,6 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-
-      <SidebarFooter className="gap-2 border-t border-border/30 p-3 group-data-[collapsible=icon]:p-2">
-        <div className="flex items-center gap-2.5 rounded-lg bg-white/[0.03] p-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0">
-          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary/70 to-primary/30 text-[11px] font-bold text-primary-foreground">
-            RF
-          </div>
-          <div className="flex min-w-0 flex-col leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="truncate text-xs font-medium text-foreground">Rafael F.</span>
-            <span className="truncate text-[11px] text-muted-foreground">Executivo · MKR</span>
-          </div>
-          <MoreHorizontal className="ml-auto h-4 w-4 shrink-0 text-muted-foreground group-data-[collapsible=icon]:hidden" />
-        </div>
-
-        <Button
-          size="sm"
-          className="h-9 w-full justify-center bg-primary text-primary-foreground shadow-md shadow-primary/25 hover:bg-primary/90 group-data-[collapsible=icon]:hidden"
-        >
-          <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-          Novo relatório
-        </Button>
-      </SidebarFooter>
     </Sidebar>
   );
 }

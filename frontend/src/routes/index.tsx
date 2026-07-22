@@ -68,7 +68,7 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Sankhya 3.0 - Central CEO" },
+      { title: "Sankhya 3.0 - Resumo executivo" },
       {
         name: "description",
         content: "Central de relatorios de vendas e financeiro conectada ao Sankhya.",

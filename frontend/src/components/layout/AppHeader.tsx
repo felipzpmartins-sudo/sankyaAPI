@@ -6,9 +6,9 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 
 const TITLES: Record<string, { section: string; page: string }> = {
-  "/": { section: "Dashboard", page: "Central CEO" },
+  "/": { section: "Dashboard", page: "Resumo executivo" },
   "/dre": { section: "Dashboard", page: "DRE por Projeto" },
-  "/qualidade": { section: "Dashboard", page: "Qualidade do Dado" },
+  "/qualidade": { section: "Dashboard", page: "Rateio por projeto" },
   "/estoque": { section: "Dashboard", page: "Estoque" },
 };
 

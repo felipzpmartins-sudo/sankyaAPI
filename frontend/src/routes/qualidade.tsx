@@ -39,7 +39,7 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/qualidade")({
   head: () => ({
     meta: [
-      { title: "Qualidade do Dado · Dashboards Sankhya" },
+      { title: "Rateio por projeto · Dashboards Sankhya" },
       {
         name: "description",
         content:
@@ -459,14 +459,14 @@ function QualidadePage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          label="Com rateio (2+ empresas)"
+          label="Com rateio"
           value={formatInt(rateioResumo.com_rateio_ok)}
           hint={`${formatPercent(pctComRateio)} · 2 ou mais empresas`}
           tone="success"
           icon={CheckCircle2}
         />
         <KpiCard
-          label="Não é rateio (1 empresa)"
+          label="Sem rateio"
           value={formatInt(naoRateioTotal)}
           hint={`${formatPercent(pctNaoRateio)} · 1 empresa de destino`}
           tone="neutral"
