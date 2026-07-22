@@ -15,6 +15,7 @@ import {
 import { clientesBI, rhBI } from "../services/dashboard-clientes-rh.js";
 import { entregasBI } from "../services/dashboard-entregas.js";
 import { executivoResumo } from "../services/executivo.js";
+import { gerarRateioXlsx } from "../services/rateio-export.js";
 import {
   comodatoConsolidado,
   empresasResumo,
@@ -309,7 +310,11 @@ dashboardRouter.get("/centros-resultado", (_req, res, next) => {
 
 dashboardRouter.get("/financeiro/rateio", (req, res, next) => {
   try {
-    const q = z.object({ dataInicio: z.string(), dataFim: z.string(), codEmp: z.coerce.number().nullable().optional() }).parse(req.query);
+    const q = z.object({
+      dataInicio: z.string(),
+      dataFim: z.string(),
+      codEmp: numberListParam.optional(),
+    }).parse(req.query);
     res.json(listarRateio({ dataInicio: q.dataInicio, dataFim: q.dataFim, codEmp: q.codEmp ?? null }));
   } catch (err) {
     next(err);
@@ -319,10 +324,12 @@ dashboardRouter.get("/financeiro/rateio", (req, res, next) => {
 const rateioDiagnosticoQuery = z.object({
   dataInicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   dataFim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  codEmp: z.coerce.number().int().positive().optional(),
+  codEmp: numberListParam.optional(),
   codProj: numberListParam.optional(),
   page: z.coerce.number().int().min(0).default(0),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  naoPage: z.coerce.number().int().min(0).default(0),
+  naoPageSize: z.coerce.number().int().min(1).max(100).default(20),
 }).refine((q) => q.dataInicio <= q.dataFim, {
   message: "dataInicio deve ser menor ou igual a dataFim.",
 });
@@ -331,6 +338,24 @@ dashboardRouter.get("/financeiro/rateio-diagnostico", (req, res, next) => {
   try {
     const q = rateioDiagnosticoQuery.parse(req.query);
     res.json(rateioDiagnostico(q));
+  } catch (err) {
+    next(err);
+  }
+});
+
+dashboardRouter.get("/financeiro/rateio-exportacao", async (req, res, next) => {
+  try {
+    const q = rateioDiagnosticoQuery.parse(req.query);
+    const buffer = await gerarRateioXlsx(q);
+    const filename = `diagnostico-rateio-${q.dataInicio}-${q.dataFim}.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
+    res.setHeader("Content-Length", String(buffer.length));
+    res.send(buffer);
   } catch (err) {
     next(err);
   }

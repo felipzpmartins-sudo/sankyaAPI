@@ -214,6 +214,7 @@ function migrateTitulosShape(): void {
   const names = new Set(columns.map((col) => col.name));
 
   const additions: Array<[string, string]> = [
+    ["NUNOTA", "ALTER TABLE titulos ADD COLUMN NUNOTA INTEGER"],
     ["CODCENCUS", "ALTER TABLE titulos ADD COLUMN CODCENCUS INTEGER"],
     ["CODPROJ", "ALTER TABLE titulos ADD COLUMN CODPROJ INTEGER"],
   ];

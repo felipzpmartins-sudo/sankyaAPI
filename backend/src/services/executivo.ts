@@ -122,7 +122,11 @@ export function executivoResumo(
   const salesExtras = [empresaPedidos, vendedorSql].filter((item) => item.clause);
   const salesWhere = salesExtras.map((item) => ` AND ${item.clause}`).join("");
   const salesParams = salesExtras.flatMap((item) => item.params);
-  const fluxo = fluxoCaixa(filtro, 12, { dataInicio, dataFim: dataFimInclusivo });
+  const fluxo = fluxoCaixa(filtro, 12, {
+    dataInicio,
+    dataFim: dataFimInclusivo,
+    codProj,
+  });
 
   const closed = db
     .prepare(
@@ -241,12 +245,14 @@ export function executivoResumo(
     tipo: "receber",
     page: 0,
     pageSize: 8,
+    codProj,
   });
   const resumoPagar = listarContasAbertas({
     filtro,
     tipo: "pagar",
     page: 0,
     pageSize: 8,
+    codProj,
   });
 
   const abertoTotals = db

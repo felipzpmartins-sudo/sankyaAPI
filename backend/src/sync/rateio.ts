@@ -5,8 +5,8 @@ import { recordSyncError, recordSyncSuccess } from "./state.js";
 
 export async function syncRateio(): Promise<void> {
   try {
-    // TGFRAT guarda a distribuição do rateio. A empresa vem de TGFFIN e é
-    // recuperada do título financeiro já sincronizado por meio do NUFIN.
+    // TGFRAT guarda a distribuição. CODEMP identifica a empresa de origem em
+    // TGFFIN; cada empresa de destino é representada pelo CODPROJ da parcela.
     const candidates = ["TGFRAT", "Rateio", "RateioProjeto"];
     let rows: any[] = [];
     let sourceReached = false;
@@ -70,22 +70,54 @@ export async function syncRateio(): Promise<void> {
        VALUES (@NUFIN, @CODPROJ, @PERCRATEIO, @CODEMP, @synced_at)`,
     );
 
+    const consolidados = new Map<string, {
+      NUFIN: number;
+      CODPROJ: number | null;
+      PERCRATEIO: number;
+      CODEMP: number;
+      synced_at: string;
+    }>();
+    for (const row of rows) {
+      const nufin = Number(row.NUFIN);
+      const codprojInformado = row.CODPROJ == null || row.CODPROJ === ""
+        ? null
+        : Number(row.CODPROJ);
+      if (
+        !Number.isFinite(nufin) ||
+        (codprojInformado != null && !Number.isFinite(codprojInformado))
+      ) {
+        continue;
+      }
+      const codproj = codprojInformado;
+      const titulo = tituloEmpresa.get(nufin) as { CODEMP: number; RECDESP: number } | undefined;
+      if (!titulo || Number(titulo.RECDESP) !== -1) continue;
+
+      const percentualInformado = Number(row.PERCRATEIO);
+      const percentual = Number.isFinite(percentualInformado) ? percentualInformado : 0;
+      const empresaInformada = row.CODEMP == null ? Number.NaN : Number(row.CODEMP);
+      const codemp = Number.isFinite(empresaInformada) && empresaInformada > 0
+        ? empresaInformada
+        : titulo.CODEMP;
+      const chave = `${nufin}:${codproj ?? "SEM_PROJETO"}`;
+      const existente = consolidados.get(chave);
+      if (existente) {
+        existente.PERCRATEIO += percentual;
+      } else {
+        consolidados.set(chave, {
+          NUFIN: nufin,
+          CODPROJ: codproj,
+          PERCRATEIO: percentual,
+          CODEMP: codemp,
+          synced_at: now,
+        });
+      }
+    }
+
     let inserted = 0;
     const tx = db.transaction(() => {
       db.prepare("DELETE FROM titulos_rateio").run();
-      for (const row of rows) {
-        const nufin = Number(row.NUFIN);
-        const codproj = Number(row.CODPROJ);
-        if (!Number.isFinite(nufin) || !Number.isFinite(codproj)) continue;
-        const titulo = tituloEmpresa.get(nufin) as { CODEMP: number; RECDESP: number } | undefined;
-        if (!titulo || Number(titulo.RECDESP) !== -1) continue;
-        upsert.run({
-          NUFIN: nufin,
-          CODPROJ: codproj,
-          PERCRATEIO: row.PERCRATEIO != null ? Number(row.PERCRATEIO) : 0,
-          CODEMP: row.CODEMP != null ? Number(row.CODEMP) : titulo.CODEMP,
-          synced_at: now,
-        });
+      for (const rateio of consolidados.values()) {
+        upsert.run(rateio);
         inserted += 1;
       }
     });

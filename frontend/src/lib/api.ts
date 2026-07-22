@@ -19,27 +19,50 @@ export function clearStoredAuthToken() {
   sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
 }
 
-export async function apiJson<T>(
-  pathname: string,
-  query?: Record<string, string | number | undefined | null>,
-): Promise<T> {
+type ApiQuery = Record<string, string | number | undefined | null>;
+
+function apiUrl(pathname: string, query?: ApiQuery): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(query ?? {})) {
     if (value !== undefined && value !== null && value !== "") search.set(key, String(value));
   }
   const suffix = search.size > 0 ? `?${search.toString()}` : "";
-  const response = await fetch(`${getApiBaseUrl()}${pathname}${suffix}`, {
+  return `${getApiBaseUrl()}${pathname}${suffix}`;
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getStoredAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export async function apiJson<T>(pathname: string, query?: ApiQuery): Promise<T> {
+  const response = await fetch(apiUrl(pathname, query), {
     headers: {
       Accept: "application/json",
-      ...(getStoredAuthToken() ? { Authorization: `Bearer ${getStoredAuthToken()}` } : {}),
+      ...authHeaders(),
     },
   });
-  const body = await response.json().catch(() => null) as { message?: string } | null;
+  const body = (await response.json().catch(() => null)) as { message?: string } | null;
   if (!response.ok) {
     if (response.status === 401) clearStoredAuthToken();
     throw new Error(body?.message ?? `Falha na API (${response.status})`);
   }
   return body as T;
+}
+
+export async function apiBlob(pathname: string, query?: ApiQuery): Promise<Blob> {
+  const response = await fetch(apiUrl(pathname, query), {
+    headers: {
+      Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ...authHeaders(),
+    },
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    if (response.status === 401) clearStoredAuthToken();
+    throw new Error(body?.message ?? `Falha na API (${response.status})`);
+  }
+  return response.blob();
 }
 
 export function empresaQuery(empresas: number[]): string {

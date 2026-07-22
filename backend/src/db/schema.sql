@@ -190,6 +190,7 @@ CREATE TABLE IF NOT EXISTS centros_resultado (
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS titulos (
   NUFIN         INTEGER PRIMARY KEY,
+  NUNOTA        INTEGER,
   CODEMP        INTEGER NOT NULL,
   CODPARC       INTEGER NOT NULL,
   CODCENCUS     INTEGER,

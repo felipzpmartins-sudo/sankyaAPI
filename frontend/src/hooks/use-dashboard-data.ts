@@ -83,6 +83,7 @@ type ContasResponse = {
 
 export type RateioItem = {
   nufin: number;
+  nunota: number | null;
   codemp: number;
   empresa: string | null;
   codcencus: number | null;
@@ -98,6 +99,9 @@ export type RateioItem = {
   baixa: string | null;
   em_aberto: boolean;
   tipo: string;
+  codproj: number | null;
+  titulo_codproj: number | null;
+  titulo_projeto: string | null;
   projeto: string | null;
   total_perc?: number;
   percentual_valido?: number;
@@ -108,8 +112,11 @@ export type RateioItem = {
     projeto?: string | null;
     percentual: number;
     valor: number;
+    valor_baixado: number;
+    valor_aberto: number;
+    empresa_destino: boolean;
   }>;
-  status: "COM_RATEIO" | "SEM_RATEIO" | "RATEIO_INCOMPLETO";
+  status: "COM_RATEIO" | "NAO_RATEIO" | "SEM_RATEIO" | "RATEIO_INCOMPLETO";
 };
 
 export type RateioProjetoResumo = {
@@ -127,8 +134,15 @@ export type RateioResponse = {
   resumo: {
     total_titulos: number;
     com_rateio_ok: number;
+    nao_rateio: number;
     sem_rateio: number;
     rateio_incompleto: number;
+    titulos_validos: number;
+    percentual_ok: number;
+    pendencias: number;
+    valor_com_rateio: number;
+    valor_nao_rateio: number;
+    valor_pendencias: number;
     valor_sem_rateio: number;
     valor_rateio_incompleto: number;
     titulos_sem_projeto: number;
@@ -137,6 +151,12 @@ export type RateioResponse = {
   };
   com_rateio: RateioItem[];
   com_rateio_page: {
+    page: number;
+    pageSize: number;
+    total: number;
+  };
+  nao_rateio: RateioItem[];
+  nao_rateio_page: {
     page: number;
     pageSize: number;
     total: number;
@@ -168,7 +188,10 @@ export function useFaturamentoDashboard(filters: GlobalFilters) {
           data: filters.dataFim,
           periodo: "mes",
         }),
-        apiJson<LancamentosResponse>("/api/dashboard/vendedores/hoje", { ...query, data: filters.dataFim }),
+        apiJson<LancamentosResponse>("/api/dashboard/vendedores/hoje", {
+          ...query,
+          data: filters.dataFim,
+        }),
         apiJson<RankingVendedoresResponse>("/api/dashboard/vendedores/ranking", {
           ...query,
           data: filters.dataFim,
@@ -204,33 +227,61 @@ export function useFaturamentoDashboard(filters: GlobalFilters) {
 }
 
 function consolidar(projetos: DreLinha[]) {
-  const total = projetos.reduce((acc, item) => ({
-    receita_bruta: acc.receita_bruta + item.receita_bruta,
-    custos: acc.custos + item.custos,
-    despesas_admin: acc.despesas_admin + item.despesas_admin,
-    despesas_comerciais: acc.despesas_comerciais + item.despesas_comerciais,
-    impostos: acc.impostos + item.impostos,
-    despesas_total: acc.despesas_total + item.despesas_total,
-    resultado_operacional: acc.resultado_operacional + item.resultado_operacional,
-    margem_pct: 0,
-  }), {
-    receita_bruta: 0, custos: 0, despesas_admin: 0, despesas_comerciais: 0,
-    impostos: 0, despesas_total: 0, resultado_operacional: 0, margem_pct: 0,
-  });
-  total.margem_pct = total.receita_bruta > 0 ? (total.resultado_operacional / total.receita_bruta) * 100 : 0;
+  const total = projetos.reduce(
+    (acc, item) => ({
+      receita_bruta: acc.receita_bruta + item.receita_bruta,
+      custos: acc.custos + item.custos,
+      despesas_admin: acc.despesas_admin + item.despesas_admin,
+      despesas_comerciais: acc.despesas_comerciais + item.despesas_comerciais,
+      impostos: acc.impostos + item.impostos,
+      despesas_total: acc.despesas_total + item.despesas_total,
+      resultado_operacional: acc.resultado_operacional + item.resultado_operacional,
+      margem_pct: 0,
+    }),
+    {
+      receita_bruta: 0,
+      custos: 0,
+      despesas_admin: 0,
+      despesas_comerciais: 0,
+      impostos: 0,
+      despesas_total: 0,
+      resultado_operacional: 0,
+      margem_pct: 0,
+    },
+  );
+  total.margem_pct =
+    total.receita_bruta > 0 ? (total.resultado_operacional / total.receita_bruta) * 100 : 0;
   return total;
 }
 
-export function useDreDashboard(filters: GlobalFilters, receberPage = 0, pagarPage = 0, pageSize = 20) {
+export function useDreDashboard(
+  filters: GlobalFilters,
+  receberPage = 0,
+  pagarPage = 0,
+  pageSize = 20,
+) {
   return useQuery({
     queryKey: ["dre-dashboard", filters, receberPage, pagarPage, pageSize],
     queryFn: async () => {
       const query = commonQuery(filters);
       const [dre, fluxo, receber, pagar] = await Promise.all([
-        apiJson<DreResponse>("/api/dashboard/financeiro/dre-por-projeto", { ...query, periodo: "ano" }),
+        apiJson<DreResponse>("/api/dashboard/financeiro/dre-por-projeto", {
+          ...query,
+          periodo: "ano",
+        }),
         apiJson<FluxoResponse>("/api/dashboard/financeiro/fluxo-caixa", { ...query, meses: 12 }),
-        apiJson<ContasResponse>("/api/dashboard/financeiro/contas", { ...query, tipo: "receber", page: receberPage, pageSize }),
-        apiJson<ContasResponse>("/api/dashboard/financeiro/contas", { ...query, tipo: "pagar", page: pagarPage, pageSize }),
+        apiJson<ContasResponse>("/api/dashboard/financeiro/contas", {
+          ...query,
+          tipo: "receber",
+          page: receberPage,
+          pageSize,
+        }),
+        apiJson<ContasResponse>("/api/dashboard/financeiro/contas", {
+          ...query,
+          tipo: "pagar",
+          page: pagarPage,
+          pageSize,
+        }),
       ]);
       const mapConta = (conta: ContasResponse["titulos"][number]) => ({
         parceiro: conta.NOMEPARC ?? "Sem parceiro",
@@ -244,8 +295,18 @@ export function useDreDashboard(filters: GlobalFilters, receberPage = 0, pagarPa
         fluxoCaixa: fluxo.serie,
         contasReceber: receber.titulos.map(mapConta),
         contasPagar: pagar.titulos.map(mapConta),
-        contasReceberMeta: { page: receber.page, pageSize: receber.pageSize, total: receber.total, valorTotal: receber.valor_total_aberto },
-        contasPagarMeta: { page: pagar.page, pageSize: pagar.pageSize, total: pagar.total, valorTotal: pagar.valor_total_aberto },
+        contasReceberMeta: {
+          page: receber.page,
+          pageSize: receber.pageSize,
+          total: receber.total,
+          valorTotal: receber.valor_total_aberto,
+        },
+        contasPagarMeta: {
+          page: pagar.page,
+          pageSize: pagar.pageSize,
+          total: pagar.total,
+          valorTotal: pagar.valor_total_aberto,
+        },
         snapshot_at: dre.snapshot_at,
       };
     },
@@ -253,17 +314,20 @@ export function useDreDashboard(filters: GlobalFilters, receberPage = 0, pagarPa
   });
 }
 
-export function useRateioDashboard(filters: GlobalFilters, page = 0, pageSize = 20) {
+export function useRateioDashboard(filters: GlobalFilters, page = 0, naoPage = 0, pageSize = 20) {
   return useQuery({
-    queryKey: ["rateio-dashboard", filters, page, pageSize],
-    queryFn: () => apiJson<RateioResponse>("/api/dashboard/financeiro/rateio-diagnostico", {
-      dataInicio: filters.dataInicio,
-      dataFim: filters.dataFim,
-      codEmp: filters.empresas.length === 1 ? filters.empresas[0] : undefined,
-      codProj: filters.projetos.length > 0 ? filters.projetos.join(",") : undefined,
-      page,
-      pageSize,
-    }),
+    queryKey: ["rateio-dashboard", filters, page, naoPage, pageSize],
+    queryFn: () =>
+      apiJson<RateioResponse>("/api/dashboard/financeiro/rateio-diagnostico", {
+        dataInicio: filters.dataInicio,
+        dataFim: filters.dataFim,
+        codEmp: filters.empresas.length > 0 ? filters.empresas.join(",") : undefined,
+        codProj: filters.projetos.length > 0 ? filters.projetos.join(",") : undefined,
+        page,
+        pageSize,
+        naoPage,
+        naoPageSize: pageSize,
+      }),
     placeholderData: (previousData) => previousData,
     staleTime: 30_000,
   });
@@ -275,7 +339,13 @@ export function useFilterOptions() {
     queryFn: async () => {
       const [empresas, projetos, vendedores, health] = await Promise.all([
         apiJson<{ empresas: Array<{ CODEMP: number; NOMEFANTASIA: string }> }>("/api/empresas"),
-        apiJson<{ projetos: Array<{ CODPROJ: number; DESCRPROJ: string | null; IDENTIFICACAO: string | null }> }>("/api/dashboard/projetos"),
+        apiJson<{
+          projetos: Array<{
+            CODPROJ: number;
+            DESCRPROJ: string | null;
+            IDENTIFICACAO: string | null;
+          }>;
+        }>("/api/dashboard/projetos"),
         apiJson<{ vendedores: Array<{ CODVEND: number; APELIDO: string }> }>("/api/vendedores"),
         apiJson<{
           sync: { pedidos?: { last_synced_at?: string } | null };
@@ -283,7 +353,10 @@ export function useFilterOptions() {
         }>("/api/health"),
       ]);
       return {
-        empresas: empresas.empresas.map((empresa) => ({ codemp: empresa.CODEMP, nome: empresa.NOMEFANTASIA })),
+        empresas: empresas.empresas.map((empresa) => ({
+          codemp: empresa.CODEMP,
+          nome: empresa.NOMEFANTASIA,
+        })),
         projetos: projetos.projetos.map((projeto) => ({
           codproj: projeto.CODPROJ,
           nome: projeto.DESCRPROJ ?? projeto.IDENTIFICACAO ?? `Projeto ${projeto.CODPROJ}`,
@@ -292,9 +365,10 @@ export function useFilterOptions() {
           codvend: vendedor.CODVEND,
           nome: vendedor.APELIDO,
         })),
-        snapshotDate: health.data_available?.pedidos_ate?.slice(0, 10)
-          ?? health.sync.pedidos?.last_synced_at?.slice(0, 10)
-          ?? null,
+        snapshotDate:
+          health.data_available?.pedidos_ate?.slice(0, 10) ??
+          health.sync.pedidos?.last_synced_at?.slice(0, 10) ??
+          null,
         snapshotAt: health.sync.pedidos?.last_synced_at ?? null,
       };
     },

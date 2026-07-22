@@ -32,16 +32,25 @@ export function formatInt(value: number | null | undefined): string {
   return int.format(value);
 }
 
+function parseDate(value: string | Date): Date {
+  if (value instanceof Date) return value;
+  const dataPura = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (dataPura) {
+    return new Date(Number(dataPura[1]), Number(dataPura[2]) - 1, Number(dataPura[3]));
+  }
+  return new Date(value);
+}
+
 export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return "—";
-  const d = typeof value === "string" ? new Date(value) : value;
+  const d = parseDate(value);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("pt-BR");
 }
 
 export function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return "—";
-  const d = typeof value === "string" ? new Date(value) : value;
+  const d = parseDate(value);
   if (Number.isNaN(d.getTime())) return "—";
   return `${d.toLocaleDateString("pt-BR")} ${d.toLocaleTimeString("pt-BR", {
     hour: "2-digit",

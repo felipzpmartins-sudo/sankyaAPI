@@ -55,7 +55,13 @@ import {
   lineTooltipCursor,
 } from "@/lib/chart-style";
 import { useFilters } from "@/lib/filters-context";
-import { formatCompactCurrency, formatCurrency, formatDate, formatInt, formatPercent } from "@/lib/format";
+import {
+  formatCompactCurrency,
+  formatCurrency,
+  formatDate,
+  formatInt,
+  formatPercent,
+} from "@/lib/format";
 import { usePageSnapshot } from "@/lib/snapshot-context";
 import { cn } from "@/lib/utils";
 
@@ -84,19 +90,24 @@ const finalidadesDocumento = [
   { codigo: 40100000, nome: "MY ROBOT FRANQUEADORA" },
 ];
 
-const chartColors = [
-  "#0F3A5F",
-  "#3B82F6",
-  "#7DD3FC",
-  "#22D3EE",
+const chartColors = ["#0F3A5F", "#3B82F6", "#7DD3FC", "#22D3EE"];
+
+const balancePeriodOptions: Array<{ value: Exclude<PeriodPreset, "periodo">; label: string }> = [
+  { value: "ano", label: "Ano" },
+  { value: "mes", label: "Mês" },
+  { value: "semana", label: "Semana" },
+  { value: "hoje", label: "Dia" },
 ];
 
 function iso(date: Date) {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
-function presetRange(preset: PeriodPreset) {
-  const now = new Date();
+function presetRange(preset: PeriodPreset, referenceDate = new Date()) {
+  const now = new Date(referenceDate);
   const end = iso(now);
   if (preset === "hoje") return { dataInicio: end, dataFim: end };
   if (preset === "semana") {
@@ -112,30 +123,54 @@ function presetRange(preset: PeriodPreset) {
   return { dataInicio: iso(start), dataFim: end };
 }
 
+function selectedPreset(dataInicio: string, dataFim: string): PeriodPreset {
+  const referenceDate = new Date(`${dataFim}T12:00:00`);
+  for (const preset of ["hoje", "semana", "mes", "ano"] as const) {
+    const range = presetRange(preset, referenceDate);
+    if (range.dataInicio === dataInicio && range.dataFim === dataFim) return preset;
+  }
+  return "periodo";
+}
+
+function formatChartPeriod(value: string): string {
+  const daily = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (daily) return `${daily[3]}/${daily[2]}`;
+  const monthly = /^(\d{4})-(\d{2})$/.exec(value);
+  if (monthly) return `${monthly[2]}/${monthly[1].slice(2)}`;
+  return value;
+}
+
 function CentralCeoPage() {
   const { filters, setFilters } = useFilters();
   const query = useExecutivoDashboard(filters);
   const rateioQuery = useRateioDashboard(filters);
-  const data = query.data;
-  usePageSnapshot(data?.snapshot_at);
+  const activePreset = selectedPreset(filters.dataInicio, filters.dataFim);
+  usePageSnapshot(query.data?.snapshot_at);
 
-  if (query.isPending || query.error) {
-    return <QueryState loading={query.isPending} error={query.error} retry={() => void query.refetch()} />;
+  if (query.isPending || query.error || !query.data) {
+    return (
+      <QueryState
+        loading={query.isPending}
+        error={query.error}
+        retry={() => void query.refetch()}
+      />
+    );
   }
+
+  const data = query.data;
 
   const applyPreset = (preset: PeriodPreset) => {
     if (preset === "periodo") return;
-    setFilters(presetRange(preset));
+    setFilters(presetRange(preset, new Date(`${filters.dataFim}T12:00:00`)));
   };
 
   const comercial = data.comercial;
   const financeiro = data.financeiro;
   const periodoLabel = `${formatDate(data.periodo.dataInicio)} - ${formatDate(data.periodo.dataFim)}`;
-  const fluxoSerieBase =
-    financeiro.fluxo_caixa.length > 0
-      ? financeiro.fluxo_caixa
-      : [{ mes: "Sem dados", entradas: 0, saidas: 0, saldo: 0 }];
-  const fluxoSerie = fluxoSerieBase.map((item) => item);
+  const fluxoSerie = financeiro.fluxo_caixa;
+  const hasFluxoData = fluxoSerie.some(
+    (item) => Math.abs(item.entradas) > 0.01 || Math.abs(item.saidas) > 0.01,
+  );
   let saldoAcumulado = 0;
   let entradasAcumuladas = 0;
   let saidasAcumuladas = 0;
@@ -179,7 +214,7 @@ function CentralCeoPage() {
 
         <ToggleGroup
           type="single"
-          defaultValue="periodo"
+          value={activePreset}
           className="justify-start rounded-full border border-border/40 bg-surface p-1"
           onValueChange={(value) => value && applyPreset(value as PeriodPreset)}
         >
@@ -188,7 +223,6 @@ function CentralCeoPage() {
             ["semana", "Semanal"],
             ["mes", "Mensal"],
             ["ano", "Ano"],
-            ["periodo", "Periodo"],
           ].map(([value, label]) => (
             <ToggleGroupItem
               key={value}
@@ -237,16 +271,20 @@ function CentralCeoPage() {
         description="Entradas, saidas e saldo acumulado"
         action={
           <div className="flex items-center gap-1 rounded-full border border-border/40 bg-background/40 p-1">
-            {["Ano", "Mes", "Semana", "Dia"].map((t, i) => (
+            {balancePeriodOptions.map(({ value, label }) => (
               <button
-                key={t}
+                key={value}
                 type="button"
+                aria-pressed={activePreset === value}
+                onClick={() => applyPreset(value)}
                 className={cn(
                   "rounded-full px-3 py-1 text-[11px] font-medium transition-colors",
-                  i === 0 ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  activePreset === value
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {t}
+                {label}
               </button>
             ))}
           </div>
@@ -262,9 +300,17 @@ function CentralCeoPage() {
                   <span className="text-3xl font-semibold tracking-tight text-foreground lg:text-[40px]">
                     {formatCompactCurrency(saldoCaixa)}
                   </span>
-                  <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold", saldoCaixa >= 0 ? "bg-success/15 text-success" : "bg-danger/15 text-danger")}>
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                      saldoCaixa >= 0 ? "bg-success/15 text-success" : "bg-danger/15 text-danger",
+                    )}
+                  >
                     {saldoCaixa >= 0 ? "+" : ""}
-                    {Math.abs((saldoCaixa / Math.max(financeiro.recebimentos.valor || 1, 1)) * 100).toFixed(1).replace(".", ",")}%
+                    {Math.abs((saldoCaixa / Math.max(financeiro.recebimentos.valor || 1, 1)) * 100)
+                      .toFixed(1)
+                      .replace(".", ",")}
+                    %
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -281,58 +327,80 @@ function CentralCeoPage() {
             </div>
 
             <div className="h-[260px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={fluxoSerieAcumulada} margin={{ top: 30, right: 12, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="saldoFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.55} />
-                      <stop offset="100%" stopColor="var(--color-chart-1)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="mes" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} dy={6} />
-                  <YAxis hide />
-                  <Tooltip
-                    contentStyle={chartTooltipStyle}
-                    labelStyle={chartTooltipLabelStyle}
-                    itemStyle={chartTooltipItemStyle}
-                    cursor={lineTooltipCursor}
-                    formatter={(value: number) => formatCurrency(value)}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="saldoAcumulado"
-                    stroke="var(--color-chart-1)"
-                    strokeWidth={2.5}
-                    fill="url(#saldoFill)"
-                    activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--color-background)" }}
-                  />
-                  <ReferenceDot
-                    x={ultimoPontoSaldo?.mes}
-                    y={ultimoPontoSaldo?.saldoAcumulado}
-                    r={5}
-                    fill="var(--color-chart-1)"
-                    stroke="var(--color-background)"
-                    strokeWidth={3}
-                    label={{
-                      content: ({ viewBox }: { viewBox?: { x?: number; y?: number } }) => {
-                        if (!viewBox || viewBox.x == null || viewBox.y == null) return null;
-                        return (
-                          <text
-                            x={viewBox.x - 8}
-                            y={viewBox.y - 14}
-                            textAnchor="end"
-                            fill="var(--color-foreground)"
-                            fontSize={12}
-                            fontWeight={700}
-                          >
-                            {ultimoSaldoLabel}
-                          </text>
-                        );
-                      },
-                    }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              {hasFluxoData ? (
+                <div className="relative h-full w-full">
+                  {fluxoSerieAcumulada.length === 1 ? (
+                    <p className="absolute right-2 top-0 z-10 text-[10px] text-muted-foreground">
+                      Uma competência com movimentação
+                    </p>
+                  ) : null}
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={fluxoSerieAcumulada}
+                      margin={{ top: 30, right: 12, left: 0, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="saldoFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.55} />
+                          <stop offset="100%" stopColor="var(--color-chart-1)" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis
+                        dataKey="mes"
+                        stroke="var(--color-muted-foreground)"
+                        fontSize={11}
+                        tickLine={false}
+                        axisLine={false}
+                        dy={6}
+                        tickFormatter={formatChartPeriod}
+                      />
+                      <YAxis hide />
+                      <Tooltip
+                        contentStyle={chartTooltipStyle}
+                        labelStyle={chartTooltipLabelStyle}
+                        itemStyle={chartTooltipItemStyle}
+                        cursor={lineTooltipCursor}
+                        formatter={(value: number) => formatCurrency(value)}
+                        labelFormatter={(value) => formatChartPeriod(String(value))}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="saldoAcumulado"
+                        stroke="var(--color-chart-1)"
+                        strokeWidth={2.5}
+                        fill="url(#saldoFill)"
+                        activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--color-background)" }}
+                      />
+                      <ReferenceDot
+                        x={ultimoPontoSaldo?.mes}
+                        y={ultimoPontoSaldo?.saldoAcumulado}
+                        r={5}
+                        fill="var(--color-chart-1)"
+                        stroke="var(--color-background)"
+                        strokeWidth={3}
+                        label={{
+                          value: ultimoSaldoLabel,
+                          position: "top",
+                          fill: "var(--color-foreground)",
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="grid h-full place-items-center rounded-xl border border-dashed border-border/60 bg-background/20 px-6 text-center">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      Sem movimentações no período
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Selecione outro intervalo para consultar o saldo.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -349,7 +417,7 @@ function CentralCeoPage() {
             <div className="relative h-[180px] w-[180px] shrink-0">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-              <Pie
+                  <Pie
                     data={comercial.por_projeto}
                     dataKey="fechado"
                     nameKey="nome"
@@ -374,7 +442,10 @@ function CentralCeoPage() {
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="text-center">
                   <div className="text-xl font-semibold text-foreground">
-                    {Math.round((projetoTopo?.fechado ?? 0) / Math.max(totalProjetos || 1, 1) * 100)}%
+                    {Math.round(
+                      ((projetoTopo?.fechado ?? 0) / Math.max(totalProjetos || 1, 1)) * 100,
+                    )}
+                    %
                   </div>
                   <div className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
                     {projetoTopo?.nome ?? "Projeto"}
@@ -388,9 +459,14 @@ function CentralCeoPage() {
                 const pct = (row.fechado / Math.max(totalProjetos || 1, 1)) * 100;
                 return (
                   <li key={row.codproj} className="flex items-center gap-3 text-sm">
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: chartColors[index % chartColors.length] }} />
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                      style={{ backgroundColor: chartColors[index % chartColors.length] }}
+                    />
                     <span className="min-w-0 flex-1 truncate text-foreground">{row.nome}</span>
-                    <span className="text-xs text-muted-foreground">{pct.toFixed(1).replace(".", ",")}%</span>
+                    <span className="text-xs text-muted-foreground">
+                      {pct.toFixed(1).replace(".", ",")}%
+                    </span>
                     <span className="w-20 text-right text-xs font-medium text-foreground">
                       {formatCompactCurrency(row.fechado)}
                     </span>
@@ -408,32 +484,69 @@ function CentralCeoPage() {
           bodyClassName="p-0"
         >
           <div className="h-[320px] w-full p-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={fluxoSerie} barCategoryGap={18} margin={{ top: 10, right: 4, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="entradaFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#60A5FA" />
-                    <stop offset="100%" stopColor="#3B82F6" />
-                  </linearGradient>
-                  <linearGradient id="saidaFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#F87171" />
-                    <stop offset="100%" stopColor="#EF4444" />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" opacity={0.4} />
-                <XAxis dataKey="mes" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis stroke="var(--color-muted-foreground)" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => formatCompactCurrency(v as number)} width={44} />
-                <Tooltip
-                  contentStyle={chartTooltipStyle}
-                  labelStyle={chartTooltipLabelStyle}
-                  itemStyle={chartTooltipItemStyle}
-                  cursor={barTooltipCursor}
-                  formatter={(v: number) => formatCurrency(v)}
-                />
-                <Bar dataKey="entradas" fill="url(#entradaFill)" radius={[3, 3, 0, 0]} barSize={10} />
-                <Bar dataKey="saidas" fill="url(#saidaFill)" radius={[3, 3, 0, 0]} barSize={10} />
-              </BarChart>
-            </ResponsiveContainer>
+            {hasFluxoData ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={fluxoSerie}
+                  barCategoryGap={18}
+                  margin={{ top: 10, right: 4, left: 0, bottom: 0 }}
+                >
+                  <defs>
+                    <linearGradient id="entradaFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#60A5FA" />
+                      <stop offset="100%" stopColor="#3B82F6" />
+                    </linearGradient>
+                    <linearGradient id="saidaFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#F87171" />
+                      <stop offset="100%" stopColor="#EF4444" />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" opacity={0.4} />
+                  <XAxis
+                    dataKey="mes"
+                    stroke="var(--color-muted-foreground)"
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={formatChartPeriod}
+                  />
+                  <YAxis
+                    stroke="var(--color-muted-foreground)"
+                    fontSize={10}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v) => formatCompactCurrency(v as number)}
+                    width={44}
+                  />
+                  <Tooltip
+                    contentStyle={chartTooltipStyle}
+                    labelStyle={chartTooltipLabelStyle}
+                    itemStyle={chartTooltipItemStyle}
+                    cursor={barTooltipCursor}
+                    formatter={(v: number) => formatCurrency(v)}
+                    labelFormatter={(value) => formatChartPeriod(String(value))}
+                  />
+                  <Bar
+                    dataKey="entradas"
+                    fill="url(#entradaFill)"
+                    radius={[3, 3, 0, 0]}
+                    barSize={10}
+                  />
+                  <Bar dataKey="saidas" fill="url(#saidaFill)" radius={[3, 3, 0, 0]} barSize={10} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="grid h-full place-items-center rounded-xl border border-dashed border-border/60 bg-background/20 px-6 text-center">
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    Sem entradas ou saídas no período
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    O gráfico será exibido quando houver movimentações.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </PanelCard>
       </div>
@@ -531,13 +644,13 @@ function CentralCeoPage() {
                 {rateioSemRateio > 0 && (
                   <Badge variant="secondary" className="gap-1 bg-warning/15 text-warning">
                     <AlertTriangle className="h-3 w-3" />
-                    {formatInt(rateioSemRateio)} sem rateio
+                    {formatInt(rateioSemRateio)} sem distribuição
                   </Badge>
                 )}
                 {rateioIncompleto > 0 && (
                   <Badge variant="secondary" className="gap-1 bg-danger/15 text-danger">
                     <AlertTriangle className="h-3 w-3" />
-                    {formatInt(rateioIncompleto)} incompleto
+                    {formatInt(rateioIncompleto)} distribuição incompleta
                   </Badge>
                 )}
               </div>
@@ -554,7 +667,9 @@ function CentralCeoPage() {
                   <TableHead className="text-right">Pedido fechado</TableHead>
                   <TableHead className="text-right">Nota venda</TableHead>
                   <TableHead className="text-right">Cancelados</TableHead>
-                  <TableHead className="hidden text-right md:table-cell">Despesas rateadas</TableHead>
+                  <TableHead className="hidden text-right md:table-cell">
+                    Despesas rateadas
+                  </TableHead>
                   <TableHead className="hidden text-right md:table-cell">Valor rateado</TableHead>
                 </TableRow>
               </TableHeader>
@@ -565,23 +680,37 @@ function CentralCeoPage() {
                   const rateio = rateioPorProjetoMap.get(item.codigo);
                   return (
                     <TableRow key={item.codigo} className="hover:bg-surface-elevated/60">
-                      <TableCell className="font-mono text-[11px] text-muted-foreground">{item.codigo}</TableCell>
+                      <TableCell className="font-mono text-[11px] text-muted-foreground">
+                        {item.codigo}
+                      </TableCell>
                       <TableCell className="font-medium text-foreground">
                         {projeto?.DESCRPROJ ?? projeto?.IDENTIFICACAO ?? item.nome}
                       </TableCell>
-                      <TableCell className="text-right text-foreground">{formatCompactCurrency(venda?.fechado ?? 0)}</TableCell>
-                      <TableCell className="text-right text-muted-foreground">{formatCompactCurrency(venda?.nota_venda ?? 0)}</TableCell>
-                      <TableCell className="text-right text-danger/80">{formatCompactCurrency(venda?.cancelados ?? 0)}</TableCell>
+                      <TableCell className="text-right text-foreground">
+                        {formatCompactCurrency(venda?.fechado ?? 0)}
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        {formatCompactCurrency(venda?.nota_venda ?? 0)}
+                      </TableCell>
+                      <TableCell className="text-right text-danger/80">
+                        {formatCompactCurrency(venda?.cancelados ?? 0)}
+                      </TableCell>
                       <TableCell className="hidden text-right text-muted-foreground md:table-cell">
                         {rateio ? formatInt(rateio.despesas) : "—"}
                       </TableCell>
                       <TableCell className="hidden text-right md:table-cell">
                         {rateio ? (
                           <div>
-                            <div className="font-semibold text-foreground">{formatCompactCurrency(rateio.valor_rateado)}</div>
-                            <div className="text-[10px] text-muted-foreground">{formatPercent(rateio.percentual)} do rateio</div>
+                            <div className="font-semibold text-foreground">
+                              {formatCompactCurrency(rateio.valor_rateado)}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground">
+                              {formatPercent(rateio.percentual)} do rateio
+                            </div>
                           </div>
-                        ) : "—"}
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
                     </TableRow>
                   );
@@ -600,22 +729,40 @@ function CentralCeoPage() {
             {financeiro.fluxo_caixa.slice(-6).map((item) => {
               const total = Math.max(item.entradas, item.saidas, 1);
               return (
-                <div key={item.mes} className="rounded-xl border border-border/40 bg-background/40 p-3">
+                <div
+                  key={item.mes}
+                  className="rounded-xl border border-border/40 bg-background/40 p-3"
+                >
                   <div className="mb-2 flex items-center justify-between text-xs">
                     <span className="font-medium text-foreground">{item.mes}</span>
-                    <span className={cn("font-semibold", item.saldo >= 0 ? "text-success" : "text-danger")}>
+                    <span
+                      className={cn(
+                        "font-semibold",
+                        item.saldo >= 0 ? "text-success" : "text-danger",
+                      )}
+                    >
                       {formatCompactCurrency(item.saldo)}
                     </span>
                   </div>
                   <div className="grid grid-cols-[1fr_auto] items-center gap-2">
                     <div className="h-1.5 rounded-full bg-muted">
-                      <div className="h-1.5 rounded-full bg-success" style={{ width: `${Math.min((item.entradas / total) * 100, 100)}%` }} />
+                      <div
+                        className="h-1.5 rounded-full bg-success"
+                        style={{ width: `${Math.min((item.entradas / total) * 100, 100)}%` }}
+                      />
                     </div>
-                    <span className="w-20 text-right text-[11px] text-muted-foreground">{formatCompactCurrency(item.entradas)}</span>
+                    <span className="w-20 text-right text-[11px] text-muted-foreground">
+                      {formatCompactCurrency(item.entradas)}
+                    </span>
                     <div className="h-1.5 rounded-full bg-muted">
-                      <div className="h-1.5 rounded-full bg-danger" style={{ width: `${Math.min((item.saidas / total) * 100, 100)}%` }} />
+                      <div
+                        className="h-1.5 rounded-full bg-danger"
+                        style={{ width: `${Math.min((item.saidas / total) * 100, 100)}%` }}
+                      />
                     </div>
-                    <span className="w-20 text-right text-[11px] text-muted-foreground">{formatCompactCurrency(item.saidas)}</span>
+                    <span className="w-20 text-right text-[11px] text-muted-foreground">
+                      {formatCompactCurrency(item.saidas)}
+                    </span>
                   </div>
                 </div>
               );
@@ -629,40 +776,57 @@ function CentralCeoPage() {
         <AccountsPanel title="Contas a pagar" data={financeiro.contas_pagar.titulos} />
       </div>
 
-      <PanelCard title="Movimentos financeiros do periodo" description={`${financeiro.movimentos.length} registros`} bodyClassName="p-0">
+      <PanelCard
+        title="Movimentos financeiros do periodo"
+        description={`${financeiro.movimentos.length} registros`}
+        bodyClassName="p-0"
+      >
         <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>Data</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Parceiro</TableHead>
-                  <TableHead>Natureza</TableHead>
-                  <TableHead>Projeto</TableHead>
-                  <TableHead className="text-right">Valor</TableHead>
-                </TableRow>
-              </TableHeader>
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Data</TableHead>
+                <TableHead>Tipo</TableHead>
+                <TableHead>Parceiro</TableHead>
+                <TableHead>Natureza</TableHead>
+                <TableHead>Projeto</TableHead>
+                <TableHead className="text-right">Valor</TableHead>
+              </TableRow>
+            </TableHeader>
             <TableBody>
               {financeiro.movimentos.length === 0 && <EmptyTableRow colSpan={6} />}
               {financeiro.movimentos.map((row) => (
                 <TableRow key={row.nufin} className="hover:bg-surface-elevated/60">
-                  <TableCell className="text-muted-foreground">{formatDate(row.data_baixa)}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatDate(row.data_baixa)}
+                  </TableCell>
                   <TableCell>
                     <span
                       className="border px-2 py-1 text-[10px] uppercase tracking-[0.14em]"
                       style={{
-                        borderColor: row.tipo === "receber" ? "rgba(77,163,255,0.35)" : "rgba(224,85,85,0.35)",
-                        color: row.tipo === "receber" ? "var(--color-chart-1)" : "var(--color-chart-4)",
-                        background: row.tipo === "receber" ? "rgba(77,163,255,0.08)" : "rgba(224,85,85,0.08)",
+                        borderColor:
+                          row.tipo === "receber" ? "rgba(77,163,255,0.35)" : "rgba(224,85,85,0.35)",
+                        color:
+                          row.tipo === "receber" ? "var(--color-chart-1)" : "var(--color-chart-4)",
+                        background:
+                          row.tipo === "receber" ? "rgba(77,163,255,0.08)" : "rgba(224,85,85,0.08)",
                       }}
                     >
                       {row.tipo}
                     </span>
                   </TableCell>
-                  <TableCell className="max-w-[220px] truncate font-medium text-foreground">{row.parceiro}</TableCell>
-                  <TableCell className="max-w-[240px] truncate text-muted-foreground">{row.natureza}</TableCell>
-                  <TableCell className="max-w-[220px] truncate text-muted-foreground">{row.projeto}</TableCell>
-                  <TableCell className="text-right font-semibold text-foreground">{formatCurrency(row.valor)}</TableCell>
+                  <TableCell className="max-w-[220px] truncate font-medium text-foreground">
+                    {row.parceiro}
+                  </TableCell>
+                  <TableCell className="max-w-[240px] truncate text-muted-foreground">
+                    {row.natureza}
+                  </TableCell>
+                  <TableCell className="max-w-[220px] truncate text-muted-foreground">
+                    {row.projeto}
+                  </TableCell>
+                  <TableCell className="text-right font-semibold text-foreground">
+                    {formatCurrency(row.valor)}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -693,8 +857,18 @@ function ReportListPanel({
     <PanelCard title={title} description={sub} bodyClassName="p-0">
       <div className="divide-y divide-border/40">
         {rows.map((row) => (
-          <div key={row.title} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-5 py-3">
-            <span className="grid h-9 w-9 place-items-center rounded-md border" style={{ borderColor: `${row.color}55`, background: `${row.color}14`, color: row.color }}>
+          <div
+            key={row.title}
+            className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-5 py-3"
+          >
+            <span
+              className="grid h-9 w-9 place-items-center rounded-md border"
+              style={{
+                borderColor: `${row.color}55`,
+                background: `${row.color}14`,
+                color: row.color,
+              }}
+            >
               <row.icon className="h-4 w-4" strokeWidth={1.7} />
             </span>
             <div className="min-w-0">
@@ -721,26 +895,36 @@ function AccountsPanel({
 }) {
   return (
     <PanelCard title={title} description="Carteira aberta" bodyClassName="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>Parceiro</TableHead>
-                  <TableHead>Vencimento</TableHead>
-                  <TableHead>Natureza</TableHead>
-                  <TableHead className="text-right">Valor aberto</TableHead>
-                </TableRow>
-              </TableHeader>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>Parceiro</TableHead>
+              <TableHead>Vencimento</TableHead>
+              <TableHead>Natureza</TableHead>
+              <TableHead className="text-right">Valor aberto</TableHead>
+            </TableRow>
+          </TableHeader>
           <TableBody>
             {data.length === 0 && <EmptyTableRow colSpan={4} />}
             {data.map((row) => (
               <TableRow key={row.NUFIN} className="hover:bg-surface-elevated/60">
-                <TableCell className="max-w-[220px] truncate font-medium text-foreground">{row.NOMEPARC ?? "Sem parceiro"}</TableCell>
-                <TableCell className={cn(row.dias_atraso > 0 ? "font-semibold text-danger" : "text-muted-foreground")}>
+                <TableCell className="max-w-[220px] truncate font-medium text-foreground">
+                  {row.NOMEPARC ?? "Sem parceiro"}
+                </TableCell>
+                <TableCell
+                  className={cn(
+                    row.dias_atraso > 0 ? "font-semibold text-danger" : "text-muted-foreground",
+                  )}
+                >
                   {formatDate(row.DTVENC)}
                 </TableCell>
-                <TableCell className="max-w-[240px] truncate text-muted-foreground">{row.DESCRNAT ?? "Sem natureza"}</TableCell>
-                <TableCell className="text-right font-semibold text-foreground">{formatCurrency(row.valor_aberto)}</TableCell>
+                <TableCell className="max-w-[240px] truncate text-muted-foreground">
+                  {row.DESCRNAT ?? "Sem natureza"}
+                </TableCell>
+                <TableCell className="text-right font-semibold text-foreground">
+                  {formatCurrency(row.valor_aberto)}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

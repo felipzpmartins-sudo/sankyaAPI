@@ -1,6 +1,11 @@
 import { getDb } from "../db/connection.js";
 import { type EmpresaFiltro, empresaToSqlClause } from "../utils/empresa.js";
 import { FATURAMENTO_TOPS, inListClause } from "./operacoes.js";
+import {
+  classificarRateio,
+  isProjetoEmpresaDestino,
+  type RateioCategoria,
+} from "./rateio-classification.js";
 
 /**
  * Categorização do plano de contas Maker por prefixo do CODNAT.
@@ -75,6 +80,7 @@ export type DrePorProjeto = {
 
 export type RateioDiagnosticoItem = {
   nufin: number;
+  nunota: number | null;
   codemp: number;
   empresa: string | null;
   codcencus: number | null;
@@ -82,6 +88,8 @@ export type RateioDiagnosticoItem = {
   codnat: number | null;
   natureza: string | null;
   codproj: number | null;
+  titulo_codproj: number | null;
+  titulo_projeto: string | null;
   valor: number;
   valor_baixado: number;
   valor_aberto: number;
@@ -92,7 +100,7 @@ export type RateioDiagnosticoItem = {
   tipo: string;
   parceiro: string | null;
   projeto: string | null;
-  status: "COM_RATEIO" | "SEM_RATEIO" | "RATEIO_INCOMPLETO";
+  status: RateioCategoria;
   total_perc?: number;
   percentual_valido?: number;
   valor_sem_projeto?: number;
@@ -102,6 +110,9 @@ export type RateioDiagnosticoItem = {
     projeto?: string | null;
     percentual: number;
     valor: number;
+    valor_baixado: number;
+    valor_aberto: number;
+    empresa_destino: boolean;
   }>;
 };
 
@@ -121,8 +132,15 @@ export type RateioDiagnostico = {
   resumo: {
     total_titulos: number;
     com_rateio_ok: number;
+    nao_rateio: number;
     sem_rateio: number;
     rateio_incompleto: number;
+    titulos_validos: number;
+    percentual_ok: number;
+    pendencias: number;
+    valor_com_rateio: number;
+    valor_nao_rateio: number;
+    valor_pendencias: number;
     valor_sem_rateio: number;
     valor_rateio_incompleto: number;
     titulos_sem_projeto: number;
@@ -135,11 +153,33 @@ export type RateioDiagnostico = {
     pageSize: number;
     total: number;
   };
+  nao_rateio: RateioDiagnosticoItem[];
+  nao_rateio_page: {
+    page: number;
+    pageSize: number;
+    total: number;
+  };
   sem_rateio: RateioDiagnosticoItem[];
   rateio_incompleto: RateioDiagnosticoItem[];
   rateio_por_projeto: RateioProjetoResumo[];
   snapshot_at: string | null;
 };
+
+export type RateioDiagnosticoArgs = {
+  dataInicio: string;
+  dataFim: string;
+  codEmp?: number | number[] | null;
+  codProj?: number[];
+  page?: number;
+  pageSize?: number;
+  naoPage?: number;
+  naoPageSize?: number;
+};
+
+export type RateioDiagnosticoCompleto = Omit<
+  RateioDiagnostico,
+  "com_rateio_page" | "nao_rateio_page"
+>;
 
 function addMonths(date: Date, months: number): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
@@ -210,6 +250,11 @@ function round2(n: number): number {
 
 function normalizedCodProj(codProj?: number[]): number[] {
   return [...new Set((codProj ?? []).filter((n) => Number.isInteger(n) && n > 0))];
+}
+
+function normalizedCodEmp(codEmp?: number | number[] | null): number[] {
+  const values = Array.isArray(codEmp) ? codEmp : codEmp == null ? [] : [codEmp];
+  return [...new Set(values.filter((n) => Number.isInteger(n) && n > 0))];
 }
 
 function placeholders(values: readonly unknown[]): string {
@@ -519,8 +564,8 @@ export function drePorProjeto(
 }
 
 /**
- * Fluxo de caixa por mês (regime de caixa: usa DHBAIXA).
- * Retorna `meses` últimos meses incluindo o atual.
+ * Fluxo de caixa no regime de caixa (usa DHBAIXA).
+ * Intervalos de até 45 dias são agrupados por dia; os demais, por mês.
  */
 export function fluxoCaixa(
   filtro: EmpresaFiltro,
@@ -538,9 +583,24 @@ export function fluxoCaixa(
     ? ` AND CODPROJ IN (${escopo.codProj.map(() => "?").join(", ")})`
     : "";
 
+  const now = new Date();
+  const currentMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const start = escopo.dataInicio
+    ? new Date(`${escopo.dataInicio}T00:00:00.000Z`)
+    : addMonths(currentMonth, -(meses - 1));
+  const end = escopo.dataFim
+    ? new Date(`${escopo.dataFim}T00:00:00.000Z`)
+    : addMonths(currentMonth, 1);
+  if (escopo.dataFim) end.setUTCDate(end.getUTCDate() + 1);
+
+  const umDiaMs = 24 * 60 * 60 * 1_000;
+  const diasNoIntervalo = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / umDiaMs));
+  const agruparPorDia = diasNoIntervalo <= 45;
+  const periodoSql = agruparPorDia ? "date(DHBAIXA)" : "strftime('%Y-%m', DHBAIXA)";
+
   const sql = `
     SELECT
-      strftime('%Y-%m', DHBAIXA) AS mes,
+      ${periodoSql} AS mes,
       COALESCE(SUM(CASE WHEN RECDESP =  1 THEN VLRBAIXA ELSE 0 END), 0) AS entradas,
       COALESCE(SUM(CASE WHEN RECDESP = -1 THEN VLRBAIXA ELSE 0 END), 0) AS saidas
     FROM titulos
@@ -552,24 +612,34 @@ export function fluxoCaixa(
     ORDER BY mes
   `;
 
-  const now = new Date();
-  const currentMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const start = escopo.dataInicio ? new Date(`${escopo.dataInicio}T00:00:00.000Z`) : addMonths(currentMonth, -(meses - 1));
-  const end = escopo.dataFim ? new Date(`${escopo.dataFim}T00:00:00.000Z`) : addMonths(currentMonth, 1);
-  if (escopo.dataFim) end.setUTCDate(end.getUTCDate() + 1);
-
   const rows = getDb().prepare(sql).all(isoDate(start), isoDate(end), ...empresaParams, ...(escopo.codProj ?? [])) as {
     mes: string;
     entradas: number;
     saidas: number;
   }[];
 
-  const serie = rows.map((r) => ({
-    mes: r.mes,
-    entradas: round2(r.entradas),
-    saidas: round2(r.saidas),
-    saldo: round2(r.entradas - r.saidas),
-  }));
+  const rowsPorPeriodo = new Map(rows.map((row) => [row.mes, row]));
+  const periodos: string[] = [];
+  if (agruparPorDia) {
+    for (const cursor = new Date(start); cursor < end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+      periodos.push(isoDate(cursor));
+    }
+  } else {
+    const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+    const ultimoDia = new Date(end.getTime() - 1);
+    const ultimoMes = new Date(Date.UTC(ultimoDia.getUTCFullYear(), ultimoDia.getUTCMonth(), 1));
+    while (cursor <= ultimoMes) {
+      periodos.push(isoDate(cursor).slice(0, 7));
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+    }
+  }
+
+  const serie = periodos.map((mes) => {
+    const row = rowsPorPeriodo.get(mes);
+    const entradas = round2(row?.entradas ?? 0);
+    const saidas = round2(row?.saidas ?? 0);
+    return { mes, entradas, saidas, saldo: round2(entradas - saidas) };
+  });
 
   return {
     filtro: describeFiltro(filtro),
@@ -579,10 +649,13 @@ export function fluxoCaixa(
   };
 }
 
-export function listarRateio(args: { dataInicio: string; dataFim: string; codEmp?: number | null }) {
+export function listarRateio(args: { dataInicio: string; dataFim: string; codEmp?: number | number[] | null }) {
   const db = getDb();
   const { dataInicio, dataFim, codEmp } = args;
-  const empresaWhere = codEmp ? `AND t.CODEMP = ${Number(codEmp)}` : "";
+  const empresaIds = normalizedCodEmp(codEmp);
+  const empresaWhere = empresaIds.length > 0
+    ? `AND t.CODEMP IN (${placeholders(empresaIds)})`
+    : "";
 
   const sql = `
     SELECT
@@ -615,29 +688,22 @@ export function listarRateio(args: { dataInicio: string; dataFim: string; codEmp
     ORDER BY t.DHBAIXA ASC
   `;
 
-  const rows = db.prepare(sql).all(dataInicio, dataFim) as Array<Record<string, unknown>>;
+  const rows = db.prepare(sql).all(dataInicio, dataFim, ...empresaIds) as Array<Record<string, unknown>>;
   return { rows, snapshot_at: snapshotTitulosAt() };
 }
 
-export function rateioDiagnostico(args: {
-  dataInicio: string;
-  dataFim: string;
-  codEmp?: number | null;
-  codProj?: number[];
-  page?: number;
-  pageSize?: number;
-}): RateioDiagnostico {
+export function rateioDiagnosticoCompleto(args: RateioDiagnosticoArgs): RateioDiagnosticoCompleto {
   const db = getDb();
   const { dataInicio, dataFim, codEmp, codProj } = args;
   const projetoIds = normalizedCodProj(codProj);
-  const comRateioPage = Math.max(0, Math.trunc(args.page ?? 0));
-  const comRateioPageSize = Math.min(100, Math.max(1, Math.trunc(args.pageSize ?? 20)));
-  const empresaWhere = codEmp ? " AND t.CODEMP = ?" : "";
-  const params = codEmp ? [dataInicio, dataFim, codEmp] : [dataInicio, dataFim];
+  const empresaIds = normalizedCodEmp(codEmp);
+  const empresaWhere = empresaIds.length > 0
+    ? ` AND t.CODEMP IN (${placeholders(empresaIds)})`
+    : "";
+  const params = [dataInicio, dataFim, ...empresaIds];
   const periodoWhere = `t.DTNEG >= ? AND t.DTNEG < date(?, '+1 day')
     AND t.PROVISAO = 'N'
     AND t.RECDESP = -1${empresaWhere}`;
-  const projetoPlaceholders = placeholders(projetoIds);
 
   const totalRow = db.prepare(`
     SELECT COUNT(*) AS total
@@ -654,8 +720,15 @@ export function rateioDiagnostico(args: {
       resumo: {
         total_titulos: totalRow.total,
         com_rateio_ok: 0,
+        nao_rateio: 0,
         sem_rateio: 0,
         rateio_incompleto: 0,
+        titulos_validos: 0,
+        percentual_ok: 0,
+        pendencias: 0,
+        valor_com_rateio: 0,
+        valor_nao_rateio: 0,
+        valor_pendencias: 0,
         valor_sem_rateio: 0,
         valor_rateio_incompleto: 0,
         titulos_sem_projeto: 0,
@@ -663,7 +736,7 @@ export function rateioDiagnostico(args: {
         valor_rateado_total: 0,
       },
       com_rateio: [],
-      com_rateio_page: { page: comRateioPage, pageSize: comRateioPageSize, total: 0 },
+      nao_rateio: [],
       sem_rateio: [],
       rateio_incompleto: [],
       rateio_por_projeto: [],
@@ -674,6 +747,7 @@ export function rateioDiagnostico(args: {
   const semRateioRows = db.prepare(`
     SELECT
       t.NUFIN,
+      t.NUNOTA,
       t.CODEMP,
       t.CODPROJ,
       t.CODCENCUS,
@@ -702,6 +776,7 @@ export function rateioDiagnostico(args: {
     ORDER BY ABS(t.VLRDESDOB) DESC, t.NUFIN ASC
   `).all(...params) as Array<{
     NUFIN: number;
+    NUNOTA: number | null;
     CODEMP: number;
     CODPROJ: number | null;
     CODCENCUS: number | null;
@@ -724,6 +799,7 @@ export function rateioDiagnostico(args: {
   const rateioRows = db.prepare(`
     SELECT
       t.NUFIN,
+      t.NUNOTA,
       t.CODEMP,
       t.CODPROJ AS TITULO_CODPROJ,
       t.CODCENCUS,
@@ -742,7 +818,8 @@ export function rateioDiagnostico(args: {
       n.DESCRNAT,
       r.CODPROJ,
       r.PERCRATEIO,
-      pr.DESCRPROJ
+      pr.DESCRPROJ,
+      titulo_pr.DESCRPROJ AS TITULO_DESCRPROJ
     FROM titulos t
     INNER JOIN titulos_rateio r ON r.NUFIN = t.NUFIN
     LEFT JOIN parceiros p ON p.CODPARC = t.CODPARC
@@ -750,10 +827,12 @@ export function rateioDiagnostico(args: {
     LEFT JOIN centros_resultado cr ON cr.CODCENCUS = t.CODCENCUS
     LEFT JOIN naturezas n ON n.CODNAT = t.CODNAT
     LEFT JOIN projetos pr ON pr.CODPROJ = r.CODPROJ
+    LEFT JOIN projetos titulo_pr ON titulo_pr.CODPROJ = t.CODPROJ
     WHERE ${periodoWhere}
     ORDER BY t.NUFIN ASC, r.CODPROJ ASC
   `).all(...params) as Array<{
     NUFIN: number;
+    NUNOTA: number | null;
     CODEMP: number;
     TITULO_CODPROJ: number | null;
     CODCENCUS: number | null;
@@ -773,34 +852,7 @@ export function rateioDiagnostico(args: {
     CODPROJ: number | null;
     PERCRATEIO: number;
     DESCRPROJ: string | null;
-  }>;
-
-  const rateioProjetoRows = db.prepare(`
-    SELECT
-      r.CODPROJ AS codproj,
-      COALESCE(pr.DESCRPROJ, pr.IDENTIFICACAO, 'Projeto ' || r.CODPROJ) AS projeto,
-      COUNT(DISTINCT t.NUFIN) AS despesas,
-      COUNT(*) AS linhas,
-      COALESCE(SUM(r.PERCRATEIO * t.VLRDESDOB / 100.0), 0) AS valor_rateado
-    FROM titulos t
-    INNER JOIN titulos_rateio r ON r.NUFIN = t.NUFIN
-    LEFT JOIN projetos pr ON pr.CODPROJ = r.CODPROJ
-    WHERE ${periodoWhere}
-      AND r.CODPROJ IS NOT NULL
-      AND r.CODPROJ > 0
-      AND r.PERCRATEIO > 0
-      ${projetoIds.length > 0 ? `AND r.CODPROJ IN (${projetoPlaceholders})` : ""}
-    GROUP BY r.CODPROJ, COALESCE(pr.DESCRPROJ, pr.IDENTIFICACAO, 'Projeto ' || r.CODPROJ)
-    ORDER BY valor_rateado DESC, r.CODPROJ ASC
-  `).all(
-    ...params,
-    ...projetoIds,
-  ) as Array<{
-    codproj: number;
-    projeto: string;
-    despesas: number;
-    linhas: number;
-    valor_rateado: number;
+    TITULO_DESCRPROJ: string | null;
   }>;
 
   const agrupados = new Map<number, typeof rateioRows>();
@@ -810,81 +862,48 @@ export function rateioDiagnostico(args: {
     agrupados.set(row.NUFIN, grupo);
   }
 
-  let comRateioOk = 0;
   const comRateioItens: RateioDiagnosticoItem[] = [];
+  const naoRateioItens: RateioDiagnosticoItem[] = [];
   const rateioIncompleto: RateioDiagnosticoItem[] = [];
-  let titulosSemProjeto = 0;
-  let valorSemProjeto = 0;
   for (const rows of agrupados.values()) {
     const first = rows[0];
     const percentual = (row: (typeof rows)[number]) => Number(row.PERCRATEIO) || 0;
-    const temProjetoValido = (row: (typeof rows)[number]) => Number(row.CODPROJ) > 0;
-    const totalPerc = rows.reduce((sum, row) => sum + percentual(row), 0);
-    const percentualValido = rows
-      .filter((row) => temProjetoValido(row) && percentual(row) > 0)
-      .reduce((sum, row) => sum + percentual(row), 0);
-    const percentualSemProjeto = rows
-      .filter((row) => !temProjetoValido(row))
-      .reduce((sum, row) => sum + Math.max(percentual(row), 0), 0);
-    const projetosValidos = rows.filter((row) => temProjetoValido(row) && percentual(row) > 0);
+    const classificacao = classificarRateio(rows.map((row) => ({
+      codproj: row.CODPROJ,
+      percentual: percentual(row),
+    })));
+    const projetosValidos = classificacao.projetosValidos.flatMap((codproj) => {
+      const row = rows.find((candidate) => candidate.CODPROJ === codproj);
+      return row ? [row] : [];
+    });
     const distribuicao = rows.map((row) => ({
       codproj: row.CODPROJ,
       projeto: row.DESCRPROJ ?? (Number(row.CODPROJ) > 0 ? `Projeto ${row.CODPROJ}` : "Sem projeto"),
       percentual: round2(percentual(row)),
       valor: round2((percentual(row) * first.VLRDESDOB) / 100),
+      valor_baixado: round2((percentual(row) * first.VLRBAIXA) / 100),
+      valor_aberto: round2((percentual(row) * first.valor_aberto) / 100),
+      empresa_destino: isProjetoEmpresaDestino(row.CODPROJ),
     }));
-    const valorDoSemProjeto = round2((percentualSemProjeto * first.VLRDESDOB) / 100);
-    if (valorDoSemProjeto > 0.01) {
-      titulosSemProjeto += 1;
-      valorSemProjeto += valorDoSemProjeto;
-    }
+    const valorDoSemProjeto = round2((classificacao.percentualSemDestino * first.VLRDESDOB) / 100);
 
-    const somaInvalida = Math.abs(totalPerc - 100) > 0.01;
-    const percentualValidoInvalido = Math.abs(percentualValido - 100) > 0.01;
-    if (!somaInvalida && !percentualValidoInvalido) {
-      comRateioOk += 1;
-      comRateioItens.push({
-        nufin: first.NUFIN,
-        codemp: first.CODEMP,
-        empresa: first.NOMEFANTASIA,
-        codcencus: first.CODCENCUS,
-        centro_resultado: first.DESCRCENCUS,
-        codnat: first.CODNAT,
-        natureza: first.DESCRNAT,
-        codproj: projetosValidos.length === 1 ? projetosValidos[0].CODPROJ : null,
-        valor: round2(first.VLRDESDOB),
-        valor_baixado: round2(first.VLRBAIXA),
-        valor_aberto: round2(first.valor_aberto),
-        data: first.DTNEG,
-        vencimento: first.DTVENC,
-        baixa: first.DHBAIXA,
-        em_aberto: first.is_em_aberto === 1,
-        tipo: first.tipo,
-        parceiro: first.NOMEPARC,
-        projeto: projetosValidos.length === 1
-          ? (projetosValidos[0].DESCRPROJ ?? `Projeto ${projetosValidos[0].CODPROJ}`)
-          : `${projetosValidos.length} projetos`,
-        status: "COM_RATEIO",
-        total_perc: round2(totalPerc),
-        percentual_valido: round2(percentualValido),
-        distribuicao: distribuicao.filter((row) => Number(row.codproj) > 0 && row.percentual > 0),
-      });
-      continue;
-    }
-
-    const alertas: string[] = [];
-    if (somaInvalida) alertas.push(`Soma do rateio: ${round2(totalPerc)}%`);
-    if (percentualSemProjeto > 0.01) alertas.push(`${round2(percentualSemProjeto)}% sem projeto`);
-    if (alertas.length === 0) alertas.push(`Percentual valido: ${round2(percentualValido)}%`);
-    rateioIncompleto.push({
+    const projetoResumo = projetosValidos.length === 1
+      ? (projetosValidos[0].DESCRPROJ ?? `Projeto ${projetosValidos[0].CODPROJ}`)
+      : projetosValidos.length > 1
+        ? `${projetosValidos.length} empresas de destino`
+        : "Sem empresa de destino";
+    const itemBase: Omit<RateioDiagnosticoItem, "status"> = {
       nufin: first.NUFIN,
+      nunota: first.NUNOTA,
       codemp: first.CODEMP,
       empresa: first.NOMEFANTASIA,
       codcencus: first.CODCENCUS,
       centro_resultado: first.DESCRCENCUS,
       codnat: first.CODNAT,
       natureza: first.DESCRNAT,
-      codproj: first.TITULO_CODPROJ,
+      codproj: projetosValidos.length === 1 ? projetosValidos[0].CODPROJ : first.TITULO_CODPROJ,
+      titulo_codproj: first.TITULO_CODPROJ,
+      titulo_projeto: first.TITULO_DESCRPROJ,
       valor: round2(first.VLRDESDOB),
       valor_baixado: round2(first.VLRBAIXA),
       valor_aberto: round2(first.valor_aberto),
@@ -894,36 +913,44 @@ export function rateioDiagnostico(args: {
       em_aberto: first.is_em_aberto === 1,
       tipo: first.tipo,
       parceiro: first.NOMEPARC,
-      projeto: projetosValidos.length === 1 ? projetosValidos[0].DESCRPROJ : "Multiplos projetos",
-      status: "RATEIO_INCOMPLETO",
-      total_perc: round2(totalPerc),
-      percentual_valido: round2(percentualValido),
+      projeto: projetoResumo,
+      total_perc: round2(classificacao.totalPerc),
+      percentual_valido: round2(classificacao.percentualValido),
       valor_sem_projeto: valorDoSemProjeto,
-      alerta: alertas.join("; "),
       distribuicao,
+    };
+
+    if (classificacao.status === "COM_RATEIO") {
+      comRateioItens.push({ ...itemBase, codproj: null, status: "COM_RATEIO" });
+      continue;
+    }
+
+    if (classificacao.status === "NAO_RATEIO") {
+      naoRateioItens.push({ ...itemBase, status: "NAO_RATEIO" });
+      continue;
+    }
+
+    const alertas: string[] = [];
+    if (classificacao.somaInvalida) {
+      alertas.push(`Soma da distribuição: ${round2(classificacao.totalPerc)}%`);
+    }
+    if (classificacao.percentualSemDestino > 0.01) {
+      alertas.push(`${round2(classificacao.percentualSemDestino)}% fora dos projetos-empresa permitidos`);
+    }
+    if (classificacao.projetosValidos.length === 0) {
+      alertas.push("Nenhuma empresa de destino válida");
+    } else if (classificacao.destinoInvalido && classificacao.percentualSemDestino <= 0.01) {
+      alertas.push(`Percentual em empresas de destino: ${round2(classificacao.percentualValido)}%`);
+    }
+    rateioIncompleto.push({
+      ...itemBase,
+      status: "RATEIO_INCOMPLETO",
+      alerta: alertas.join("; "),
     });
   }
-  const projetoIdSet = new Set(projetoIds);
-  const comRateioFiltrado = projetoIds.length > 0
-    ? comRateioItens.filter((item) => item.distribuicao?.some((row) => row.codproj != null && projetoIdSet.has(row.codproj)))
-    : comRateioItens;
-  comRateioFiltrado.sort((a, b) => Math.abs(b.valor) - Math.abs(a.valor));
-  const comRateioOffset = comRateioPage * comRateioPageSize;
-  const comRateio = comRateioFiltrado.slice(comRateioOffset, comRateioOffset + comRateioPageSize);
-  rateioIncompleto.sort((a, b) => Math.abs(b.valor) - Math.abs(a.valor));
-
-  const valorRateadoTotal = rateioProjetoRows.reduce((sum, row) => sum + Number(row.valor_rateado || 0), 0);
-  const rateioPorProjeto: RateioProjetoResumo[] = rateioProjetoRows.map((row) => ({
-    codproj: row.codproj,
-    projeto: row.projeto,
-    despesas: row.despesas,
-    linhas: row.linhas,
-    valor_rateado: round2(row.valor_rateado),
-    percentual: valorRateadoTotal > 0 ? round2((row.valor_rateado / valorRateadoTotal) * 100) : 0,
-  }));
-
-  const semRateio: RateioDiagnosticoItem[] = semRateioRows.map((row) => ({
+  const semRateioItens: RateioDiagnosticoItem[] = semRateioRows.map((row) => ({
     nufin: row.NUFIN,
+    nunota: row.NUNOTA,
     codemp: row.CODEMP,
     empresa: row.NOMEFANTASIA,
     codcencus: row.CODCENCUS,
@@ -931,6 +958,8 @@ export function rateioDiagnostico(args: {
     codnat: row.CODNAT,
     natureza: row.DESCRNAT,
     codproj: row.CODPROJ,
+    titulo_codproj: row.CODPROJ,
+    titulo_projeto: row.DESCRPROJ,
     valor: round2(row.VLRDESDOB),
     valor_baixado: round2(row.VLRBAIXA),
     valor_aberto: round2(row.valor_aberto),
@@ -944,30 +973,137 @@ export function rateioDiagnostico(args: {
     status: "SEM_RATEIO",
   }));
 
+  const projetoIdSet = new Set(projetoIds);
+  const correspondeAoProjeto = (item: RateioDiagnosticoItem): boolean => {
+    if (projetoIdSet.size === 0) return true;
+    if (item.distribuicao && item.distribuicao.length > 0) {
+      return item.distribuicao.some(
+        (linha) => linha.codproj != null && projetoIdSet.has(linha.codproj),
+      );
+    }
+    return item.titulo_codproj != null && projetoIdSet.has(item.titulo_codproj);
+  };
+  const filtrarOrdenar = (items: RateioDiagnosticoItem[]): RateioDiagnosticoItem[] => items
+    .filter(correspondeAoProjeto)
+    .sort((a, b) => Math.abs(b.valor) - Math.abs(a.valor));
+
+  const comRateio = filtrarOrdenar(comRateioItens);
+  const naoRateio = filtrarOrdenar(naoRateioItens);
+  const semRateio = filtrarOrdenar(semRateioItens);
+  const incompletos = filtrarOrdenar(rateioIncompleto);
+
+  const porProjeto = new Map<number, {
+    projeto: string;
+    nufins: Set<number>;
+    linhas: number;
+    valor: number;
+  }>();
+  for (const item of comRateio) {
+    for (const linha of item.distribuicao ?? []) {
+      if (
+        !linha.empresa_destino ||
+        linha.codproj == null ||
+        linha.percentual <= 0 ||
+        (projetoIdSet.size > 0 && !projetoIdSet.has(linha.codproj))
+      ) {
+        continue;
+      }
+      const atual = porProjeto.get(linha.codproj) ?? {
+        projeto: linha.projeto ?? `Projeto ${linha.codproj}`,
+        nufins: new Set<number>(),
+        linhas: 0,
+        valor: 0,
+      };
+      atual.nufins.add(item.nufin);
+      atual.linhas += 1;
+      atual.valor += linha.valor;
+      porProjeto.set(linha.codproj, atual);
+    }
+  }
+
+  const valorRateadoTotal = [...porProjeto.values()].reduce((sum, row) => sum + row.valor, 0);
+  const rateioPorProjeto: RateioProjetoResumo[] = [...porProjeto.entries()]
+    .map(([codproj, row]) => ({
+      codproj,
+      projeto: row.projeto,
+      despesas: row.nufins.size,
+      linhas: row.linhas,
+      valor_rateado: round2(row.valor),
+      percentual: valorRateadoTotal > 0 ? round2((row.valor / valorRateadoTotal) * 100) : 0,
+    }))
+    .sort((a, b) => b.valor_rateado - a.valor_rateado || a.codproj - b.codproj);
+
+  const totalTitulos = comRateio.length + naoRateio.length + semRateio.length + incompletos.length;
+  const titulosValidos = comRateio.length + naoRateio.length;
+  const pendencias = semRateio.length + incompletos.length;
+  const valorComRateio = comRateio.reduce((sum, row) => sum + row.valor, 0);
+  const valorNaoRateio = naoRateio.reduce((sum, row) => sum + row.valor, 0);
+  const valorSemRateio = semRateio.reduce((sum, row) => sum + row.valor, 0);
+  const valorRateioIncompleto = incompletos.reduce((sum, row) => sum + row.valor, 0);
+  const incompletosSemDestino = incompletos.filter((row) => (row.valor_sem_projeto ?? 0) > 0.01);
+
   return {
     status: "OK",
     periodo: { dataInicio, dataFim },
     resumo: {
-      total_titulos: totalRow.total,
-      com_rateio_ok: comRateioOk,
+      total_titulos: totalTitulos,
+      com_rateio_ok: comRateio.length,
+      nao_rateio: naoRateio.length,
       sem_rateio: semRateio.length,
-      rateio_incompleto: rateioIncompleto.length,
-      valor_sem_rateio: round2(semRateio.reduce((sum, row) => sum + row.valor, 0)),
-      valor_rateio_incompleto: round2(rateioIncompleto.reduce((sum, row) => sum + row.valor, 0)),
-      titulos_sem_projeto: titulosSemProjeto,
-      valor_sem_projeto: round2(valorSemProjeto),
+      rateio_incompleto: incompletos.length,
+      titulos_validos: titulosValidos,
+      percentual_ok: totalTitulos > 0 ? round2((titulosValidos / totalTitulos) * 100) : 0,
+      pendencias,
+      valor_com_rateio: round2(valorComRateio),
+      valor_nao_rateio: round2(valorNaoRateio),
+      valor_pendencias: round2(valorSemRateio + valorRateioIncompleto),
+      valor_sem_rateio: round2(valorSemRateio),
+      valor_rateio_incompleto: round2(valorRateioIncompleto),
+      titulos_sem_projeto: incompletosSemDestino.length,
+      valor_sem_projeto: round2(incompletosSemDestino.reduce(
+        (sum, row) => sum + (row.valor_sem_projeto ?? 0),
+        0,
+      )),
       valor_rateado_total: round2(valorRateadoTotal),
     },
     com_rateio: comRateio,
+    nao_rateio: naoRateio,
+    sem_rateio: semRateio,
+    rateio_incompleto: incompletos,
+    rateio_por_projeto: rateioPorProjeto,
+    snapshot_at: snapshotTitulosAt(),
+  };
+}
+
+export function rateioDiagnostico(args: RateioDiagnosticoArgs): RateioDiagnostico {
+  const completo = rateioDiagnosticoCompleto(args);
+  const comRateioPage = Math.max(0, Math.trunc(args.page ?? 0));
+  const comRateioPageSize = Math.min(100, Math.max(1, Math.trunc(args.pageSize ?? 20)));
+  const naoRateioPage = Math.max(0, Math.trunc(args.naoPage ?? 0));
+  const naoRateioPageSize = Math.min(100, Math.max(1, Math.trunc(args.naoPageSize ?? 20)));
+  const comRateioOffset = comRateioPage * comRateioPageSize;
+  const naoRateioOffset = naoRateioPage * naoRateioPageSize;
+
+  return {
+    ...completo,
+    com_rateio: completo.com_rateio.slice(
+      comRateioOffset,
+      comRateioOffset + comRateioPageSize,
+    ),
     com_rateio_page: {
       page: comRateioPage,
       pageSize: comRateioPageSize,
-      total: comRateioFiltrado.length,
+      total: completo.com_rateio.length,
     },
-    sem_rateio: semRateio,
-    rateio_incompleto: rateioIncompleto,
-    rateio_por_projeto: rateioPorProjeto,
-    snapshot_at: snapshotTitulosAt(),
+    nao_rateio: completo.nao_rateio.slice(
+      naoRateioOffset,
+      naoRateioOffset + naoRateioPageSize,
+    ),
+    nao_rateio_page: {
+      page: naoRateioPage,
+      pageSize: naoRateioPageSize,
+      total: completo.nao_rateio.length,
+    },
   };
 }
 
