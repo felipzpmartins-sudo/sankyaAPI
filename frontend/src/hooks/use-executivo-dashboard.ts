@@ -18,14 +18,14 @@ export type ExecutivoDashboard = {
   snapshot_at: string | null;
   comercial: {
     fechado: { qtd: number; valor: number };
-    negociacao: { qtd: number; valor: number };
+    cancelados: { qtd: number; valor: number };
     nota_venda: { qtd: number; valor: number };
     conversao_pct: number;
     por_projeto: Array<{
       codproj: number;
       nome: string;
       fechado: number;
-      negociacao: number;
+      cancelados: number;
       nota_venda: number;
     }>;
     recentes: Array<{

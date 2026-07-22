@@ -1,7 +1,9 @@
 import { getDb } from "../db/connection.js";
 import { loadAllRecords } from "../sankhya/crud.js";
+import { executeQuery } from "../sankhya/query.js";
 import { parseDateBR } from "../utils/dates.js";
 import { parseDecimal, parseIntOrNull } from "../utils/numbers.js";
+import { FATURAMENTO_TOPS } from "../services/operacoes.js";
 import { recordSyncError, recordSyncSuccess } from "./state.js";
 
 /**
@@ -81,6 +83,49 @@ async function loadPedidosSankhya() {
   }
 }
 
+type PedidoCancelado = {
+  NUNOTA: number;
+  CODEMP: number;
+  CODPARC: number;
+  CODVEND: number | null;
+  CODTIPOPER: number;
+  CODPROJ: number | null;
+  DTNEG: string | null;
+  VLRNOTA: number;
+};
+
+async function loadPedidosCancelados(): Promise<PedidoCancelado[]> {
+  const result = await executeQuery(`
+    SELECT NUNOTA, CODEMP, CODPARC, CODVEND, CODTIPOPER, CODPROJ,
+           TO_CHAR(DTNEG, 'DD/MM/YYYY') AS DTNEG, VLRNOTA
+    FROM TGFCAB_EXC
+    WHERE DTNEG >= TO_DATE('${DATA_INICIO}', 'DD/MM/YYYY')
+      AND CODTIPOPER IN (${FATURAMENTO_TOPS.join(", ")})
+  `);
+  const fieldIndex = new Map(result.fields.map((field, index) => [field, index]));
+  const value = (row: unknown[], field: string) => row[fieldIndex.get(field) ?? -1];
+
+  return result.rows
+    .map((row) => ({
+      NUNOTA: Number(value(row, "NUNOTA")),
+      CODEMP: Number(value(row, "CODEMP")),
+      CODPARC: Number(value(row, "CODPARC")),
+      CODVEND: parseIntOrNull(String(value(row, "CODVEND") ?? "")),
+      CODTIPOPER: Number(value(row, "CODTIPOPER")),
+      CODPROJ: parseIntOrNull(String(value(row, "CODPROJ") ?? "")),
+      DTNEG: parseDateBR(String(value(row, "DTNEG") ?? "")),
+      VLRNOTA: parseDecimal(String(value(row, "VLRNOTA") ?? "")),
+    }))
+    .filter(
+      (row) =>
+        Number.isFinite(row.NUNOTA) &&
+        Number.isFinite(row.CODEMP) &&
+        Number.isFinite(row.CODPARC) &&
+        Number.isFinite(row.CODTIPOPER) &&
+        row.DTNEG,
+    );
+}
+
 export async function syncPedidos(): Promise<void> {
   try {
     const tipmovMap = buildTipmovMap();
@@ -90,7 +135,10 @@ export async function syncPedidos(): Promise<void> {
       );
     }
 
-    const rows = await loadPedidosSankhya();
+    const [rows, cancelados] = await Promise.all([
+      loadPedidosSankhya(),
+      loadPedidosCancelados(),
+    ]);
 
     const db = getDb();
     const now = new Date().toISOString();
@@ -175,6 +223,40 @@ export async function syncPedidos(): Promise<void> {
           VLRDESC: 0,
           VLRFRETE: parseDecimal(r.VLRFRETE),
           AD_OBS: null,
+          synced_at: now,
+        });
+        inserted += 1;
+      }
+
+      for (const r of cancelados) {
+        if (!empresasConhecidas.has(r.CODEMP)) {
+          upsertEmpresaStub(r.CODEMP);
+          empresasConhecidas.add(r.CODEMP);
+        }
+
+        upsert.run({
+          NUNOTA: r.NUNOTA,
+          CODEMP: r.CODEMP,
+          CODPARC: r.CODPARC,
+          CODVEND: r.CODVEND,
+          CODTIPOPER: r.CODTIPOPER,
+          TIPMOV: tipmovMap.get(r.CODTIPOPER) ?? "V",
+          CODPARCTRANSP: null,
+          TRANSPORTADORA_NOME: null,
+          NUMNOTA: null,
+          SERIENOTA: null,
+          DTNEG: r.DTNEG,
+          DTFATUR: null,
+          DTENTSAI: null,
+          CIF_FOB: null,
+          QTDVOL: 0,
+          STATUSNOTA: "C",
+          CODCENCUS: null,
+          CODPROJ: r.CODPROJ,
+          VLRNOTA: r.VLRNOTA,
+          VLRDESC: 0,
+          VLRFRETE: 0,
+          AD_OBS: "Pedido cancelado no Sankhya",
           synced_at: now,
         });
         inserted += 1;

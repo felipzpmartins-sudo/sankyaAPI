@@ -14,14 +14,14 @@ export type ExecutivoResumo = {
   snapshot_at: string | null;
   comercial: {
     fechado: { qtd: number; valor: number };
-    negociacao: { qtd: number; valor: number };
+    cancelados: { qtd: number; valor: number };
     nota_venda: { qtd: number; valor: number };
     conversao_pct: number;
     por_projeto: Array<{
       codproj: number;
       nome: string;
       fechado: number;
-      negociacao: number;
+      cancelados: number;
       nota_venda: number;
     }>;
     recentes: Array<{
@@ -139,13 +139,13 @@ export function executivoResumo(
     )
     .get(dataInicio, dataFimExclusivo, ...salesParams, ...codProj) as { qtd: number; valor: number };
 
-  const negociacao = db
+  const cancelados = db
     .prepare(
       `
       SELECT COUNT(*) AS qtd, COALESCE(SUM(VLRNOTA), 0) AS valor
       FROM pedidos p
       WHERE ${inListClause("p.CODTIPOPER", FATURAMENTO_TOPS)}
-        AND p.DTFATUR IS NULL
+        AND p.STATUSNOTA = 'C'
         AND p.DTNEG >= date(?) AND p.DTNEG < date(?)
         ${salesWhere}
         ${projetoWhere}
@@ -177,7 +177,7 @@ export function executivoResumo(
         COALESCE(p.CODPROJ, 0) AS codproj,
         COALESCE(pr.DESCRPROJ, pr.IDENTIFICACAO, 'Projeto ' || COALESCE(p.CODPROJ, 0)) AS nome,
         COALESCE(SUM(CASE WHEN p.STATUSNOTA = 'L' AND p.DTFATUR IS NOT NULL THEN p.VLRNOTA ELSE 0 END), 0) AS fechado,
-        COALESCE(SUM(CASE WHEN p.DTFATUR IS NULL THEN p.VLRNOTA ELSE 0 END), 0) AS negociacao,
+        COALESCE(SUM(CASE WHEN p.STATUSNOTA = 'C' THEN p.VLRNOTA ELSE 0 END), 0) AS cancelados,
         COALESCE(SUM(CASE WHEN p.NUMNOTA IS NOT NULL AND p.DTFATUR IS NOT NULL THEN p.VLRNOTA ELSE 0 END), 0) AS nota_venda
       FROM pedidos p
       LEFT JOIN projetos pr ON pr.CODPROJ = p.CODPROJ
@@ -194,7 +194,7 @@ export function executivoResumo(
       codproj: number;
       nome: string;
       fechado: number;
-      negociacao: number;
+      cancelados: number;
       nota_venda: number;
     }>;
 
@@ -207,6 +207,7 @@ export function executivoResumo(
         COALESCE(v.APELIDO, '-') AS vendedor,
         COALESCE(pr.DESCRPROJ, pr.IDENTIFICACAO, 'Projeto ' || COALESCE(p.CODPROJ, 0)) AS projeto,
         CASE
+          WHEN p.STATUSNOTA = 'C' THEN 'Cancelado'
           WHEN p.DTFATUR IS NULL THEN 'Negociacao'
           WHEN p.NUMNOTA IS NOT NULL THEN 'Nota'
           ELSE 'Fechado'
@@ -380,13 +381,13 @@ export function executivoResumo(
     ]),
     comercial: {
       fechado: { qtd: closed.qtd, valor: round2(closed.valor) },
-      negociacao: { qtd: negociacao.qtd, valor: round2(negociacao.valor) },
+      cancelados: { qtd: cancelados.qtd, valor: round2(cancelados.valor) },
       nota_venda: { qtd: notasVenda.qtd, valor: round2(notasVenda.valor) },
       conversao_pct: round2(conversaoPct),
       por_projeto: porProjeto.map((row) => ({
         ...row,
         fechado: round2(row.fechado),
-        negociacao: round2(row.negociacao),
+        cancelados: round2(row.cancelados),
         nota_venda: round2(row.nota_venda),
       })),
       recentes: recentes.map((row) => ({

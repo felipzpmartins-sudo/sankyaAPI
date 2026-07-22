@@ -5,11 +5,11 @@ import {
   ArrowUpRight,
   Banknote,
   CalendarDays,
+  CircleX,
   FileCheck2,
   FileText,
   Layers3,
   ReceiptText,
-  SearchCheck,
   WalletCards,
   type LucideIcon,
 } from "lucide-react";
@@ -217,11 +217,11 @@ function CentralCeoPage() {
           icon={FileCheck2}
         />
         <KpiCard
-          label="Pedido negociacao"
-          value={formatCompactCurrency(comercial.negociacao.valor)}
-          hint={`${formatInt(comercial.negociacao.qtd)} em aberto`}
-          tone="warning"
-          icon={SearchCheck}
+          label="Pedidos cancelados"
+          value={formatCompactCurrency(comercial.cancelados.valor)}
+          hint={`${formatInt(comercial.cancelados.qtd)} pedidos`}
+          tone="danger"
+          icon={CircleX}
         />
         <KpiCard
           label="Recebimentos"
@@ -441,12 +441,12 @@ function CentralCeoPage() {
               color: "var(--color-chart-2)",
             },
             {
-              icon: SearchCheck,
-              title: "Pedido de vendas - Pedido negociacao",
+              icon: CircleX,
+              title: "Pedido de vendas - Pedidos cancelados",
               meta: "Status pedido",
-              value: formatCurrency(comercial.negociacao.valor),
-              count: comercial.negociacao.qtd,
-              color: "var(--color-chart-3)",
+              value: formatCurrency(comercial.cancelados.valor),
+              count: comercial.cancelados.qtd,
+              color: "var(--color-chart-4)",
             },
             {
               icon: FileText,
@@ -542,7 +542,7 @@ function CentralCeoPage() {
                   <TableHead>Finalidade</TableHead>
                   <TableHead className="text-right">Pedido fechado</TableHead>
                   <TableHead className="text-right">Nota venda</TableHead>
-                  <TableHead className="text-right">Negociacao</TableHead>
+                  <TableHead className="text-right">Cancelados</TableHead>
                   <TableHead className="hidden text-right md:table-cell">Despesas rateadas</TableHead>
                   <TableHead className="hidden text-right md:table-cell">Valor rateado</TableHead>
                 </TableRow>
@@ -560,7 +560,7 @@ function CentralCeoPage() {
                       </TableCell>
                       <TableCell className="text-right text-foreground">{formatCompactCurrency(venda?.fechado ?? 0)}</TableCell>
                       <TableCell className="text-right text-muted-foreground">{formatCompactCurrency(venda?.nota_venda ?? 0)}</TableCell>
-                      <TableCell className="text-right text-muted-foreground">{formatCompactCurrency(venda?.negociacao ?? 0)}</TableCell>
+                      <TableCell className="text-right text-danger/80">{formatCompactCurrency(venda?.cancelados ?? 0)}</TableCell>
                       <TableCell className="hidden text-right text-muted-foreground md:table-cell">
                         {rateio ? formatInt(rateio.despesas) : "—"}
                       </TableCell>
