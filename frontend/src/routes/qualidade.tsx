@@ -647,13 +647,13 @@ function QualidadePage() {
           <div className="overflow-x-auto border-b border-border/50 px-5 pt-3">
             <TabsList className="w-max bg-surface-elevated">
               <TabsTrigger value="com" className="gap-2">
-                Com rateio (2+ empresas)
+                Com rateio
                 <Badge variant="secondary" className="bg-success/20 text-success">
                   {formatInt(comRateioMeta.total)}
                 </Badge>
               </TabsTrigger>
               <TabsTrigger value="nao" className="gap-2">
-                Não é rateio (1 empresa)
+                Sem rateio
                 <Badge variant="secondary" className="bg-primary/15 text-primary">
                   {formatInt(naoRateioMeta.total)}
                 </Badge>
