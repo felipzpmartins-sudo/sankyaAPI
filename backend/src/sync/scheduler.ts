@@ -84,11 +84,17 @@ async function initialSync(): Promise<void> {
     runIfMissing("pedidos", syncPedidos),
     runIfMissing("titulos", syncTitulos),
     runIfMissing("estoque", syncEstoque),
-    runIfMissing("rateio", syncRateio),
   ]);
+
+  // O rateio referencia os títulos por NUFIN. Em uma base nova, executá-lo
+  // em paralelo com syncTitulos faz a consulta terminar antes de os títulos
+  // serem gravados e registra um snapshot vazio. Aguarde a dependência para
+  // que o primeiro diagnóstico da implantação já seja consistente.
+  await runIfMissing("rateio", syncRateio);
 }
 
 const timers: NodeJS.Timeout[] = [];
+let initialSyncInProgress = false;
 
 export function startScheduler(): void {
   if (!config.SYNC_ENABLED) {
@@ -104,10 +110,17 @@ export function startScheduler(): void {
     "scheduler iniciando",
   );
 
-  void initialSync();
+  initialSyncInProgress = true;
+  void initialSync().finally(() => {
+    initialSyncInProgress = false;
+  });
 
   timers.push(
     setInterval(() => {
+      if (initialSyncInProgress) {
+        logger.info("sync lento adiado: carga inicial ainda em andamento");
+        return;
+      }
       void runSync("tipos_operacao", syncTiposOperacao);
       void runSync("naturezas", syncNaturezas);
       void runSync("projetos", syncProjetos);
@@ -120,6 +133,10 @@ export function startScheduler(): void {
 
   timers.push(
     setInterval(() => {
+      if (initialSyncInProgress) {
+        logger.info("sync principal adiado: carga inicial ainda em andamento");
+        return;
+      }
       void (async () => {
         await runSync("pedidos", syncPedidos);
         await runSync("titulos", syncTitulos);
@@ -132,4 +149,5 @@ export function startScheduler(): void {
 export function stopScheduler(): void {
   for (const t of timers) clearInterval(t);
   timers.length = 0;
+  initialSyncInProgress = false;
 }
