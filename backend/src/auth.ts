@@ -2,7 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { config } from "./config.js";
 
-const PUBLIC_ROUTES = new Set(["/health", "/auth/setup", "/auth/validate"]);
+const PUBLIC_ROUTES = new Set(["/health", "/auth/login"]);
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const TOTP_STEP_SECONDS = 30;
 const TOTP_WINDOW = 4;
@@ -109,6 +109,21 @@ export function createSessionToken(): { accessToken: string; expiresAt: string }
   };
 }
 
+export function isValidLoginCredentials(email: string, password: string): boolean {
+  const expectedEmail = Buffer.from(config.APP_LOGIN_EMAIL.trim().toLowerCase());
+  const receivedEmail = Buffer.from(email.trim().toLowerCase());
+  const expectedPassword = Buffer.from(config.APP_LOGIN_PASSWORD);
+  const receivedPassword = Buffer.from(password);
+
+  const emailMatches =
+    expectedEmail.length === receivedEmail.length && timingSafeEqual(expectedEmail, receivedEmail);
+  const passwordMatches =
+    expectedPassword.length === receivedPassword.length &&
+    timingSafeEqual(expectedPassword, receivedPassword);
+
+  return emailMatches && passwordMatches;
+}
+
 export function isValidSessionToken(token: string): boolean {
   const [payload, signature] = token.split(".");
   if (!payload || !signature) return false;
@@ -137,10 +152,6 @@ export function isValidSessionToken(token: string): boolean {
 }
 
 export function requireApiToken(req: Request, res: Response, next: NextFunction) {
-  // Temporariamente liberado para visualizacao local sem Google Authenticator.
-  next();
-  return;
-
   if (PUBLIC_ROUTES.has(req.path)) {
     next();
     return;

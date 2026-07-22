@@ -19,6 +19,8 @@ const schema = z.object({
     .min(16)
     .regex(/^[A-Z2-7=\s-]+$/i, "Use um segredo Base32 compativel com Google Authenticator."),
   APP_SESSION_SECRET: z.string().min(24),
+  APP_LOGIN_EMAIL: z.string().email(),
+  APP_LOGIN_PASSWORD: z.string().min(12),
   PORT: z.coerce.number().default(3000),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   CORS_ORIGINS: z

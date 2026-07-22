@@ -1,4 +1,4 @@
-export const AUTH_TOKEN_STORAGE_KEY = "sankhya_2_auth_token";
+export const AUTH_TOKEN_STORAGE_KEY = "sankhya_3_auth_token";
 
 export function getApiBaseUrl(): string {
   const configured = import.meta.env.VITE_API_URL?.replace(/\/$/, "");

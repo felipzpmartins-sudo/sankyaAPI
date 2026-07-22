@@ -6,7 +6,12 @@ import { empresaParam } from "../utils/empresa.js";
 import { config } from "../config.js";
 import { getDb } from "../db/connection.js";
 import { dashboardRouter, empresasRouter, vendedoresRouter } from "./dashboard.js";
-import { createSessionToken, getTotpSetup, isValidTotpCode } from "../auth.js";
+import {
+  createSessionToken,
+  getTotpSetup,
+  isValidLoginCredentials,
+  isValidTotpCode,
+} from "../auth.js";
 import { getSyncState } from "../sync/state.js";
 import { FATURAMENTO_TOPS, inListClause } from "../services/operacoes.js";
 
@@ -78,6 +83,29 @@ router.get("/health", (_req, res) => {
 
 router.get("/auth/setup", (_req, res) => {
   res.json(getTotpSetup());
+});
+
+router.post("/auth/login", (req, res) => {
+  const body = z
+    .object({
+      email: z.string().email(),
+      password: z.string().min(8).max(200),
+    })
+    .safeParse(req.body);
+
+  if (!body.success || !isValidLoginCredentials(body.data.email, body.data.password)) {
+    res.status(401).json({
+      error: "unauthorized",
+      message: "E-mail ou senha incorretos.",
+    });
+    return;
+  }
+
+  res.json({
+    ok: true,
+    user: { email: body.data.email.trim().toLowerCase() },
+    ...createSessionToken(),
+  });
 });
 
 router.post("/auth/validate", (req, res) => {

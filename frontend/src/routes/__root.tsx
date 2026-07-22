@@ -14,6 +14,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AppShell } from "../components/layout/AppShell";
 import { FiltersProvider } from "../lib/filters-context";
 import { SnapshotProvider } from "../lib/snapshot-context";
+import { LoginGate } from "../components/LoginGate";
 
 function NotFoundComponent() {
   return (
@@ -133,13 +134,15 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <FiltersProvider>
-        <SnapshotProvider>
-          <AppShell>
-            <Outlet />
-          </AppShell>
-        </SnapshotProvider>
-      </FiltersProvider>
+      <LoginGate>
+        <FiltersProvider>
+          <SnapshotProvider>
+            <AppShell>
+              <Outlet />
+            </AppShell>
+          </SnapshotProvider>
+        </FiltersProvider>
+      </LoginGate>
     </QueryClientProvider>
   );
 }
