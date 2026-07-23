@@ -15,6 +15,10 @@ import {
 import { clientesBI, rhBI } from "../services/dashboard-clientes-rh.js";
 import { entregasBI } from "../services/dashboard-entregas.js";
 import { executivoResumo } from "../services/executivo.js";
+import {
+  gerarFinanceiroXlsx,
+  type FinanceiroExportTipo,
+} from "../services/financeiro-export.js";
 import { gerarRateioXlsx } from "../services/rateio-export.js";
 import {
   comodatoConsolidado,
@@ -97,6 +101,44 @@ dashboardRouter.get("/executivo", (req, res, next) => {
   try {
     const { empresa, vendedor, dataInicio, dataFim, codProj } = faturamentoQuery.parse(req.query);
     res.json(executivoResumo(empresa, vendedor, { dataInicio, dataFim }, codProj));
+  } catch (err) {
+    next(err);
+  }
+});
+
+const financeiroExportQuery = z.object({
+  tipo: z.enum(["dre-comparativo", "contas-receber", "contas-pagar", "movimentos"]),
+  empresa: empresaParam,
+  dataInicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  dataFim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  codProj: numberListParam.optional(),
+}).refine((q) => q.dataInicio <= q.dataFim, {
+  message: "dataInicio deve ser menor ou igual a dataFim.",
+});
+
+dashboardRouter.get("/financeiro/exportacao", async (req, res, next) => {
+  try {
+    const q = financeiroExportQuery.parse(req.query);
+    const buffer = await gerarFinanceiroXlsx({
+      tipo: q.tipo,
+      filtro: q.empresa,
+      dataInicio: q.dataInicio,
+      dataFim: q.dataFim,
+      codProj: q.codProj,
+    });
+    const nomes: Record<FinanceiroExportTipo, string> = {
+      "dre-comparativo": "dre-comparativo",
+      "contas-receber": "contas-a-receber",
+      "contas-pagar": "contas-a-pagar",
+      movimentos: "movimentos-financeiros",
+    };
+    const filename = `${nomes[q.tipo]}-${q.dataInicio}-${q.dataFim}.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(buffer);
   } catch (err) {
     next(err);
   }

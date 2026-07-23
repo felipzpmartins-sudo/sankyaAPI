@@ -6,14 +6,16 @@ import {
   Banknote,
   CalendarDays,
   CircleX,
+  Download,
   FileCheck2,
   FileText,
   Layers3,
+  LoaderCircle,
   ReceiptText,
   WalletCards,
   type LucideIcon,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Area,
   AreaChart,
@@ -36,6 +38,7 @@ import { PanelCard } from "@/components/dashboard/PanelCard";
 import { EmptyTableRow } from "@/components/dashboard/EmptyTableRow";
 import { QueryState } from "@/components/dashboard/QueryState";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -56,6 +59,10 @@ import {
 } from "@/lib/chart-style";
 import { useFilters } from "@/lib/filters-context";
 import {
+  exportarFinanceiro,
+  type FinanceiroExportTipo,
+} from "@/lib/financeiro-export";
+import {
   formatCompactCurrency,
   formatCurrency,
   formatDate,
@@ -71,7 +78,7 @@ export const Route = createFileRoute("/")({
       { title: "Sankhya 3.0 - Resumo executivo" },
       {
         name: "description",
-        content: "Central de relatorios de vendas e financeiro conectada ao Sankhya.",
+        content: "Central de relatórios de vendas e financeiro conectada ao Sankhya.",
       },
     ],
   }),
@@ -144,6 +151,8 @@ function CentralCeoPage() {
   const { filters, setFilters } = useFilters();
   const query = useExecutivoDashboard(filters);
   const rateioQuery = useRateioDashboard(filters);
+  const [exportando, setExportando] = useState<FinanceiroExportTipo | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const activePreset = selectedPreset(filters.dataInicio, filters.dataFim);
   usePageSnapshot(query.data?.snapshot_at);
 
@@ -158,6 +167,18 @@ function CentralCeoPage() {
   }
 
   const data = query.data;
+
+  async function exportar(tipo: FinanceiroExportTipo) {
+    setExportando(tipo);
+    setExportError(null);
+    try {
+      await exportarFinanceiro(tipo, filters);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Não foi possível gerar o Excel.");
+    } finally {
+      setExportando(null);
+    }
+  }
 
   const applyPreset = (preset: PeriodPreset) => {
     if (preset === "periodo") return;
@@ -205,10 +226,10 @@ function CentralCeoPage() {
             Sankhya 3.0 / Portal executivo
           </div>
           <h2 className="mt-1 font-semibold tracking-tight text-foreground text-2xl">
-            Relatorios do CEO
+            Relatórios do CEO
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Hoje, semanal, mensal e periodo - {periodoLabel}
+            Hoje, semanal, mensal e período — {periodoLabel}
           </p>
         </div>
 
@@ -260,15 +281,25 @@ function CentralCeoPage() {
         <KpiCard
           label="Receber x pagar"
           value={formatCompactCurrency(saldoPendente)}
-          hint={`${formatCompactCurrency(financeiro.conta_receber_aberto.valor)} / ${formatCompactCurrency(financeiro.conta_pagar_aberto.valor)}`}
+          hint={`A receber ${formatCompactCurrency(financeiro.conta_receber_aberto.valor)} / A pagar ${formatCompactCurrency(financeiro.conta_pagar_aberto.valor)}`}
+          detail="Saldo líquido em aberto: a receber − a pagar. Recebimentos são baixas já realizadas no período."
           tone="danger"
           icon={WalletCards}
         />
       </div>
 
+      {exportError && (
+        <div
+          role="alert"
+          className="rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger"
+        >
+          {exportError}
+        </div>
+      )}
+
       <PanelCard
         title="Saldo total"
-        description="Entradas, saidas e saldo acumulado"
+        description="Entradas, saídas e saldo acumulado"
         action={
           <div className="flex items-center gap-1 rounded-full border border-border/40 bg-background/40 p-1">
             {balancePeriodOptions.map(({ value, label }) => (
@@ -362,10 +393,12 @@ function CentralCeoPage() {
                         cursor={lineTooltipCursor}
                         formatter={(value: number) => formatCurrency(value)}
                         labelFormatter={(value) => formatChartPeriod(String(value))}
+                        separator=": "
                       />
                       <Area
                         type="monotone"
                         dataKey="saldoAcumulado"
+                        name="Saldo acumulado"
                         stroke="var(--color-chart-1)"
                         strokeWidth={2.5}
                         fill="url(#saldoFill)"
@@ -409,7 +442,7 @@ function CentralCeoPage() {
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <PanelCard
           title="Faturamento por projeto"
-          description="Distribuicao do periodo"
+          description="Distribuição do período"
           className="overflow-hidden"
           bodyClassName="p-0"
         >
@@ -440,46 +473,58 @@ function CentralCeoPage() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
-                <div className="text-center">
+                <div className="w-[112px] text-center">
                   <div className="text-xl font-semibold text-foreground">
                     {Math.round(
                       ((projetoTopo?.fechado ?? 0) / Math.max(totalProjetos || 1, 1)) * 100,
                     )}
                     %
                   </div>
-                  <div className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <div className="mt-1 break-words text-[9px] font-medium leading-[1.2] text-muted-foreground">
                     {projetoTopo?.nome ?? "Projeto"}
                   </div>
                 </div>
               </div>
             </div>
 
-            <ul className="flex-1 space-y-2.5">
+            <div className="min-w-0 flex-1">
+              <div className="mb-2 grid grid-cols-[minmax(0,1fr)_64px_88px] gap-3 px-0 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <span />
+                <span className="text-right">Share</span>
+                <span className="text-right">Receita</span>
+              </div>
+              <ul className="space-y-2.5">
               {comercial.por_projeto.map((row, index) => {
                 const pct = (row.fechado / Math.max(totalProjetos || 1, 1)) * 100;
                 return (
-                  <li key={row.codproj} className="flex items-center gap-3 text-sm">
-                    <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                      style={{ backgroundColor: chartColors[index % chartColors.length] }}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-foreground">{row.nome}</span>
-                    <span className="text-xs text-muted-foreground">
+                  <li
+                    key={row.codproj}
+                    className="grid grid-cols-[minmax(0,1fr)_64px_88px] items-center gap-3 text-sm"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                        style={{ backgroundColor: chartColors[index % chartColors.length] }}
+                      />
+                      <span className="min-w-0 truncate text-foreground">{row.nome}</span>
+                    </span>
+                    <span className="text-right text-xs text-muted-foreground">
                       {pct.toFixed(1).replace(".", ",")}%
                     </span>
-                    <span className="w-20 text-right text-xs font-medium text-foreground">
+                    <span className="text-right text-xs font-medium text-foreground">
                       {formatCompactCurrency(row.fechado)}
                     </span>
                   </li>
                 );
               })}
-            </ul>
+              </ul>
+            </div>
           </div>
         </PanelCard>
 
         <PanelCard
-          title="Evolucao mensal"
-          description="Entradas e saidas do caixa"
+          title="Evolução mensal"
+          description="Entradas e saídas do caixa"
           className="overflow-hidden"
           bodyClassName="p-0"
         >
@@ -553,7 +598,7 @@ function CentralCeoPage() {
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <ReportListPanel
-          title="Relatorios Vendas do Sankhya"
+          title="Relatórios de vendas do Sankhya"
           sub="Portal de Vendas"
           rows={[
             {
@@ -592,13 +637,13 @@ function CentralCeoPage() {
         />
 
         <ReportListPanel
-          title="Relatorios financeiros recebimentos"
+          title="Relatórios financeiros — recebimentos"
           sub="Financeiro"
           rows={[
             {
               icon: ArrowUpRight,
               title: "Recebimentos",
-              meta: "Baixas no periodo",
+              meta: "Baixas no período",
               value: formatCurrency(financeiro.recebimentos.valor),
               count: financeiro.recebimentos.qtd,
               color: "var(--color-chart-1)",
@@ -772,13 +817,40 @@ function CentralCeoPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <AccountsPanel title="Contas a receber" data={financeiro.contas_receber.titulos} />
-        <AccountsPanel title="Contas a pagar" data={financeiro.contas_pagar.titulos} />
+        <AccountsPanel
+          title="Contas a receber"
+          data={financeiro.contas_receber.titulos}
+          exporting={exportando === "contas-receber"}
+          exportDisabled={exportando != null}
+          onExport={() => void exportar("contas-receber")}
+        />
+        <AccountsPanel
+          title="Contas a pagar"
+          data={financeiro.contas_pagar.titulos}
+          exporting={exportando === "contas-pagar"}
+          exportDisabled={exportando != null}
+          onExport={() => void exportar("contas-pagar")}
+        />
       </div>
 
       <PanelCard
-        title="Movimentos financeiros do periodo"
+        title="Movimentos financeiros do período"
         description={`${financeiro.movimentos.length} registros`}
+        action={
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={exportando != null}
+            onClick={() => void exportar("movimentos")}
+          >
+            {exportando === "movimentos" ? (
+              <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
+            Exportar Excel
+          </Button>
+        }
         bodyClassName="p-0"
       >
         <div className="overflow-x-auto">
@@ -889,12 +961,32 @@ function ReportListPanel({
 function AccountsPanel({
   title,
   data,
+  exporting,
+  exportDisabled,
+  onExport,
 }: {
   title: string;
   data: ExecutivoDashboard["financeiro"]["contas_receber"]["titulos"];
+  exporting: boolean;
+  exportDisabled: boolean;
+  onExport: () => void;
 }) {
   return (
-    <PanelCard title={title} description="Carteira aberta" bodyClassName="p-0">
+    <PanelCard
+      title={title}
+      description="Carteira aberta"
+      action={
+        <Button size="sm" variant="outline" disabled={exportDisabled} onClick={onExport}>
+          {exporting ? (
+            <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="mr-2 h-4 w-4" />
+          )}
+          Exportar Excel
+        </Button>
+      }
+      bodyClassName="p-0"
+    >
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>

@@ -45,6 +45,7 @@ export function KpiCard({
   label,
   value,
   hint,
+  detail,
   variation,
   tone = "default",
   icon: Icon,
@@ -53,6 +54,7 @@ export function KpiCard({
   label: string;
   value: string;
   hint?: string;
+  detail?: string;
   variation?: number | null;
   tone?: Tone;
   icon?: LucideIcon;
@@ -108,6 +110,11 @@ export function KpiCard({
         )}
         {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
       </div>
+      {detail && (
+        <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+          {detail}
+        </p>
+      )}
     </Card>
   );
 }

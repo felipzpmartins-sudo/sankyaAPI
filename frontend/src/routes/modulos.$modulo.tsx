@@ -77,7 +77,7 @@ async function moduleView(modulo: string, filters: GlobalFilters): Promise<Modul
       columns: [
         { key: "NOMEPARC", label: "Cliente" }, { key: "receita", label: "Receita", kind: "currency" },
         { key: "pedidos", label: "Pedidos", kind: "int" }, { key: "ticket_medio", label: "Ticket medio", kind: "currency" },
-        { key: "ultima_compra", label: "Ultima compra", kind: "date" }, { key: "receber_aberto", label: "Em aberto", kind: "currency" },
+        { key: "ultima_compra", label: "Última compra", kind: "date" }, { key: "receber_aberto", label: "Em aberto", kind: "currency" },
       ],
       rows: (clientes.top_clientes ?? []).slice(0, 10),
       snapshotAt: clientes.snapshot_at,

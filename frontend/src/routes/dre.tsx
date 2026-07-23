@@ -11,7 +11,14 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { ArrowDownCircle, ArrowUpCircle, Percent, TrendingUp } from "lucide-react";
+import {
+  ArrowDownCircle,
+  ArrowUpCircle,
+  Download,
+  LoaderCircle,
+  Percent,
+  TrendingUp,
+} from "lucide-react";
 import { useState } from "react";
 
 import { KpiCard } from "@/components/dashboard/KpiCard";
@@ -34,6 +41,10 @@ import {
   lineTooltipCursor,
 } from "@/lib/chart-style";
 import { useFilters } from "@/lib/filters-context";
+import {
+  exportarFinanceiro,
+  type FinanceiroExportTipo,
+} from "@/lib/financeiro-export";
 import {
   formatCompactCurrency,
   formatCurrency,
@@ -63,6 +74,8 @@ function DrePage() {
   const { filters } = useFilters();
   const [receberPage, setReceberPage] = useState(0);
   const [pagarPage, setPagarPage] = useState(0);
+  const [exportando, setExportando] = useState<FinanceiroExportTipo | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const query = useDreDashboard(filters, receberPage, pagarPage);
   usePageSnapshot(query.data?.snapshot_at);
   if (query.isPending || query.error) {
@@ -71,8 +84,29 @@ function DrePage() {
   const { contasPagar, contasPagarMeta, contasReceber, contasReceberMeta, dreConsolidado, dreProjetos, fluxoCaixa } = query.data;
   const resultadoTone = dreConsolidado.resultado_operacional >= 0 ? "success" : "danger";
 
+  async function exportar(tipo: FinanceiroExportTipo) {
+    setExportando(tipo);
+    setExportError(null);
+    try {
+      await exportarFinanceiro(tipo, filters);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Não foi possível gerar o Excel.");
+    } finally {
+      setExportando(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
+      {exportError && (
+        <div
+          role="alert"
+          className="rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger"
+        >
+          {exportError}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           label="Receita bruta"
@@ -108,6 +142,21 @@ function DrePage() {
       <PanelCard
         title="DRE comparativo por projeto"
         description="Linhas = categorias · Colunas = projetos · Última coluna = consolidado"
+        action={
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={exportando != null}
+            onClick={() => void exportar("dre-comparativo")}
+          >
+            {exportando === "dre-comparativo" ? (
+              <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
+            Exportar Excel
+          </Button>
+        }
         bodyClassName="p-0"
       >
         <div className="overflow-x-auto">
@@ -292,8 +341,26 @@ function DrePage() {
 
       {/* Contas */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <ContasTable title="Contas a receber" tipo="receber" data={contasReceber} meta={contasReceberMeta} onPageChange={setReceberPage} />
-        <ContasTable title="Contas a pagar" tipo="pagar" data={contasPagar} meta={contasPagarMeta} onPageChange={setPagarPage} />
+        <ContasTable
+          title="Contas a receber"
+          tipo="receber"
+          data={contasReceber}
+          meta={contasReceberMeta}
+          exporting={exportando === "contas-receber"}
+          exportDisabled={exportando != null}
+          onExport={() => void exportar("contas-receber")}
+          onPageChange={setReceberPage}
+        />
+        <ContasTable
+          title="Contas a pagar"
+          tipo="pagar"
+          data={contasPagar}
+          meta={contasPagarMeta}
+          exporting={exportando === "contas-pagar"}
+          exportDisabled={exportando != null}
+          onExport={() => void exportar("contas-pagar")}
+          onPageChange={setPagarPage}
+        />
       </div>
     </div>
   );
@@ -304,17 +371,37 @@ function ContasTable({
   tipo,
   data,
   meta,
+  exporting,
+  exportDisabled,
+  onExport,
   onPageChange,
 }: {
   title: string;
   tipo: "receber" | "pagar";
   data: { parceiro: string; vencimento: string; valor_aberto: number; dias_atraso: number }[];
   meta: { page: number; pageSize: number; total: number; valorTotal: number };
+  exporting: boolean;
+  exportDisabled: boolean;
+  onExport: () => void;
   onPageChange: (page: number) => void;
 }) {
   const paginas = Math.max(1, Math.ceil(meta.total / meta.pageSize));
   return (
-    <PanelCard title={title} description={`Total em aberto · ${tipo}`} bodyClassName="p-0">
+    <PanelCard
+      title={title}
+      description={`Total em aberto · ${tipo}`}
+      action={
+        <Button size="sm" variant="outline" disabled={exportDisabled} onClick={onExport}>
+          {exporting ? (
+            <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="mr-2 h-4 w-4" />
+          )}
+          Exportar Excel
+        </Button>
+      }
+      bodyClassName="p-0"
+    >
       <Table>
         <TableHeader>
           <TableRow className="border-border/60 hover:bg-transparent">

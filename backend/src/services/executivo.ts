@@ -4,9 +4,20 @@ import { vendedorToSqlClause, type VendedorFiltro } from "../utils/vendedor.js";
 import { FATURAMENTO_TOPS, inListClause } from "./operacoes.js";
 import { fluxoCaixa, listarCentrosResultado, listarContasAbertas, listarProjetos } from "./dashboard-financeiro.js";
 
-type Range = {
+export type Range = {
   dataInicio: string;
   dataFim: string;
+};
+
+export type MovimentoFinanceiro = {
+  nufin: number;
+  data_baixa: string | null;
+  tipo: "receber" | "pagar";
+  parceiro: string;
+  natureza: string;
+  projeto: string;
+  centro: string;
+  valor: number;
 };
 
 export type ExecutivoResumo = {
@@ -46,16 +57,7 @@ export type ExecutivoResumo = {
     fluxo_caixa: ReturnType<typeof fluxoCaixa>["serie"];
     contas_receber: ReturnType<typeof listarContasAbertas>;
     contas_pagar: ReturnType<typeof listarContasAbertas>;
-    movimentos: Array<{
-      nufin: number;
-      data_baixa: string | null;
-      tipo: "receber" | "pagar";
-      parceiro: string;
-      natureza: string;
-      projeto: string;
-      centro: string;
-      valor: number;
-    }>;
+    movimentos: MovimentoFinanceiro[];
   };
   referencias: {
     projetos: ReturnType<typeof listarProjetos>;
@@ -90,6 +92,55 @@ function makeRange(range?: Partial<Range>): [string, string] {
   const end = new Date(`${dataFim}T00:00:00.000Z`);
   end.setUTCDate(end.getUTCDate() + 1);
   return [dataInicio, end.toISOString().slice(0, 10)];
+}
+
+export function listarMovimentosFinanceiros(
+  filtro: EmpresaFiltro,
+  range?: Partial<Range>,
+  codProj: number[] = [],
+  limit?: number,
+): MovimentoFinanceiro[] {
+  const [dataInicio, dataFimExclusivo] = makeRange(range);
+  const empresaTitulos = empresaToSqlClause(filtro, "t.CODEMP");
+  const projetoWhere = codProj.length > 0
+    ? ` AND COALESCE(t.CODPROJ, 0) IN (${codProj.map(() => "?").join(", ")})`
+    : "";
+  const limite = limit == null ? "" : " LIMIT ?";
+  const params = [
+    dataInicio,
+    dataFimExclusivo,
+    ...empresaTitulos.params,
+    ...codProj,
+    ...(limit == null ? [] : [Math.max(1, Math.trunc(limit))]),
+  ];
+
+  const rows = getDb()
+    .prepare(
+      `
+      SELECT
+        t.NUFIN AS nufin,
+        t.DHBAIXA AS data_baixa,
+        CASE WHEN t.RECDESP = 1 THEN 'receber' ELSE 'pagar' END AS tipo,
+        COALESCE(p.NOMEPARC, '-') AS parceiro,
+        COALESCE(n.DESCRNAT, 'Sem natureza') AS natureza,
+        COALESCE(pr.DESCRPROJ, pr.IDENTIFICACAO, 'Projeto ' || COALESCE(t.CODPROJ, 0)) AS projeto,
+        COALESCE(cr.DESCRCENCUS, 'Sem centro') AS centro,
+        COALESCE(t.VLRBAIXA, 0) AS valor
+      FROM titulos t
+      LEFT JOIN parceiros p ON p.CODPARC = t.CODPARC
+      LEFT JOIN naturezas n ON n.CODNAT = t.CODNAT
+      LEFT JOIN projetos pr ON pr.CODPROJ = COALESCE(t.CODPROJ, 0)
+      LEFT JOIN centros_resultado cr ON cr.CODCENCUS = t.CODCENCUS
+      WHERE t.DHBAIXA IS NOT NULL
+        AND t.DHBAIXA >= date(?) AND t.DHBAIXA < date(?)
+        ${empresaTitulos.clause ? ` AND ${empresaTitulos.clause}` : ""}
+        ${projetoWhere}
+      ORDER BY t.DHBAIXA DESC, t.NUFIN DESC${limite}
+      `,
+    )
+    .all(...params) as MovimentoFinanceiro[];
+
+  return rows.map((row) => ({ ...row, valor: round2(row.valor) }));
 }
 
 function snapshotAt(values: Array<string | null | undefined>): string | null {
@@ -341,41 +392,7 @@ export function executivoResumo(
     )
     .get(dataInicio, dataFimExclusivo, dataInicio, ...empresaTitulos.params, ...codProj) as { qtd: number; valor: number };
 
-  const movimentoRows = db
-    .prepare(
-      `
-      SELECT
-        t.NUFIN AS nufin,
-        t.DHBAIXA AS data_baixa,
-        CASE WHEN t.RECDESP = 1 THEN 'receber' ELSE 'pagar' END AS tipo,
-        COALESCE(p.NOMEPARC, '-') AS parceiro,
-        COALESCE(n.DESCRNAT, 'Sem natureza') AS natureza,
-        COALESCE(pr.DESCRPROJ, pr.IDENTIFICACAO, 'Projeto ' || COALESCE(t.CODPROJ, 0)) AS projeto,
-        COALESCE(cr.DESCRCENCUS, 'Sem centro') AS centro,
-        COALESCE(t.VLRBAIXA, 0) AS valor
-      FROM titulos t
-      LEFT JOIN parceiros p ON p.CODPARC = t.CODPARC
-      LEFT JOIN naturezas n ON n.CODNAT = t.CODNAT
-      LEFT JOIN projetos pr ON pr.CODPROJ = COALESCE(t.CODPROJ, 0)
-      LEFT JOIN centros_resultado cr ON cr.CODCENCUS = t.CODCENCUS
-      WHERE t.DHBAIXA IS NOT NULL
-        AND t.DHBAIXA >= date(?) AND t.DHBAIXA < date(?)
-        ${empresaTitulos.clause ? ` AND ${empresaTitulos.clause}` : ""}
-        ${codProj.length > 0 ? ` AND COALESCE(t.CODPROJ, 0) IN (${codProj.map(() => "?").join(", ")})` : ""}
-      ORDER BY t.DHBAIXA DESC, t.NUFIN DESC
-      LIMIT 15
-      `,
-    )
-    .all(dataInicio, dataFimExclusivo, ...empresaTitulos.params, ...codProj) as Array<{
-    nufin: number;
-    data_baixa: string | null;
-    tipo: "receber" | "pagar";
-    parceiro: string;
-    natureza: string;
-    projeto: string;
-    centro: string;
-    valor: number;
-  }>;
+  const movimentoRows = listarMovimentosFinanceiros(filtro, range, codProj, 15);
 
   return {
     periodo: { dataInicio, dataFim: dataFimInclusivo },
@@ -433,10 +450,7 @@ export function executivoResumo(
       fluxo_caixa: fluxo.serie,
       contas_receber: resumoReceber,
       contas_pagar: resumoPagar,
-      movimentos: movimentoRows.map((row) => ({
-        ...row,
-        valor: round2(row.valor),
-      })),
+      movimentos: movimentoRows,
     },
     referencias: {
       projetos: listarProjetos(),
