@@ -39,17 +39,13 @@ export async function alunosAtivosViaCerta(args: {
   month: string;
   year: string;
 }): Promise<ViaCertaAlunosAtivosResponse> {
-  const form = new URLSearchParams();
-  form.set("month", args.month);
-  form.set("year", args.year);
-
   const res = await fetch(config.VIACERTA_ACTIVE_USERS_URL, {
     method: "POST",
     headers: {
       Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
+      "Content-Type": "application/json",
     },
-    body: form,
+    body: JSON.stringify(args),
   });
 
   const payload = (await res.json()) as ViaCertaRawResponse;

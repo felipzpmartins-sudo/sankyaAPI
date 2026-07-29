@@ -8,6 +8,11 @@ const TOTP_STEP_SECONDS = 30;
 const TOTP_WINDOW = 4;
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
+export type AppUser = {
+  email: string;
+  role: "executive" | "viacerta";
+};
+
 function base64url(input: Buffer | string): string {
   return Buffer.from(input).toString("base64url");
 }
@@ -93,12 +98,13 @@ export function getTotpSetup() {
   };
 }
 
-export function createSessionToken(): { accessToken: string; expiresAt: string } {
+export function createSessionToken(user: AppUser): { accessToken: string; expiresAt: string } {
   const expiresAt = Date.now() + SESSION_TTL_MS;
   const payload = base64url(
     JSON.stringify({
       exp: expiresAt,
       nonce: randomBytes(16).toString("hex"),
+      user,
     }),
   );
   const signature = createHmac("sha256", config.APP_SESSION_SECRET).update(payload).digest("base64url");
@@ -109,10 +115,10 @@ export function createSessionToken(): { accessToken: string; expiresAt: string }
   };
 }
 
-export function isValidLoginCredentials(email: string, password: string): boolean {
-  const expectedEmail = Buffer.from(config.APP_LOGIN_EMAIL.trim().toLowerCase());
+function credentialsMatch(expectedEmailValue: string, expectedPasswordValue: string, email: string, password: string): boolean {
+  const expectedEmail = Buffer.from(expectedEmailValue.trim().toLowerCase());
   const receivedEmail = Buffer.from(email.trim().toLowerCase());
-  const expectedPassword = Buffer.from(config.APP_LOGIN_PASSWORD);
+  const expectedPassword = Buffer.from(expectedPasswordValue);
   const receivedPassword = Buffer.from(password);
 
   const emailMatches =
@@ -122,6 +128,22 @@ export function isValidLoginCredentials(email: string, password: string): boolea
     timingSafeEqual(expectedPassword, receivedPassword);
 
   return emailMatches && passwordMatches;
+}
+
+export function authenticateLogin(email: string, password: string): AppUser | null {
+  if (credentialsMatch(config.APP_LOGIN_EMAIL, config.APP_LOGIN_PASSWORD, email, password)) {
+    return { email: config.APP_LOGIN_EMAIL.trim().toLowerCase(), role: "executive" };
+  }
+
+  if (
+    config.JULIANA_LOGIN_EMAIL &&
+    config.JULIANA_LOGIN_PASSWORD &&
+    credentialsMatch(config.JULIANA_LOGIN_EMAIL, config.JULIANA_LOGIN_PASSWORD, email, password)
+  ) {
+    return { email: config.JULIANA_LOGIN_EMAIL.trim().toLowerCase(), role: "viacerta" };
+  }
+
+  return null;
 }
 
 export function isValidSessionToken(token: string): boolean {
@@ -149,6 +171,28 @@ export function isValidSessionToken(token: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function getSessionUser(token: string): AppUser | null {
+  if (!isValidSessionToken(token)) return null;
+
+  try {
+    const [payload] = token.split(".");
+    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { user?: AppUser };
+    if (
+      typeof decoded.user?.email !== "string" ||
+      (decoded.user.role !== "executive" && decoded.user.role !== "viacerta")
+    ) {
+      return null;
+    }
+    return decoded.user;
+  } catch {
+    return null;
+  }
+}
+
+export function getRequestUser(req: Request): AppUser | null {
+  return getSessionUser(extractBearerToken(req));
 }
 
 export function requireApiToken(req: Request, res: Response, next: NextFunction) {

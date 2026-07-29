@@ -2,8 +2,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
   Link,
+  Navigate,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -14,7 +16,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AppShell } from "../components/layout/AppShell";
 import { FiltersProvider } from "../lib/filters-context";
 import { SnapshotProvider } from "../lib/snapshot-context";
-import { LoginGate } from "../components/LoginGate";
+import { LoginGate, useAuthUser } from "../components/LoginGate";
 
 function NotFoundComponent() {
   return (
@@ -135,14 +137,27 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <LoginGate>
-        <FiltersProvider>
-          <SnapshotProvider>
-            <AppShell>
-              <Outlet />
-            </AppShell>
-          </SnapshotProvider>
-        </FiltersProvider>
+        <AccessScope />
       </LoginGate>
     </QueryClientProvider>
+  );
+}
+
+function AccessScope() {
+  const user = useAuthUser();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+
+  if (user?.role === "viacerta" && pathname !== "/via-certa") {
+    return <Navigate to="/via-certa" replace />;
+  }
+
+  return (
+    <FiltersProvider>
+      <SnapshotProvider>
+        <AppShell>
+          <Outlet />
+        </AppShell>
+      </SnapshotProvider>
+    </FiltersProvider>
   );
 }

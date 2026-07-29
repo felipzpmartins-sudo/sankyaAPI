@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BarChart3, LineChart, Search, ShieldAlert, Sparkles, type LucideIcon } from "lucide-react";
+import { BarChart3, GraduationCap, LineChart, Search, ShieldAlert, Sparkles, type LucideIcon } from "lucide-react";
 
 import {
   Sidebar,
@@ -13,6 +13,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
+import { useAuthUser } from "@/components/LoginGate";
 
 type NavItem = {
   title: string;
@@ -75,6 +76,10 @@ function NavList({ items, currentPath }: { items: NavItem[]; currentPath: string
 
 export function AppSidebar() {
   const currentPath = useRouterState({ select: (r) => r.location.pathname });
+  const user = useAuthUser();
+  const visibleDashboards: NavItem[] = user?.role === "viacerta"
+    ? [{ title: "Alunos Via Certa", icon: GraduationCap, url: "/via-certa" }]
+    : dashboards;
 
   return (
     <Sidebar
@@ -108,7 +113,7 @@ export function AppSidebar() {
             Dashboards
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            <NavList items={dashboards} currentPath={currentPath} />
+            <NavList items={visibleDashboards} currentPath={currentPath} />
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>

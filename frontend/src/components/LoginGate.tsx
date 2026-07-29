@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
   ArrowRight,
   BarChart3,
@@ -25,12 +25,24 @@ import {
 type LoginResponse = {
   accessToken?: string;
   message?: string;
-  user?: { email: string };
+  user?: AppUser;
 };
+
+export type AppUser = {
+  email: string;
+  role: "executive" | "viacerta";
+};
+
+const AuthUserContext = createContext<AppUser | null>(null);
+
+export function useAuthUser() {
+  return useContext(AuthUserContext);
+}
 
 export function LoginGate({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -47,8 +59,11 @@ export function LoginGate({ children }: { children: ReactNode }) {
     fetch(`${getApiBaseUrl()}/api/auth/session`, {
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
     })
-      .then((response) => {
+      .then(async (response) => {
         if (!response.ok) throw new Error("Sessão expirada");
+        const body = (await response.json()) as { user?: AppUser };
+        if (!body.user) throw new Error("Sessão inválida");
+        setUser(body.user);
         setAuthenticated(true);
       })
       .catch(() => clearStoredAuthToken())
@@ -72,6 +87,8 @@ export function LoginGate({ children }: { children: ReactNode }) {
       }
 
       setStoredAuthToken(body.accessToken);
+      if (!body.user) throw new Error("Não foi possível identificar o perfil de acesso.");
+      setUser(body.user);
       setAuthenticated(true);
     } catch (cause) {
       setError(
@@ -93,7 +110,9 @@ export function LoginGate({ children }: { children: ReactNode }) {
       </main>
     );
   }
-  if (authenticated) return <>{children}</>;
+  if (authenticated && user) {
+    return <AuthUserContext.Provider value={user}>{children}</AuthUserContext.Provider>;
+  }
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#080d16] text-foreground">

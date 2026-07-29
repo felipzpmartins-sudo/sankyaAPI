@@ -8,8 +8,9 @@ import { getDb } from "../db/connection.js";
 import { dashboardRouter, empresasRouter, vendedoresRouter } from "./dashboard.js";
 import {
   createSessionToken,
+  authenticateLogin,
+  getRequestUser,
   getTotpSetup,
-  isValidLoginCredentials,
   isValidTotpCode,
 } from "../auth.js";
 import { getSyncState } from "../sync/state.js";
@@ -93,7 +94,8 @@ router.post("/auth/login", (req, res) => {
     })
     .safeParse(req.body);
 
-  if (!body.success || !isValidLoginCredentials(body.data.email, body.data.password)) {
+  const user = body.success ? authenticateLogin(body.data.email, body.data.password) : null;
+  if (!user) {
     res.status(401).json({
       error: "unauthorized",
       message: "E-mail ou senha incorretos.",
@@ -103,8 +105,8 @@ router.post("/auth/login", (req, res) => {
 
   res.json({
     ok: true,
-    user: { email: body.data.email.trim().toLowerCase() },
-    ...createSessionToken(),
+    user,
+    ...createSessionToken(user),
   });
 });
 
@@ -115,11 +117,16 @@ router.post("/auth/validate", (req, res) => {
     return;
   }
 
-  res.json({ ok: true, ...createSessionToken() });
+  res.json({ ok: true, ...createSessionToken({ email: config.APP_LOGIN_EMAIL, role: "executive" }) });
 });
 
-router.get("/auth/session", (_req, res) => {
-  res.json({ ok: true });
+router.get("/auth/session", (req, res) => {
+  const user = getRequestUser(req);
+  if (!user) {
+    res.status(401).json({ error: "unauthorized", message: "Sessao invalida ou expirada." });
+    return;
+  }
+  res.json({ ok: true, user });
 });
 
 router.use("/empresas", empresasRouter);
@@ -133,6 +140,10 @@ const viaCertaAlunosAtivosQuery = z.object({
 
 router.get("/viacerta/alunos-ativos", async (req, res, next) => {
   try {
+    if (getRequestUser(req)?.role !== "viacerta") {
+      res.status(403).json({ error: "forbidden", message: "Este painel e exclusivo para o acesso Via Certa." });
+      return;
+    }
     const q = viaCertaAlunosAtivosQuery.parse(req.query);
     res.json(await alunosAtivosViaCerta(q));
   } catch (err) {
