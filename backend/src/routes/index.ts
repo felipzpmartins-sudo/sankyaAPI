@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { listarCentrosResultado, listarContasAbertas, listarProjetos } from "../services/dashboard-financeiro.js";
 import { alunosAtivosViaCerta } from "../services/viacerta.js";
+import { gerarViaCertaXlsx } from "../services/viacerta-export.js";
 import { empresaParam } from "../utils/empresa.js";
 import { config } from "../config.js";
 import { getDb } from "../db/connection.js";
@@ -146,6 +147,25 @@ router.get("/viacerta/alunos-ativos", async (req, res, next) => {
     }
     const q = viaCertaAlunosAtivosQuery.parse(req.query);
     res.json(await alunosAtivosViaCerta(q));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/viacerta/alunos-ativos/exportacao", async (req, res, next) => {
+  try {
+    if (getRequestUser(req)?.role !== "viacerta") {
+      res.status(403).json({ error: "forbidden", message: "Este painel e exclusivo para o acesso Via Certa." });
+      return;
+    }
+    const q = viaCertaAlunosAtivosQuery.parse(req.query);
+    const buffer = await gerarViaCertaXlsx(await alunosAtivosViaCerta(q));
+    const filename = `alunos-via-certa-${q.year}-${q.month}.xlsx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
+    res.setHeader("Content-Length", String(buffer.length));
+    res.send(buffer);
   } catch (err) {
     next(err);
   }
