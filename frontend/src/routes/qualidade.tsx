@@ -461,14 +461,14 @@ function QualidadePage() {
         <KpiCard
           label="Rateado em 2+ empresas"
           value={formatInt(rateioResumo.com_rateio_ok)}
-          hint={`${formatPercent(pctComRateio)} · distribuido entre empresas`}
+          hint={`${formatPercent(pctComRateio)} · distribuído entre empresas`}
           tone="success"
           icon={CheckCircle2}
         />
         <KpiCard
           label="Rateado em 1 empresa"
           value={formatInt(naoRateioTotal)}
-          hint={`${formatPercent(pctNaoRateio)} · destino unico`}
+          hint={`${formatPercent(pctNaoRateio)} · destino único`}
           tone="success"
           icon={FileSpreadsheet}
         />
