@@ -1,5 +1,6 @@
 import { getDb } from "../db/connection.js";
 import { loadAllRecords } from "../sankhya/crud.js";
+import { executeQuery } from "../sankhya/query.js";
 import type { DecodedEntity } from "../sankhya/types.js";
 import { parseDateBR } from "../utils/dates.js";
 import { parseDecimal } from "../utils/numbers.js";
@@ -18,9 +19,9 @@ const FIELDSETS = [
     "TIPPESSOA",
     "EMAIL",
     "TELEFONE",
-    "CELULAR",
     "DTCAD",
     "LIMCRED",
+    "CODCID",
     "CLIENTE",
     "FORNECEDOR",
     "ATIVO",
@@ -41,6 +42,54 @@ const FIELDSETS = [
   ["CODPARC", "NOMEPARC", "RAZAOSOCIAL", "CGC_CPF", "TIPPESSOA", "CLIENTE", "FORNECEDOR", "ATIVO"],
 ] as const;
 
+type Localidade = { cidade: string; uf: string };
+
+/**
+ * TGFPAR nao expoe cidade nem UF como texto — os descritores "CIDADE" e "UF"
+ * sao recusados pela API. O que existe e CODCID, que resolve em TSICID, cuja
+ * coluna UF por sua vez e o codigo numerico de TSIUFS. Sem este join os dois
+ * campos ficavam 100% nulos e a quebra geografica da tela de clientes vinha
+ * vazia. Paginado por cursor em CODCID para nao esbarrar no teto de 5.000.
+ */
+async function loadLocalidades(): Promise<Map<number, Localidade>> {
+  const mapa = new Map<number, Localidade>();
+  const pageSize = 5_000;
+  let cursor = 0;
+
+  try {
+    for (let pagina = 0; pagina < 100; pagina += 1) {
+      const r = await executeQuery(`
+        SELECT CODCID, NOMECID, UF FROM (
+          SELECT CID.CODCID, CID.NOMECID, UFS.UF
+          FROM TSICID CID
+          INNER JOIN TSIUFS UFS ON UFS.CODUF = CID.UF
+          WHERE CID.CODCID >= ${cursor}
+          ORDER BY CID.CODCID
+        ) WHERE ROWNUM <= ${pageSize}
+      `);
+      if (r.rows.length === 0) break;
+
+      let maior = cursor;
+      for (const linha of r.rows) {
+        const codigo = Number(linha[0]);
+        if (!Number.isFinite(codigo)) continue;
+        const cidade = linha[1] == null ? "" : String(linha[1]).trim();
+        const uf = linha[2] == null ? "" : String(linha[2]).trim();
+        if (cidade) mapa.set(codigo, { cidade, uf });
+        if (codigo > maior) maior = codigo;
+      }
+
+      if (r.rows.length < pageSize) break;
+      if (maior <= cursor) break;
+      cursor = maior + 1;
+    }
+  } catch {
+    // Sem o mapa os parceiros continuam sincronizando; so cidade/UF ficam nulos.
+  }
+
+  return mapa;
+}
+
 function text(value: unknown): string | null {
   if (value == null) return null;
   const s = String(value).trim();
@@ -48,10 +97,15 @@ function text(value: unknown): string | null {
 }
 
 /**
- * Os conjuntos sao tentados do mais completo ao mais enxuto. Antes o `catch`
- * engolia o erro, entao o primeiro conjunto podia falhar em todos os ciclos
- * sem deixar rastro: CELULAR e LIMCRED nunca chegavam (100% nulo e 100% zero
- * no snapshot) e nao havia como saber qual descritor o Sankhya recusava.
+ * Os conjuntos sao tentados do mais completo ao mais enxuto, e o `catch`
+ * registra qual foi recusado — antes ele engolia o erro e o primeiro conjunto
+ * falhava em todos os ciclos sem deixar rastro.
+ *
+ * O culpado era CELULAR: descritor invalido nesta instalacao (confirmado campo
+ * a campo contra a API). Ele derrubava o conjunto inteiro e levava junto o
+ * LIMCRED, que e valido — por isso o snapshot tinha CELULAR 100% nulo e
+ * LIMCRED 100% zero. Sem CELULAR o conjunto completo passa. A coluna CELULAR
+ * permanece na tabela, sempre nula, porque o dado nao existe via API.
  */
 async function loadParceiros(): Promise<DecodedEntity[]> {
   let lastError: unknown;
@@ -88,7 +142,7 @@ async function loadParceiros(): Promise<DecodedEntity[]> {
 
 export async function syncParceiros(): Promise<void> {
   try {
-    const rows = await loadParceiros();
+    const [rows, localidades] = await Promise.all([loadParceiros(), loadLocalidades()]);
     const db = getDb();
     const now = new Date().toISOString();
 
@@ -122,6 +176,8 @@ export async function syncParceiros(): Promise<void> {
       for (const row of rows) {
         const codparc = Number(row.CODPARC);
         if (!Number.isFinite(codparc)) continue;
+        const codcid = Number(row.CODCID);
+        const localidade = Number.isFinite(codcid) ? localidades.get(codcid) : undefined;
 
         upsert.run({
           CODPARC: codparc,
@@ -134,14 +190,8 @@ export async function syncParceiros(): Promise<void> {
           CELULAR: text(row.CELULAR),
           DTCAD: parseDateBR(text(row.DTCAD)),
           LIMCRED: parseDecimal(text(row.LIMCRED)),
-          // TGFPAR nao expoe cidade/UF como texto: guarda CODCID, e o nome e a
-          // sigla vivem em TSICID/TSIUFS. Estes campos nunca foram pedidos ao
-          // Sankhya — ficavam 100% nulos e a quebra geografica da tela de
-          // clientes vinha vazia. Preencher exige descobrir o descritor da
-          // relacao com Cidade nesta instalacao (scripts/probe-sankhya-fields.ts)
-          // antes de adicionar ao FIELDSETS; nao da para adivinhar o nome.
-          CIDADE: null,
-          UF: null,
+          CIDADE: localidade?.cidade ?? null,
+          UF: localidade?.uf ?? null,
           is_cliente: text(row.CLIENTE) === "S" ? 1 : 0,
           is_fornecedor: text(row.FORNECEDOR) === "S" ? 1 : 0,
           ativo: text(row.ATIVO) === "N" ? 0 : 1,

@@ -1,5 +1,6 @@
 import { getDb } from "../db/connection.js";
 import { loadAllRecords } from "../sankhya/crud.js";
+import { executeQuery } from "../sankhya/query.js";
 import { parseIntOrNull } from "../utils/numbers.js";
 import { recordSyncError, recordSyncSuccess } from "./state.js";
 
@@ -11,7 +12,6 @@ const FIELDS_CORE = [
   "USOPROD",
   "CODVOL",
   "CODGRUPOPROD",
-  "GRUPODESCPROD",
   "UNIDADE",
   "ATIVO",
 ];
@@ -29,6 +29,27 @@ function sankhyaText(value: unknown): string | null {
   return null;
 }
 
+/**
+ * A descricao do grupo nao vem na entidade Produto: "GRUPODESCPROD" e aceito
+ * como descritor mas volta vazio, e era por isso que GRUPO_DESCR ficava 100%
+ * nulo e o grafico de estoque por categoria jogava tudo em "Outros". O nome
+ * mora na TGFGRU, que tem 9 linhas — cabe numa consulta so.
+ */
+async function loadGrupos(): Promise<Map<number, string>> {
+  const mapa = new Map<number, string>();
+  try {
+    const r = await executeQuery("SELECT CODGRUPOPROD, DESCRGRUPOPROD FROM TGFGRU");
+    for (const linha of r.rows) {
+      const codigo = Number(linha[0]);
+      const descricao = linha[1] == null ? null : String(linha[1]).trim();
+      if (Number.isFinite(codigo) && descricao) mapa.set(codigo, descricao);
+    }
+  } catch {
+    // Sem a descricao os produtos continuam sincronizando; so o rotulo some.
+  }
+  return mapa;
+}
+
 async function loadProducts(): Promise<unknown[]> {
   return await loadAllRecords({
     rootEntity: "Produto",
@@ -38,7 +59,7 @@ async function loadProducts(): Promise<unknown[]> {
 
 export async function syncProdutos(): Promise<void> {
   try {
-    const records = await loadProducts();
+    const [records, grupos] = await Promise.all([loadProducts(), loadGrupos()]);
     const db = getDb();
     const now = new Date().toISOString();
 
@@ -68,6 +89,7 @@ export async function syncProdutos(): Promise<void> {
         const record = row as Record<string, unknown>;
         const codprod = parseIntOrNull(sankhyaText(record.CODPROD));
         if (codprod == null) continue;
+        const codgrupo = parseIntOrNull(sankhyaText(record.CODGRUPOPROD));
 
         upsert.run({
           CODPROD: codprod,
@@ -76,8 +98,8 @@ export async function syncProdutos(): Promise<void> {
           MARCA: sankhyaText(record.MARCA),
           USOPROD: sankhyaText(record.USOPROD),
           CODVOL: sankhyaText(record.CODVOL),
-          CODGRUPOPROD: parseIntOrNull(sankhyaText(record.CODGRUPOPROD)),
-          GRUPO_DESCR: sankhyaText(record.GRUPODESCPROD),
+          CODGRUPOPROD: codgrupo,
+          GRUPO_DESCR: codgrupo == null ? null : grupos.get(codgrupo) ?? null,
           UNIDADE: sankhyaText(record.UNIDADE) ?? sankhyaText(record.CODVOL),
           ativo: parseAtivo(sankhyaText(record.ATIVO)),
           synced_at: now,
