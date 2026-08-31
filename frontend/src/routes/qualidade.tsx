@@ -659,7 +659,7 @@ function QualidadePage() {
           </TabsContent>
 
           <TabsContent value="sem" className="m-0 overflow-x-auto">
-            <Table className="min-w-[2100px]">
+            <Table className="min-w-[1750px]">
               <TableHeader>
                 <TableRow className="border-border/60 hover:bg-transparent">
                   <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground">NUFIN</TableHead>
@@ -669,9 +669,6 @@ function QualidadePage() {
                   <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground">Empresa</TableHead>
                   <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground">Natureza</TableHead>
                   <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground text-right">Valor</TableHead>
-                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground text-right">Juros</TableHead>
-                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground text-right">Multa</TableHead>
-                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground text-right">Desconto</TableHead>
                   <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground text-right">Baixado</TableHead>
                   <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground">Negociação</TableHead>
                   <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground">Vencimento</TableHead>
@@ -684,7 +681,7 @@ function QualidadePage() {
               <TableBody>
                 {semRateioOrdenado.length === 0 && (
                   <EmptyTableRow
-                    colSpan={17}
+                    colSpan={14}
                     message="Nenhum título sem distribuição neste período."
                   />
                 )}
@@ -706,13 +703,6 @@ function QualidadePage() {
                       {row.natureza ?? "—"}{row.codnat ? ` (${row.codnat})` : ""}
                     </TableCell>
                     <TableCell className="text-right font-semibold text-foreground">{formatCurrency(row.valor)}</TableCell>
-                    <TableCell className={cn("text-right", row.valor_juros > 0 ? "text-warning" : "text-muted-foreground")}>
-                      {formatCurrency(row.valor_juros)}
-                    </TableCell>
-                    <TableCell className={cn("text-right", row.valor_multa > 0 ? "text-warning" : "text-muted-foreground")}>
-                      {formatCurrency(row.valor_multa)}
-                    </TableCell>
-                    <TableCell className="text-right text-muted-foreground">{formatCurrency(row.valor_desconto)}</TableCell>
                     <TableCell className="text-right text-muted-foreground">{formatCurrency(row.valor_baixado)}</TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.data)}</TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.vencimento)}</TableCell>
