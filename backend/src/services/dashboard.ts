@@ -110,8 +110,6 @@ export function listarProdutos(): Produto[] {
  */
 const WHERE_FATURAMENTO = `${inListClause("CODTIPOPER", FATURAMENTO_TOPS)} AND STATUSNOTA = 'L' AND DTFATUR IS NOT NULL`;
 
-const ANO_EXIBICAO_FATURAMENTO = "2026";
-
 const JOIN_PEDIDO_FATURAMENTO = `${inListClause("p.CODTIPOPER", FATURAMENTO_TOPS)} AND p.STATUSNOTA = 'L' AND p.DTFATUR IS NOT NULL`;
 
 /**
@@ -623,8 +621,8 @@ export type ComodatoConsolidado = {
  * valor "no campo" — depende do snapshot ter cobertura total dos contratos
  * ativos, hoje a partir de 2025-01).
  *
- * Janela temporal segue a mesma regra do faturamento: usa `DTFATUR` (data
- * da nota) e o ano civil de `ANO_EXIBICAO_FATURAMENTO`.
+ * Janela temporal usa `DTFATUR` (data da nota). Dia, semana, mes e ano sao
+ * todos derivados de `now`, entao a virada de ano nao exige mudanca no codigo.
  */
 export function comodatoConsolidado(filtro: EmpresaFiltro): ComodatoConsolidado {
   const { clause, params } = empresaToSqlClause(filtro);
@@ -642,14 +640,14 @@ export function comodatoConsolidado(filtro: EmpresaFiltro): ComodatoConsolidado 
       COALESCE((SELECT SUM(VLRNOTA) FROM base WHERE DTFATUR = date('now')), 0) AS dia,
       COALESCE((SELECT SUM(VLRNOTA) FROM base WHERE DTFATUR >= date('now', '-6 days')), 0) AS semana_7d,
       COALESCE((SELECT SUM(VLRNOTA) FROM base WHERE strftime('%Y-%m', DTFATUR) = strftime('%Y-%m', 'now')), 0) AS mes_atual,
-      COALESCE((SELECT SUM(VLRNOTA) FROM base WHERE strftime('%Y', DTFATUR) = ?), 0) AS ano_atual,
+      COALESCE((SELECT SUM(VLRNOTA) FROM base WHERE strftime('%Y', DTFATUR) = strftime('%Y', 'now')), 0) AS ano_atual,
       COALESCE((SELECT SUM(VLRNOTA) FROM base), 0) AS historico_total
   `;
 
   const db = getDb();
   const enviado = db
     .prepare(buildSql(COMODATO_SAIDA_TOPS))
-    .get(...params, ANO_EXIBICAO_FATURAMENTO) as {
+    .get(...params) as {
     dia: number;
     semana_7d: number;
     mes_atual: number;
@@ -658,7 +656,7 @@ export function comodatoConsolidado(filtro: EmpresaFiltro): ComodatoConsolidado 
   };
   const retornado = db
     .prepare(buildSql(COMODATO_RETORNO_TOPS))
-    .get(...params, ANO_EXIBICAO_FATURAMENTO) as typeof enviado;
+    .get(...params) as typeof enviado;
 
   return {
     filtro: describeFiltro(filtro),
