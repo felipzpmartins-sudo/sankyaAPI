@@ -15,6 +15,7 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   Download,
+  Info,
   LoaderCircle,
   Percent,
   TrendingUp,
@@ -137,6 +138,20 @@ function DrePage() {
           icon={Percent}
         />
       </div>
+
+      {filters.vendedores.length > 0 && (
+        <div className="flex items-start gap-2.5 border border-warning/30 bg-warning/10 px-4 py-3">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            <span className="font-medium text-foreground">
+              O filtro de vendedor recorta apenas a receita.
+            </span>{" "}
+            A receita vem dos pedidos, que têm vendedor; as despesas vêm dos títulos
+            financeiros, que não têm. Com um vendedor selecionado as despesas seguem
+            integrais, então o resultado e a margem não são comparáveis aos do total.
+          </p>
+        </div>
+      )}
 
       {/* DRE Comparativo */}
       <PanelCard
