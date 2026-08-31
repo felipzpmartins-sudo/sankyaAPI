@@ -20,6 +20,8 @@ function sleep(ms: number): Promise<void> {
 function isRetryableError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   if (err.message === "fetch failed") return true;
+  // AbortSignal.timeout lanca DOMException TimeoutError, que nao traz cause.
+  if (err.name === "TimeoutError" || err.name === "AbortError") return true;
   if (/^Sankhya (429|5\d\d):/.test(err.message)) return true;
 
   const cause = err.cause;

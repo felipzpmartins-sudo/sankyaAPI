@@ -1,6 +1,17 @@
 import { config } from "../config.js";
 import type { AuthResponse, GatewayErrorResponse } from "./types.js";
 
+/**
+ * Teto por requisicao. Sem ele um fetch pendurado nunca resolve, a entidade
+ * fica presa no conjunto `inflight` do scheduler e TODOS os ciclos seguintes
+ * daquela entidade sao pulados em silencio — sem somar sucesso nem erro. Foi o
+ * que travou o sync de titulos, e junto com ele o de rateio, que so roda depois.
+ *
+ * Vale por requisicao, nao pela carga inteira: cada pagina tem esse teto.
+ * O abort cai em isRetryableError e entra no retry com backoff.
+ */
+const REQUEST_TIMEOUT_MS = 120_000;
+
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
 let inflight: Promise<string> | null = null;
@@ -23,6 +34,7 @@ function authenticate(): Promise<string> {
           "Content-Type": "application/x-www-form-urlencoded",
         },
         body,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
 
       if (!res.ok) {
@@ -75,6 +87,7 @@ export async function sankhyaRequest<T>(opts: RequestOptions): Promise<T> {
         ...(opts.body ? { "Content-Type": "application/json" } : {}),
       },
       body: opts.body ? JSON.stringify(opts.body) : undefined,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
 
   let token = await getToken();
