@@ -170,6 +170,9 @@ export function startScheduler(): void {
       void runSync("tipos_titulo", syncTiposTitulo);
       void runSync("parceiros", syncParceiros);
       void runSync("vendedores", syncVendedores);
+      // estoque so era carregado no initialSync com runIfMissing, entao
+      // sincronizava uma unica vez na vida da instancia e nunca mais.
+      void runSync("estoque", syncEstoque);
     }, config.SYNC_INTERVAL_SLOW_MS),
   );
 

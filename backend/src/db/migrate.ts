@@ -30,6 +30,7 @@ export function migrate(): MigrateResult {
   migratePedidosIndexes();
   migrateFinanceiroIndexes();
   migrateProdutoEstoqueShape();
+  migrateSyncStateShape();
 
   const versionRow = db
     .prepare("SELECT value FROM metadata WHERE key = 'schema_version'")
@@ -259,4 +260,14 @@ function migrateCentrosResultadoShape(): void {
     CREATE INDEX IF NOT EXISTS idx_centros_resultado_descr
       ON centros_resultado(DESCRCENCUS);
   `);
+}
+
+function migrateSyncStateShape(): void {
+  const db = getDb();
+  const columns = db.prepare("PRAGMA table_info(sync_state)").all() as Array<{ name: string }>;
+  const names = new Set(columns.map((col) => col.name));
+
+  if (!names.has("last_error_at")) {
+    db.exec("ALTER TABLE sync_state ADD COLUMN last_error_at TEXT");
+  }
 }

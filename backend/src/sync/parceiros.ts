@@ -3,7 +3,11 @@ import { loadAllRecords } from "../sankhya/crud.js";
 import type { DecodedEntity } from "../sankhya/types.js";
 import { parseDateBR } from "../utils/dates.js";
 import { parseDecimal } from "../utils/numbers.js";
+import pino from "pino";
+import { config } from "../config.js";
 import { recordSyncError, recordSyncSuccess } from "./state.js";
+
+const logger = pino({ level: config.LOG_LEVEL, transport: { target: "pino-pretty", options: { colorize: true } } });
 
 const FIELDSETS = [
   [
@@ -43,17 +47,40 @@ function text(value: unknown): string | null {
   return s ? s : null;
 }
 
+/**
+ * Os conjuntos sao tentados do mais completo ao mais enxuto. Antes o `catch`
+ * engolia o erro, entao o primeiro conjunto podia falhar em todos os ciclos
+ * sem deixar rastro: CELULAR e LIMCRED nunca chegavam (100% nulo e 100% zero
+ * no snapshot) e nao havia como saber qual descritor o Sankhya recusava.
+ */
 async function loadParceiros(): Promise<DecodedEntity[]> {
   let lastError: unknown;
-  for (const fields of FIELDSETS) {
+  for (const [indice, fields] of FIELDSETS.entries()) {
     try {
-      return await loadAllRecords({
+      const rows = await loadAllRecords({
         rootEntity: "Parceiro",
         fields: [...fields],
         expression: "this.ATIVO = 'S'",
       });
+
+      if (indice > 0) {
+        const usados = fields as readonly string[];
+        logger.warn(
+          {
+            fieldsetUsado: indice,
+            camposPerdidos: FIELDSETS[0].filter((campo) => !usados.includes(campo)),
+          },
+          "sync de parceiros degradado: conjunto completo de campos recusado pelo Sankhya",
+        );
+      }
+
+      return rows;
     } catch (err) {
       lastError = err;
+      logger.warn(
+        { fieldset: indice, err: err instanceof Error ? err.message : String(err) },
+        "conjunto de campos de parceiros recusado pelo Sankhya",
+      );
     }
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
@@ -107,6 +134,12 @@ export async function syncParceiros(): Promise<void> {
           CELULAR: text(row.CELULAR),
           DTCAD: parseDateBR(text(row.DTCAD)),
           LIMCRED: parseDecimal(text(row.LIMCRED)),
+          // TGFPAR nao expoe cidade/UF como texto: guarda CODCID, e o nome e a
+          // sigla vivem em TSICID/TSIUFS. Estes campos nunca foram pedidos ao
+          // Sankhya — ficavam 100% nulos e a quebra geografica da tela de
+          // clientes vinha vazia. Preencher exige descobrir o descritor da
+          // relacao com Cidade nesta instalacao (scripts/probe-sankhya-fields.ts)
+          // antes de adicionar ao FIELDSETS; nao da para adivinhar o nome.
           CIDADE: null,
           UF: null,
           is_cliente: text(row.CLIENTE) === "S" ? 1 : 0,

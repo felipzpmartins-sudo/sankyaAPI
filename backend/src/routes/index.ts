@@ -66,6 +66,12 @@ router.get("/health", (_req, res) => {
       projetos: getSyncState("projetos") ?? null,
       rateio: getSyncState("rateio") ?? null,
       estoque: getSyncState("estoque") ?? null,
+      parceiros: getSyncState("parceiros") ?? null,
+      produtos: getSyncState("produtos") ?? null,
+      vendedores: getSyncState("vendedores") ?? null,
+      naturezas: getSyncState("naturezas") ?? null,
+      tipos_operacao: getSyncState("tipos_operacao") ?? null,
+      tipos_titulo: getSyncState("tipos_titulo") ?? null,
     },
     rows: {
       pedidos: tableCount("pedidos"),

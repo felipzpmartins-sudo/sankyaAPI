@@ -4,7 +4,11 @@ import { executeQuery } from "../sankhya/query.js";
 import { parseDateBR } from "../utils/dates.js";
 import { parseDecimal, parseIntOrNull } from "../utils/numbers.js";
 import { FATURAMENTO_TOPS } from "../services/operacoes.js";
+import pino from "pino";
+import { config } from "../config.js";
 import { recordSyncError, recordSyncSuccess } from "./state.js";
+
+const logger = pino({ level: config.LOG_LEVEL, transport: { target: "pino-pretty", options: { colorize: true } } });
 
 /**
  * Conjunto mínimo de campos que destravam a tela 14.1 (faturamento).
@@ -45,6 +49,12 @@ const FIELDS = [
 ];
 
 const DATA_INICIO = "01/01/2025";
+/** Mesma janela de DATA_INICIO, no formato em que DTNEG e gravado no SQLite. */
+const DATA_INICIO_ISO = "2025-01-01";
+
+/** Ver nota equivalente em sync/titulos.ts. */
+const LIMITE_REMOCAO_PCT = 0.05;
+const LIMITE_REMOCAO_MIN = 100;
 
 function buildTipmovMap(): Map<number, string> {
   const rows = getDb()
@@ -181,20 +191,49 @@ export async function syncPedidos(): Promise<void> {
          synced_at  = excluded.synced_at`,
     );
 
+    // CODPARCTRANSP e sincronizado, mas o campo de apresentacao com o nome
+    // nunca vem na resposta — TRANSPORTADORA_NOME ficava 100% NULL e o painel
+    // de entregas agrupava tudo em "Sem transportadora". Resolvido localmente.
+    const nomeParceiro = new Map<number, string>(
+      (db.prepare("SELECT CODPARC, NOMEPARC FROM parceiros").all() as {
+        CODPARC: number;
+        NOMEPARC: string;
+      }[]).map((parceiro) => [parceiro.CODPARC, parceiro.NOMEPARC]),
+    );
+
     const empresasConhecidas = new Set<number>(
       (db.prepare("SELECT CODEMP FROM empresas").all() as { CODEMP: number }[]).map(
         (r) => r.CODEMP,
       ),
     );
 
+    // Sem isto o sync so faz upsert e pedido excluido no Sankhya nunca sai do
+    // snapshot, inflando faturamento. "Visto" e a uniao de TGFCAB (ativos) com
+    // TGFCAB_EXC (cancelados), que ja sao carregados acima.
+    db.exec("CREATE TEMP TABLE IF NOT EXISTS _pedidos_vistos (NUNOTA INTEGER PRIMARY KEY)");
+    const marcarVisto = db.prepare("INSERT OR IGNORE INTO _pedidos_vistos (NUNOTA) VALUES (?)");
+    const filtroJanela = "DTNEG >= ? AND NUNOTA NOT IN (SELECT NUNOTA FROM _pedidos_vistos)";
+    const contarOrfaos = db.prepare(`SELECT COUNT(*) AS total FROM pedidos WHERE ${filtroJanela}`);
+    const removerOrfaos = db.prepare(`DELETE FROM pedidos WHERE ${filtroJanela}`);
+    const contarJanela = db.prepare("SELECT COUNT(*) AS total FROM pedidos WHERE DTNEG >= ?");
+
+    type ResultadoLimpeza = {
+      removidos: number;
+      ignorada: { orfaos: number; limite: number } | null;
+    };
+
     let inserted = 0;
-    const tx = db.transaction(() => {
+    const tx = db.transaction((): ResultadoLimpeza => {
+      db.prepare("DELETE FROM _pedidos_vistos").run();
       for (const r of rows) {
         const nunota = Number(r.NUNOTA);
         const codtipoper = Number(r.CODTIPOPER);
         if (!Number.isFinite(nunota) || !Number.isFinite(codtipoper)) continue;
 
+        marcarVisto.run(nunota);
+
         const codemp = Number(r.CODEMP);
+        const codparctransp = parseIntOrNull(r.CODPARCTRANSP);
         if (!empresasConhecidas.has(codemp)) {
           upsertEmpresaStub(codemp);
           empresasConhecidas.add(codemp);
@@ -207,8 +246,10 @@ export async function syncPedidos(): Promise<void> {
           CODVEND: parseIntOrNull(r.CODVEND),
           CODTIPOPER: codtipoper,
           TIPMOV: tipmovMap.get(codtipoper) ?? "?",
-          CODPARCTRANSP: parseIntOrNull(r.CODPARCTRANSP),
-          TRANSPORTADORA_NOME: r.ParceiroTransportadora_NOMEPARC ?? null,
+          CODPARCTRANSP: codparctransp,
+          TRANSPORTADORA_NOME:
+            r.ParceiroTransportadora_NOMEPARC ??
+            (codparctransp != null ? nomeParceiro.get(codparctransp) ?? null : null),
           NUMNOTA: parseIntOrNull(r.NUMNOTA),
           SERIENOTA: r.SERIENOTA ?? null,
           DTNEG: parseDateBR(r.DTNEG),
@@ -229,6 +270,7 @@ export async function syncPedidos(): Promise<void> {
       }
 
       for (const r of cancelados) {
+        marcarVisto.run(r.NUNOTA);
         if (!empresasConhecidas.has(r.CODEMP)) {
           upsertEmpresaStub(r.CODEMP);
           empresasConhecidas.add(r.CODEMP);
@@ -261,8 +303,26 @@ export async function syncPedidos(): Promise<void> {
         });
         inserted += 1;
       }
+
+      if (inserted === 0) return { removidos: 0, ignorada: null };
+
+      const totalJanela = (contarJanela.get(DATA_INICIO_ISO) as { total: number }).total;
+      const orfaos = (contarOrfaos.get(DATA_INICIO_ISO) as { total: number }).total;
+      const limite = Math.max(LIMITE_REMOCAO_MIN, Math.floor(totalJanela * LIMITE_REMOCAO_PCT));
+
+      if (orfaos > limite) return { removidos: 0, ignorada: { orfaos, limite } };
+      if (orfaos === 0) return { removidos: 0, ignorada: null };
+
+      removerOrfaos.run(DATA_INICIO_ISO);
+      return { removidos: orfaos, ignorada: null };
     });
-    tx();
+    const limpeza = tx();
+
+    if (limpeza.ignorada) {
+      logger.warn(limpeza.ignorada, "remocao de pedidos orfaos ignorada: volume acima do limite de seguranca");
+    } else if (limpeza.removidos > 0) {
+      logger.info({ removidos: limpeza.removidos }, "pedidos removidos: nao existem mais no Sankhya");
+    }
 
     recordSyncSuccess({
       entity: "pedidos",

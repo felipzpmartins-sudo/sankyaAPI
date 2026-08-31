@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS sync_state (
   last_synced_at    TEXT,
   last_full_sync_at TEXT,
   last_error        TEXT,
+  last_error_at     TEXT,
   success_count     INTEGER NOT NULL DEFAULT 0,
   error_count       INTEGER NOT NULL DEFAULT 0,
   row_count         INTEGER NOT NULL DEFAULT 0
