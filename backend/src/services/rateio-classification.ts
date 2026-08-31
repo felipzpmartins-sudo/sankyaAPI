@@ -89,7 +89,10 @@ function numeroSeguro(value: number): number {
  * - Sem linhas: SEM_RATEIO.
  * - Linhas cuja soma total ou cuja soma em destinos validos nao fecha 100%:
  *   RATEIO_INCOMPLETO.
- * - 100% em exatamente um projeto-empresa: NAO_RATEIO.
+ * - 100% em exatamente um projeto-empresa: NAO_RATEIO. Apesar do nome, isso
+ *   ja e rateio valido — a despesa ficou inteira com uma empresa. A categoria
+ *   existe so para separar destino unico de destino dividido; ambas contam
+ *   como rateio correto e a tela rotula as duas como "Rateado em...".
  * - 100% distribuido entre dois ou mais projetos-empresa: COM_RATEIO.
  */
 export function classificarRateio(linhas: readonly RateioLinhaClassificacao[]): RateioClassificacao {

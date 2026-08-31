@@ -112,7 +112,7 @@ function RateioValidoTable({
   const first = meta.total === 0 ? 0 : meta.page * meta.pageSize + 1;
   const last = Math.min((meta.page + 1) * meta.pageSize, meta.total);
   const isRateio = kind === "com";
-  const statusLabel = isRateio ? "Com rateio (2+ empresas)" : "Não é rateio (1 empresa)";
+  const statusLabel = isRateio ? "Rateado em 2+ empresas" : "Rateado em 1 empresa";
 
   return (
     <>
@@ -459,17 +459,17 @@ function QualidadePage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          label="Com rateio"
+          label="Rateado em 2+ empresas"
           value={formatInt(rateioResumo.com_rateio_ok)}
-          hint={`${formatPercent(pctComRateio)} · 2 ou mais empresas`}
+          hint={`${formatPercent(pctComRateio)} · distribuido entre empresas`}
           tone="success"
           icon={CheckCircle2}
         />
         <KpiCard
-          label="Sem rateio"
+          label="Rateado em 1 empresa"
           value={formatInt(naoRateioTotal)}
-          hint={`${formatPercent(pctNaoRateio)} · 1 empresa de destino`}
-          tone="neutral"
+          hint={`${formatPercent(pctNaoRateio)} · destino unico`}
+          tone="success"
           icon={FileSpreadsheet}
         />
         <KpiCard
@@ -603,8 +603,8 @@ function QualidadePage() {
                 </p>
               )}
               <p className="text-muted-foreground">
-                Um único projeto de destino somando 100% significa pagamento por uma empresa e é
-                classificado como “Não é rateio”.
+                Um único projeto de destino somando 100% já é rateio válido: significa que a
+                despesa ficou inteira com uma empresa.
               </p>
             </div>
           </div>
@@ -623,7 +623,7 @@ function QualidadePage() {
 
       <PanelCard
         title="Detalhamento por lançamento"
-        description="Uma empresa não é rateio; duas ou mais empresas formam rateio. Pendências ficam separadas."
+        description="Um projeto de destino somando 100% já conta como rateio, seja uma empresa ou várias. Pendências ficam separadas."
         action={
           <Button
             variant="outline"
@@ -647,14 +647,14 @@ function QualidadePage() {
           <div className="overflow-x-auto border-b border-border/50 px-5 pt-3">
             <TabsList className="w-max bg-surface-elevated">
               <TabsTrigger value="com" className="gap-2">
-                Com rateio
+                Rateado em 2+ empresas
                 <Badge variant="secondary" className="bg-success/20 text-success">
                   {formatInt(comRateioMeta.total)}
                 </Badge>
               </TabsTrigger>
               <TabsTrigger value="nao" className="gap-2">
-                Sem rateio
-                <Badge variant="secondary" className="bg-primary/15 text-primary">
+                Rateado em 1 empresa
+                <Badge variant="secondary" className="bg-success/20 text-success">
                   {formatInt(naoRateioMeta.total)}
                 </Badge>
               </TabsTrigger>
