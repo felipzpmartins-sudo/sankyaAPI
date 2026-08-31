@@ -89,11 +89,12 @@ function numeroSeguro(value: number): number {
  * - Sem linhas: SEM_RATEIO.
  * - Linhas cuja soma total ou cuja soma em destinos validos nao fecha 100%:
  *   RATEIO_INCOMPLETO.
- * - 100% em exatamente um projeto-empresa: NAO_RATEIO. Apesar do nome, isso
- *   ja e rateio valido — a despesa ficou inteira com uma empresa. A categoria
- *   existe so para separar destino unico de destino dividido; ambas contam
- *   como rateio correto e a tela rotula as duas como "Rateado em...".
- * - 100% distribuido entre dois ou mais projetos-empresa: COM_RATEIO.
+ * - 100% em destinos validos: COM_RATEIO, seja um projeto ou varios. Basta
+ *   um projeto de destino fechando 100% para a despesa estar rateada.
+ *
+ * NAO_RATEIO nao e mais produzido. O membro segue no tipo porque o contrato
+ * da API ainda expoe as listas e contagens dessa categoria, agora sempre
+ * vazias, para nao quebrar consumidores existentes.
  */
 export function classificarRateio(linhas: readonly RateioLinhaClassificacao[]): RateioClassificacao {
   if (linhas.length === 0) {
@@ -134,14 +135,10 @@ export function classificarRateio(linhas: readonly RateioLinhaClassificacao[]): 
     possuiPercentualNegativo;
   const projetos = [...projetosValidos].sort((a, b) => a - b);
 
-  let status: RateioCategoria;
-  if (somaInvalida || destinoInvalido || projetos.length === 0) {
-    status = "RATEIO_INCOMPLETO";
-  } else if (projetos.length === 1) {
-    status = "NAO_RATEIO";
-  } else {
-    status = "COM_RATEIO";
-  }
+  const status: RateioCategoria =
+    somaInvalida || destinoInvalido || projetos.length === 0
+      ? "RATEIO_INCOMPLETO"
+      : "COM_RATEIO";
 
   return {
     status,

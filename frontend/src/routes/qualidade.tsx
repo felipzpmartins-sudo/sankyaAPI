@@ -5,7 +5,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
-  FileSpreadsheet,
   FolderKanban,
   Info,
   LoaderCircle,
@@ -98,21 +97,18 @@ function inferPreset(dataInicio: string, dataFim: string): PeriodPreset {
 function RateioValidoTable({
   items,
   meta,
-  kind,
   isFetching,
   onPageChange,
 }: {
   items: RateioItem[];
   meta: PageMeta;
-  kind: "com" | "nao";
   isFetching: boolean;
   onPageChange: (page: number) => void;
 }) {
   const pages = Math.max(1, Math.ceil(meta.total / meta.pageSize));
   const first = meta.total === 0 ? 0 : meta.page * meta.pageSize + 1;
   const last = Math.min((meta.page + 1) * meta.pageSize, meta.total);
-  const isRateio = kind === "com";
-  const statusLabel = isRateio ? "Rateado em 2+ empresas" : "Rateado em 1 empresa";
+  const statusLabel = "Com rateio";
 
   return (
     <>
@@ -142,11 +138,7 @@ function RateioValidoTable({
           {items.length === 0 && (
             <EmptyTableRow
               colSpan={7}
-              message={
-                isRateio
-                  ? "Nenhuma despesa distribuída para mais de uma empresa neste período."
-                  : "Nenhuma despesa atribuída a uma única empresa neste período."
-              }
+              message="Nenhuma despesa com rateio neste período."
             />
           )}
           {items.map((row) => (
@@ -244,7 +236,7 @@ function RateioValidoTable({
                         </div>
                       </div>
                       <span
-                        className={cn("font-semibold", isRateio ? "text-success" : "text-primary")}
+                        className="font-semibold text-success"
                       >
                         {formatPercent(item.percentual)}
                       </span>
@@ -259,14 +251,13 @@ function RateioValidoTable({
                 <div className="space-y-1.5">
                   <Badge
                     variant="secondary"
-                    className={
-                      isRateio ? "bg-success/20 text-success" : "bg-primary/15 text-primary"
-                    }
+                    className="bg-success/20 text-success"
                   >
                     {statusLabel}
                   </Badge>
                   <div className="whitespace-nowrap text-[10px] text-muted-foreground">
-                    {isRateio ? "2 ou mais empresas" : "1 empresa"} ·{" "}
+                    {row.distribuicao?.length ?? 1}{" "}
+                    {(row.distribuicao?.length ?? 1) === 1 ? "empresa" : "empresas"} ·{" "}
                     {formatPercent(row.total_perc ?? 100)}
                   </div>
                 </div>
@@ -319,7 +310,6 @@ function QualidadePage() {
     inferPreset(filters.dataInicio, filters.dataFim),
   );
   const [comRateioPage, setComRateioPage] = useState(0);
-  const [naoRateioPage, setNaoRateioPage] = useState(0);
   const [exportando, setExportando] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const empresaFilterKey = filters.empresas.join(",");
@@ -339,7 +329,9 @@ function QualidadePage() {
     setNaoRateioPage(0);
   }, [filters.dataInicio, filters.dataFim, empresaFilterKey, projetoFilterKey]);
 
-  const query = useRateioDashboard(filters, comRateioPage, naoRateioPage, RATEIO_PAGE_SIZE);
+  // A categoria de destino unico foi unificada em "com rateio"; a lista
+  // separada segue no contrato da API, sempre vazia, e nao e mais paginada.
+  const query = useRateioDashboard(filters, comRateioPage, 0, RATEIO_PAGE_SIZE);
   usePageSnapshot(query.data?.snapshot_at);
 
   if (query.isPending || query.error) {
@@ -370,13 +362,7 @@ function QualidadePage() {
 
   const rateioResumo = query.data.resumo;
   const comRateio = query.data.com_rateio ?? [];
-  const naoRateio = query.data.nao_rateio ?? [];
   const comRateioMeta = query.data.com_rateio_page ?? {
-    page: 0,
-    pageSize: RATEIO_PAGE_SIZE,
-    total: 0,
-  };
-  const naoRateioMeta = query.data.nao_rateio_page ?? {
     page: 0,
     pageSize: RATEIO_PAGE_SIZE,
     total: 0,
@@ -387,13 +373,10 @@ function QualidadePage() {
   const titulosSemProjeto = rateioResumo.titulos_sem_projeto ?? 0;
   const valorSemProjeto = rateioResumo.valor_sem_projeto ?? 0;
   const valorRateadoTotal = rateioResumo.valor_rateado_total ?? 0;
-  const naoRateioTotal = rateioResumo.nao_rateio ?? naoRateioMeta.total;
   const pctComRateio =
     rateioResumo.total_titulos > 0
       ? (rateioResumo.com_rateio_ok / rateioResumo.total_titulos) * 100
       : 0;
-  const pctNaoRateio =
-    rateioResumo.total_titulos > 0 ? (naoRateioTotal / rateioResumo.total_titulos) * 100 : 0;
   const impactoTotal = rateioResumo.valor_sem_rateio + rateioResumo.valor_rateio_incompleto;
   const semRateioOrdenado = [...semRateio].sort((a, b) => b.valor - a.valor);
   const incompletoOrdenado = [...rateioIncompleto].sort((a, b) => b.valor - a.valor);
@@ -457,20 +440,13 @@ function QualidadePage() {
         </ToggleGroup>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <KpiCard
-          label="Rateado em 2+ empresas"
+          label="Com rateio"
           value={formatInt(rateioResumo.com_rateio_ok)}
-          hint={`${formatPercent(pctComRateio)} · distribuído entre empresas`}
+          hint={`${formatPercent(pctComRateio)} · distribuição fecha 100%`}
           tone="success"
           icon={CheckCircle2}
-        />
-        <KpiCard
-          label="Rateado em 1 empresa"
-          value={formatInt(naoRateioTotal)}
-          hint={`${formatPercent(pctNaoRateio)} · destino único`}
-          tone="success"
-          icon={FileSpreadsheet}
         />
         <KpiCard
           label="Sem distribuição"
@@ -647,15 +623,9 @@ function QualidadePage() {
           <div className="overflow-x-auto border-b border-border/50 px-5 pt-3">
             <TabsList className="w-max bg-surface-elevated">
               <TabsTrigger value="com" className="gap-2">
-                Rateado em 2+ empresas
+                Com rateio
                 <Badge variant="secondary" className="bg-success/20 text-success">
                   {formatInt(comRateioMeta.total)}
-                </Badge>
-              </TabsTrigger>
-              <TabsTrigger value="nao" className="gap-2">
-                Rateado em 1 empresa
-                <Badge variant="secondary" className="bg-success/20 text-success">
-                  {formatInt(naoRateioMeta.total)}
                 </Badge>
               </TabsTrigger>
               <TabsTrigger value="sem" className="gap-2">
@@ -684,19 +654,8 @@ function QualidadePage() {
             <RateioValidoTable
               items={comRateio}
               meta={comRateioMeta}
-              kind="com"
               isFetching={query.isFetching}
               onPageChange={setComRateioPage}
-            />
-          </TabsContent>
-
-          <TabsContent value="nao" className="m-0 overflow-x-auto">
-            <RateioValidoTable
-              items={naoRateio}
-              meta={naoRateioMeta}
-              kind="nao"
-              isFetching={query.isFetching}
-              onPageChange={setNaoRateioPage}
             />
           </TabsContent>
 

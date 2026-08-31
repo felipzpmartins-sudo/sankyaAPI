@@ -935,6 +935,9 @@ export function rateioDiagnosticoCompleto(args: RateioDiagnosticoArgs): RateioDi
       continue;
     }
 
+    // classificarRateio nao produz mais NAO_RATEIO: um projeto de destino
+    // fechando 100% ja e rateio valido. O ramo fica para manter as listas e
+    // contagens da categoria no contrato da API, agora sempre vazias.
     if (classificacao.status === "NAO_RATEIO") {
       naoRateioItens.push({ ...itemBase, status: "NAO_RATEIO" });
       continue;
