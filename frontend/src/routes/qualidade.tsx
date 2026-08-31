@@ -326,7 +326,6 @@ function QualidadePage() {
 
   useEffect(() => {
     setComRateioPage(0);
-    setNaoRateioPage(0);
   }, [filters.dataInicio, filters.dataFim, empresaFilterKey, projetoFilterKey]);
 
   // A categoria de destino unico foi unificada em "com rateio"; a lista
