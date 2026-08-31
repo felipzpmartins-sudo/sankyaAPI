@@ -210,12 +210,21 @@ export async function syncPedidos(): Promise<void> {
     // Sem isto o sync so faz upsert e pedido excluido no Sankhya nunca sai do
     // snapshot, inflando faturamento. "Visto" e a uniao de TGFCAB (ativos) com
     // TGFCAB_EXC (cancelados), que ja sao carregados acima.
-    db.exec("CREATE TEMP TABLE IF NOT EXISTS _pedidos_vistos (NUNOTA INTEGER PRIMARY KEY)");
-    const marcarVisto = db.prepare("INSERT OR IGNORE INTO _pedidos_vistos (NUNOTA) VALUES (?)");
-    const filtroJanela = "DTNEG >= ? AND NUNOTA NOT IN (SELECT NUNOTA FROM _pedidos_vistos)";
+    // A remocao de orfaos usa o proprio carimbo do ciclo em vez de uma tabela
+    // temporaria de NUFIN vistos. Toda linha que a resposta trouxe recebe
+    // synced_at = @carimbo no upsert; o que sobrar na janela com carimbo
+    // anterior nao veio na resposta e portanto nao existe mais no Sankhya.
+    //
+    // A versao com tabela temporaria apagou 548 titulos legitimos em
+    // producao: o teste de pertinencia dependia de a chave gravada no
+    // temporario casar exatamente com a da tabela, e bastava uma divergencia
+    // de tipo para a linha ser considerada ausente. Comparar carimbo nao tem
+    // esse modo de falha e ainda se auto-corrige, porque o proximo ciclo
+    // completo regrava o carimbo de todas as linhas.
+    const filtroJanela = "DTNEG >= @janela AND synced_at < @carimbo";
     const contarOrfaos = db.prepare(`SELECT COUNT(*) AS total FROM pedidos WHERE ${filtroJanela}`);
     const removerOrfaos = db.prepare(`DELETE FROM pedidos WHERE ${filtroJanela}`);
-    const contarJanela = db.prepare("SELECT COUNT(*) AS total FROM pedidos WHERE DTNEG >= ?");
+    const contarJanela = db.prepare("SELECT COUNT(*) AS total FROM pedidos WHERE DTNEG >= @janela");
 
     type ResultadoLimpeza = {
       removidos: number;
@@ -224,14 +233,10 @@ export async function syncPedidos(): Promise<void> {
 
     let inserted = 0;
     const tx = db.transaction((): ResultadoLimpeza => {
-      db.prepare("DELETE FROM _pedidos_vistos").run();
       for (const r of rows) {
         const nunota = Number(r.NUNOTA);
         const codtipoper = Number(r.CODTIPOPER);
         if (!Number.isFinite(nunota) || !Number.isFinite(codtipoper)) continue;
-
-        marcarVisto.run(nunota);
-
         const codemp = Number(r.CODEMP);
         const codparctransp = parseIntOrNull(r.CODPARCTRANSP);
         if (!empresasConhecidas.has(codemp)) {
@@ -270,7 +275,6 @@ export async function syncPedidos(): Promise<void> {
       }
 
       for (const r of cancelados) {
-        marcarVisto.run(r.NUNOTA);
         if (!empresasConhecidas.has(r.CODEMP)) {
           upsertEmpresaStub(r.CODEMP);
           empresasConhecidas.add(r.CODEMP);
@@ -306,14 +310,15 @@ export async function syncPedidos(): Promise<void> {
 
       if (inserted === 0) return { removidos: 0, ignorada: null };
 
-      const totalJanela = (contarJanela.get(DATA_INICIO_ISO) as { total: number }).total;
-      const orfaos = (contarOrfaos.get(DATA_INICIO_ISO) as { total: number }).total;
+      const alvo = { janela: DATA_INICIO_ISO, carimbo: now };
+      const totalJanela = (contarJanela.get(alvo) as { total: number }).total;
+      const orfaos = (contarOrfaos.get(alvo) as { total: number }).total;
       const limite = Math.max(LIMITE_REMOCAO_MIN, Math.floor(totalJanela * LIMITE_REMOCAO_PCT));
 
       if (orfaos > limite) return { removidos: 0, ignorada: { orfaos, limite } };
       if (orfaos === 0) return { removidos: 0, ignorada: null };
 
-      removerOrfaos.run(DATA_INICIO_ISO);
+      removerOrfaos.run(alvo);
       return { removidos: orfaos, ignorada: null };
     });
     const limpeza = tx();
