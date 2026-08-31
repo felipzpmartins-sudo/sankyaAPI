@@ -1,4 +1,20 @@
-export const PROJETOS_EMPRESA_DESTINO = [
+import { getDb } from "../db/connection.js";
+
+/**
+ * Faixa do grupo economico 04. E exatamente o criterio que o filtro do
+ * frontend usa para montar a lista de projetos (lib/filters-context.tsx),
+ * entao os dois lados passam a concordar por construcao.
+ */
+export const FAIXA_EMPRESA_DESTINO = { min: 40_100_000, max: 40_999_999 } as const;
+
+/**
+ * Usado apenas enquanto a tabela `projetos` nao tiver sido sincronizada.
+ * Era a lista fixa anterior: ficou defasada em relacao ao Sankhya, e todo
+ * rateio destinado a um projeto ausente dela (PARAGUAI, MK E-COMMERCE...)
+ * era contado como percentual "fora dos projetos permitidos" e jogava o
+ * titulo em "Distribuicao incompleta" mesmo estando correto no ERP.
+ */
+const FALLBACK_EMPRESA_DESTINO = [
   40_100_000,
   40_200_000,
   40_300_000,
@@ -8,7 +24,33 @@ export const PROJETOS_EMPRESA_DESTINO = [
   40_700_000,
 ] as const;
 
-const PROJETOS_EMPRESA_DESTINO_SET = new Set<number>(PROJETOS_EMPRESA_DESTINO);
+const CACHE_MS = 60_000;
+let cache: { codigos: number[]; conjunto: Set<number>; expiraEm: number } | null = null;
+
+function resolver(): { codigos: number[]; conjunto: Set<number> } {
+  if (cache && Date.now() < cache.expiraEm) return cache;
+
+  let codigos: number[] = [];
+  try {
+    codigos = (
+      getDb()
+        .prepare("SELECT CODPROJ FROM projetos WHERE CODPROJ BETWEEN ? AND ? ORDER BY CODPROJ")
+        .all(FAIXA_EMPRESA_DESTINO.min, FAIXA_EMPRESA_DESTINO.max) as { CODPROJ: number }[]
+    ).map((linha) => linha.CODPROJ);
+  } catch {
+    codigos = [];
+  }
+
+  if (codigos.length === 0) codigos = [...FALLBACK_EMPRESA_DESTINO];
+
+  cache = { codigos, conjunto: new Set(codigos), expiraEm: Date.now() + CACHE_MS };
+  return cache;
+}
+
+/** Projetos que representam empresa de destino, lidos do snapshot do Sankhya. */
+export function projetosEmpresaDestino(): number[] {
+  return resolver().codigos;
+}
 
 export type RateioCategoria =
   | "COM_RATEIO"
@@ -34,7 +76,7 @@ export type RateioClassificacao = {
 const TOLERANCIA_PERCENTUAL = 0.01;
 
 export function isProjetoEmpresaDestino(codproj: number | null | undefined): boolean {
-  return Number.isInteger(codproj) && PROJETOS_EMPRESA_DESTINO_SET.has(Number(codproj));
+  return Number.isInteger(codproj) && resolver().conjunto.has(Number(codproj));
 }
 
 function numeroSeguro(value: number): number {

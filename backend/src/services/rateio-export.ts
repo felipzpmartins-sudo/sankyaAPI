@@ -5,7 +5,7 @@ import {
   type RateioDiagnosticoCompleto,
   type RateioDiagnosticoItem,
 } from "./dashboard-financeiro.js";
-import { PROJETOS_EMPRESA_DESTINO } from "./rateio-classification.js";
+import { projetosEmpresaDestino } from "./rateio-classification.js";
 
 const COR_CABECALHO = "#17365D";
 const COR_TEXTO_CABECALHO = "#FFFFFF";
@@ -91,7 +91,7 @@ function resumoSheet(
     ["Data final", data(diagnostico.periodo.dataFim)],
     ["Empresas de origem filtradas", empresas],
     ["Projetos filtrados", projetos],
-    ["Projetos que representam empresas de destino", PROJETOS_EMPRESA_DESTINO.join(", ")],
+    ["Projetos que representam empresas de destino", projetosEmpresaDestino().join(", ")],
     ["Snapshot dos titulos", dataHora(diagnostico.snapshot_at)],
     ["Gerado em", { value: new Date(), type: Date, format: FORMATO_DATA_HORA }],
     ["Total de titulos", resumo.total_titulos],
