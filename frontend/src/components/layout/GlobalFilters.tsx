@@ -34,6 +34,12 @@ function MultiSelect({
         ? "Todos"
         : `${selected.length} selecionados`;
 
+  const [busca, setBusca] = useState("");
+  const termo = busca.trim().toLowerCase();
+  const visiveis = termo
+    ? options.filter((o) => o.label.toLowerCase().includes(termo))
+    : options;
+
   const toggle = (val: number) =>
     onChange(selected.includes(val) ? selected.filter((v) => v !== val) : [...selected, val]);
 
@@ -58,6 +64,9 @@ function MultiSelect({
         <div className="flex items-center justify-between px-3 py-2">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {label}
+            <span className="ml-1.5 font-normal normal-case tracking-normal">
+              {selected.length} de {options.length}
+            </span>
           </span>
           <button
             className="text-xs text-primary hover:underline"
@@ -69,9 +78,24 @@ function MultiSelect({
           </button>
         </div>
         <Separator />
+        {options.length > 8 && (
+          <div className="px-2 pb-2 pt-2">
+            <Input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder={`Buscar ${label.toLowerCase()}...`}
+              className="h-8 text-xs"
+            />
+          </div>
+        )}
         <ScrollArea className="max-h-64">
           <div className="p-1">
-            {options.map((opt) => {
+            {visiveis.length === 0 && (
+              <p className="px-2 py-3 text-center text-xs text-muted-foreground">
+                Nenhum resultado para “{busca}”.
+              </p>
+            )}
+            {visiveis.map((opt) => {
               const checked = selected.includes(opt.value);
               return (
                 <label
