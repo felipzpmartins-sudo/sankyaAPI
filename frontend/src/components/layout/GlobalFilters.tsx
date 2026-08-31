@@ -34,12 +34,6 @@ function MultiSelect({
         ? "Todos"
         : `${selected.length} selecionados`;
 
-  const [busca, setBusca] = useState("");
-  const termo = busca.trim().toLowerCase();
-  const visiveis = termo
-    ? options.filter((o) => o.label.toLowerCase().includes(termo))
-    : options;
-
   const toggle = (val: number) =>
     onChange(selected.includes(val) ? selected.filter((v) => v !== val) : [...selected, val]);
 
@@ -78,24 +72,14 @@ function MultiSelect({
           </button>
         </div>
         <Separator />
-        {options.length > 8 && (
-          <div className="px-2 pb-2 pt-2">
-            <Input
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder={`Buscar ${label.toLowerCase()}...`}
-              className="h-8 text-xs"
-            />
-          </div>
-        )}
-        <ScrollArea className="max-h-64">
+        {/* type="always" mantem a barra visivel: no padrao "hover" do Radix a
+            lista parecia terminar no oitavo item. */}
+        <ScrollArea
+          type="always"
+          className="max-h-72 [&_[data-radix-scroll-area-thumb]]:bg-muted-foreground/40"
+        >
           <div className="p-1">
-            {visiveis.length === 0 && (
-              <p className="px-2 py-3 text-center text-xs text-muted-foreground">
-                Nenhum resultado para “{busca}”.
-              </p>
-            )}
-            {visiveis.map((opt) => {
+            {options.map((opt) => {
               const checked = selected.includes(opt.value);
               return (
                 <label
