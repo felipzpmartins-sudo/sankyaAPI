@@ -659,33 +659,32 @@ function QualidadePage() {
           </TabsContent>
 
           <TabsContent value="sem" className="m-0 overflow-x-auto">
-            <Table>
+            <Table className="min-w-[2100px]">
               <TableHeader>
                 <TableRow className="border-border/60 hover:bg-transparent">
-                  <TableHead className="text-[11px] uppercase text-muted-foreground">
-                    NUFIN
-                  </TableHead>
-                  <TableHead className="text-[11px] uppercase text-muted-foreground">
-                    Fornecedor
-                  </TableHead>
-                  <TableHead className="text-right text-[11px] uppercase text-muted-foreground">
-                    Valor
-                  </TableHead>
-                  <TableHead className="text-[11px] uppercase text-muted-foreground">
-                    Data
-                  </TableHead>
-                  <TableHead className="text-[11px] uppercase text-muted-foreground">
-                    Projeto do título
-                  </TableHead>
-                  <TableHead className="text-[11px] uppercase text-muted-foreground">
-                    Status
-                  </TableHead>
+                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground">NUFIN</TableHead>
+                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground">Nota</TableHead>
+                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground">Fornecedor</TableHead>
+                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground">Histórico</TableHead>
+                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground">Empresa</TableHead>
+                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground">Natureza</TableHead>
+                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground text-right">Valor</TableHead>
+                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground text-right">Juros</TableHead>
+                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground text-right">Multa</TableHead>
+                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground text-right">Desconto</TableHead>
+                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground text-right">Baixado</TableHead>
+                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground">Negociação</TableHead>
+                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground">Vencimento</TableHead>
+                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground">Baixa</TableHead>
+                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground">Projeto do título</TableHead>
+                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground">Rateado (Sankhya)</TableHead>
+                  <TableHead className="whitespace-nowrap text-[11px] uppercase text-muted-foreground">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {semRateioOrdenado.length === 0 && (
                   <EmptyTableRow
-                    colSpan={6}
+                    colSpan={17}
                     message="Nenhum título sem distribuição neste período."
                   />
                 )}
@@ -694,18 +693,44 @@ function QualidadePage() {
                     key={row.nufin}
                     className="border-border/40 hover:bg-surface-elevated/60"
                   >
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {row.nufin}
+                    <TableCell className="font-mono text-xs text-muted-foreground">{row.nufin}</TableCell>
+                    <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+                      {row.numnota ? `${row.numnota}${row.serienota ? "/" + row.serienota : ""}` : "—"}
                     </TableCell>
-                    <TableCell className="text-foreground">
-                      {row.parceiro ?? "Sem fornecedor"}
+                    <TableCell className="text-foreground">{row.parceiro ?? "Sem fornecedor"}</TableCell>
+                    <TableCell className="max-w-[320px] truncate text-muted-foreground" title={row.historico ?? ""}>
+                      {row.historico ?? "—"}
                     </TableCell>
-                    <TableCell className="text-right font-semibold text-foreground">
-                      {formatCurrency(row.valor)}
+                    <TableCell className="whitespace-nowrap text-muted-foreground">{row.empresa ?? row.codemp}</TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
+                      {row.natureza ?? "—"}{row.codnat ? ` (${row.codnat})` : ""}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{formatDate(row.data)}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {row.projeto ?? "Não informado"}
+                    <TableCell className="text-right font-semibold text-foreground">{formatCurrency(row.valor)}</TableCell>
+                    <TableCell className={cn("text-right", row.valor_juros > 0 ? "text-warning" : "text-muted-foreground")}>
+                      {formatCurrency(row.valor_juros)}
+                    </TableCell>
+                    <TableCell className={cn("text-right", row.valor_multa > 0 ? "text-warning" : "text-muted-foreground")}>
+                      {formatCurrency(row.valor_multa)}
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground">{formatCurrency(row.valor_desconto)}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">{formatCurrency(row.valor_baixado)}</TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.data)}</TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.vencimento)}</TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
+                      {row.baixa ? formatDate(row.baixa) : "Em aberto"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{row.projeto ?? "Não informado"}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="secondary"
+                        className={
+                          row.rateado_sankhya === "S"
+                            ? "bg-danger/20 text-danger"
+                            : "bg-surface-elevated text-muted-foreground"
+                        }
+                      >
+                        {row.rateado_sankhya === "S" ? "S — diverge" : row.rateado_sankhya ?? "—"}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="bg-warning/20 text-warning">

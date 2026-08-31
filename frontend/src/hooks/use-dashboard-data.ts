@@ -93,6 +93,13 @@ export type RateioItem = {
   parceiro: string | null;
   valor: number;
   valor_baixado: number;
+  valor_juros: number;
+  valor_multa: number;
+  valor_desconto: number;
+  historico: string | null;
+  rateado_sankhya: string | null;
+  numnota: number | null;
+  serienota: string | null;
   valor_aberto: number;
   data: string | null;
   vencimento: string | null;

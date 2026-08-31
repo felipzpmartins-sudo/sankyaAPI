@@ -94,6 +94,13 @@ export type RateioDiagnosticoItem = {
   valor: number;
   valor_baixado: number;
   valor_aberto: number;
+  valor_juros: number;
+  valor_multa: number;
+  valor_desconto: number;
+  historico: string | null;
+  rateado_sankhya: string | null;
+  numnota: number | null;
+  serienota: string | null;
   data: string | null;
   vencimento: string | null;
   baixa: string | null;
@@ -764,6 +771,13 @@ export function rateioDiagnosticoCompleto(args: RateioDiagnosticoArgs): RateioDi
       t.CODNAT,
       t.VLRDESDOB,
       t.VLRBAIXA,
+      t.VLRJURO,
+      t.VLRMULTA,
+      t.VLRDESC,
+      t.HISTORICO,
+      t.RATEADO,
+      t.NUMNOTA,
+      t.SERIENOTA,
       t.valor_aberto,
       t.is_em_aberto,
       t.DTNEG,
@@ -793,6 +807,13 @@ export function rateioDiagnosticoCompleto(args: RateioDiagnosticoArgs): RateioDi
     CODNAT: number | null;
     VLRDESDOB: number;
     VLRBAIXA: number;
+    VLRJURO: number | null;
+    VLRMULTA: number | null;
+    VLRDESC: number | null;
+    HISTORICO: string | null;
+    RATEADO: string | null;
+    NUMNOTA: number | null;
+    SERIENOTA: string | null;
     valor_aberto: number;
     is_em_aberto: number;
     DTNEG: string | null;
@@ -816,6 +837,13 @@ export function rateioDiagnosticoCompleto(args: RateioDiagnosticoArgs): RateioDi
       t.CODNAT,
       t.VLRDESDOB,
       t.VLRBAIXA,
+      t.VLRJURO,
+      t.VLRMULTA,
+      t.VLRDESC,
+      t.HISTORICO,
+      t.RATEADO,
+      t.NUMNOTA,
+      t.SERIENOTA,
       t.valor_aberto,
       t.is_em_aberto,
       t.DTNEG,
@@ -849,6 +877,13 @@ export function rateioDiagnosticoCompleto(args: RateioDiagnosticoArgs): RateioDi
     CODNAT: number | null;
     VLRDESDOB: number;
     VLRBAIXA: number;
+    VLRJURO: number | null;
+    VLRMULTA: number | null;
+    VLRDESC: number | null;
+    HISTORICO: string | null;
+    RATEADO: string | null;
+    NUMNOTA: number | null;
+    SERIENOTA: string | null;
     valor_aberto: number;
     is_em_aberto: number;
     DTNEG: string | null;
@@ -917,6 +952,13 @@ export function rateioDiagnosticoCompleto(args: RateioDiagnosticoArgs): RateioDi
       valor: round2(first.VLRDESDOB),
       valor_baixado: round2(first.VLRBAIXA),
       valor_aberto: round2(first.valor_aberto),
+      valor_juros: round2(first.VLRJURO ?? 0),
+      valor_multa: round2(first.VLRMULTA ?? 0),
+      valor_desconto: round2(first.VLRDESC ?? 0),
+      historico: first.HISTORICO ?? null,
+      rateado_sankhya: first.RATEADO ?? null,
+      numnota: first.NUMNOTA ?? null,
+      serienota: first.SERIENOTA ?? null,
       data: first.DTNEG,
       vencimento: first.DTVENC,
       baixa: first.DHBAIXA,
@@ -976,6 +1018,13 @@ export function rateioDiagnosticoCompleto(args: RateioDiagnosticoArgs): RateioDi
     valor: round2(row.VLRDESDOB),
     valor_baixado: round2(row.VLRBAIXA),
     valor_aberto: round2(row.valor_aberto),
+    valor_juros: round2(row.VLRJURO ?? 0),
+    valor_multa: round2(row.VLRMULTA ?? 0),
+    valor_desconto: round2(row.VLRDESC ?? 0),
+    historico: row.HISTORICO ?? null,
+    rateado_sankhya: row.RATEADO ?? null,
+    numnota: row.NUMNOTA ?? null,
+    serienota: row.SERIENOTA ?? null,
     data: row.DTNEG,
     vencimento: row.DTVENC,
     baixa: row.DHBAIXA,

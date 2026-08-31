@@ -37,6 +37,18 @@ const FIELDS = [
   "DTCONTAB",
   "VLRDESDOB",
   "VLRBAIXA",
+  // Composicao do valor: sem estes campos nao da para dizer se o valor do
+  // titulo embute juros, multa ou desconto — validados um a um contra a API.
+  "VLRJURO",
+  "VLRMULTA",
+  "VLRDESC",
+  // HISTORICO descreve a operacao ("RECOMPRA NF. 218...", "Taxas de Desconto").
+  "HISTORICO",
+  // Flag nativa do Sankhya para rateio. Serve de conferencia independente da
+  // classificacao que o painel deriva da TGFRAT.
+  "RATEADO",
+  "NUMNOTA",
+  "SERIENOTA",
 ];
 
 /**
@@ -56,6 +68,12 @@ const DATA_INICIO_ISO = "2025-01-01";
  */
 const LIMITE_REMOCAO_PCT = 0.05;
 const LIMITE_REMOCAO_MIN = 100;
+
+function texto(value: unknown): string | null {
+  if (value == null) return null;
+  const s = String(value).trim();
+  return s ? s : null;
+}
 
 function upsertEmpresaStub(codemp: number): void {
   getDb()
@@ -87,11 +105,15 @@ export async function syncTitulos(): Promise<void> {
       `INSERT INTO titulos
           (NUFIN, NUNOTA, CODEMP, CODPARC, CODCENCUS, CODPROJ, CODTIPTIT, CODNAT, RECDESP, PROVISAO, tipo,
           DTNEG, DTVENC, DHBAIXA, DHCONCIL, DTCONTAB,
-            VLRDESDOB, VLRBAIXA, valor_aberto, is_em_aberto, synced_at)
+            VLRDESDOB, VLRBAIXA, VLRJURO, VLRMULTA, VLRDESC,
+            HISTORICO, RATEADO, NUMNOTA, SERIENOTA,
+            valor_aberto, is_em_aberto, synced_at)
        VALUES
           (@NUFIN, @NUNOTA, @CODEMP, @CODPARC, @CODCENCUS, @CODPROJ, @CODTIPTIT, @CODNAT, @RECDESP, @PROVISAO, @tipo,
           @DTNEG, @DTVENC, @DHBAIXA, @DHCONCIL, @DTCONTAB,
-            @VLRDESDOB, @VLRBAIXA, @valor_aberto, @is_em_aberto, @synced_at)
+            @VLRDESDOB, @VLRBAIXA, @VLRJURO, @VLRMULTA, @VLRDESC,
+            @HISTORICO, @RATEADO, @NUMNOTA, @SERIENOTA,
+            @valor_aberto, @is_em_aberto, @synced_at)
        ON CONFLICT(NUFIN) DO UPDATE SET
          NUNOTA       = excluded.NUNOTA,
          CODEMP       = excluded.CODEMP,
@@ -110,6 +132,13 @@ export async function syncTitulos(): Promise<void> {
          DTCONTAB     = excluded.DTCONTAB,
          VLRDESDOB    = excluded.VLRDESDOB,
          VLRBAIXA     = excluded.VLRBAIXA,
+         VLRJURO      = excluded.VLRJURO,
+         VLRMULTA     = excluded.VLRMULTA,
+         VLRDESC      = excluded.VLRDESC,
+         HISTORICO    = excluded.HISTORICO,
+         RATEADO      = excluded.RATEADO,
+         NUMNOTA      = excluded.NUMNOTA,
+         SERIENOTA    = excluded.SERIENOTA,
          valor_aberto = excluded.valor_aberto,
          is_em_aberto = excluded.is_em_aberto,
          synced_at    = excluded.synced_at`,
@@ -183,6 +212,13 @@ export async function syncTitulos(): Promise<void> {
           DTCONTAB: parseDateBR(r.DTCONTAB),
           VLRDESDOB: vlrdesdob,
           VLRBAIXA: vlrbaixa,
+          VLRJURO: parseDecimal(r.VLRJURO),
+          VLRMULTA: parseDecimal(r.VLRMULTA),
+          VLRDESC: parseDecimal(r.VLRDESC),
+          HISTORICO: texto(r.HISTORICO),
+          RATEADO: texto(r.RATEADO),
+          NUMNOTA: r.NUMNOTA != null && Number.isFinite(Number(r.NUMNOTA)) ? Number(r.NUMNOTA) : null,
+          SERIENOTA: texto(r.SERIENOTA),
           valor_aberto: valorAberto,
           is_em_aberto: isEmAberto ? 1 : 0,
           synced_at: now,
