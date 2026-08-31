@@ -93,6 +93,9 @@ function MultiSelect({
   );
 }
 
+/** Telas em que o recorte por vendedor faz sentido. */
+const ROTAS_COM_VENDEDOR = new Set(["/", "/dre"]);
+
 export function GlobalFilters() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const { filters, empresas, projetos, vendedores, setFilters, resetFilters } = useFilters();
@@ -127,7 +130,7 @@ export function GlobalFilters() {
       });
     }
   }
-  if (pathname === "/" && filters.vendedores.length > 0 && filters.vendedores.length < vendedores.length) {
+  if (ROTAS_COM_VENDEDOR.has(pathname) && filters.vendedores.length > 0 && filters.vendedores.length < vendedores.length) {
     const nomes = filters.vendedores
       .map((codvend) => vendedores.find((vendedor) => vendedor.codvend === codvend)?.nome)
       .filter(Boolean);
@@ -153,7 +156,7 @@ export function GlobalFilters() {
         selected={filters.projetos}
         onChange={(projetos) => setFilters({ projetos })}
       />
-      {pathname === "/" && (
+      {ROTAS_COM_VENDEDOR.has(pathname) && (
         <MultiSelect
           label="Vendedor"
           icon={<UserRound className="h-3.5 w-3.5" />}

@@ -187,6 +187,7 @@ dashboardRouter.get("/vendedores/hoje", (req, res, next) => {
 
 const dreQuery = z.object({
   empresa: empresaParam,
+  vendedor: vendedorParam,
   periodo: z.enum(["mes", "ano"]).default("ano"),
   dataInicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   dataFim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -231,8 +232,8 @@ dashboardRouter.get("/financeiro/dre", (req, res, next) => {
 
 dashboardRouter.get("/financeiro/dre-por-projeto", (req, res, next) => {
   try {
-    const { empresa, periodo, dataInicio, dataFim, codProj } = dreQuery.parse(req.query);
-    res.json(drePorProjeto(empresa, periodo, { dataInicio, dataFim, codProj }));
+    const { empresa, periodo, dataInicio, dataFim, codProj, vendedor } = dreQuery.parse(req.query);
+    res.json(drePorProjeto(empresa, periodo, { dataInicio, dataFim, codProj }, vendedor));
   } catch (err) {
     next(err);
   }

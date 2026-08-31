@@ -1,5 +1,6 @@
 import { getDb } from "../db/connection.js";
 import { type EmpresaFiltro, empresaToSqlClause } from "../utils/empresa.js";
+import { type VendedorFiltro, vendedorToSqlClause } from "../utils/vendedor.js";
 import { FATURAMENTO_TOPS, inListClause } from "./operacoes.js";
 import {
   classificarRateio,
@@ -397,11 +398,18 @@ export function drePorProjeto(
   filtro: EmpresaFiltro,
   periodo: Periodo,
   intervalo: IntervaloDatas = {},
+  vendedor: VendedorFiltro = { modo: "todos" },
 ): DrePorProjeto {
   const empresaTitulos = empresaToSqlClause(filtro, "t.CODEMP");
   const empresaTitulosWhere = empresaTitulos.clause ? ` AND ${empresaTitulos.clause}` : "";
   const empresaPedidos = empresaToSqlClause(filtro, "p.CODEMP");
   const empresaPedidosWhere = empresaPedidos.clause ? ` AND ${empresaPedidos.clause}` : "";
+  // O filtro de vendedor so alcanca a receita: ela vem de `pedidos`, que tem
+  // CODVEND. As despesas vem de `titulos`, onde nao existe vendedor — um
+  // titulo a pagar de fornecedor nao e atribuivel a ninguem. Com vendedor
+  // selecionado a receita e recortada e as despesas seguem integrais.
+  const vendedorPedidos = vendedorToSqlClause(vendedor, "p.CODVEND");
+  const vendedorPedidosWhere = vendedorPedidos.clause ? ` AND ${vendedorPedidos.clause}` : "";
   const codProj = normalizedCodProj(intervalo.codProj);
   const projetoWhere = (alias: string) => codProj.length > 0
     ? `${alias}.CODPROJ IN (${placeholders(codProj)})`
@@ -441,6 +449,7 @@ export function drePorProjeto(
         AND ${inListClause("p.CODTIPOPER", FATURAMENTO_TOPS)}
         AND p.CODPROJ IS NOT NULL
         ${empresaPedidosWhere}
+        ${vendedorPedidosWhere}
       GROUP BY p.CODPROJ
     ),
     projetos_alvo AS (
@@ -485,6 +494,7 @@ export function drePorProjeto(
       ...empresaTitulos.params,
       ...periodoParams(periodo, intervalo),
       ...empresaPedidos.params,
+      ...vendedorPedidos.params,
       ...codProj,
       ...codProj,
       ...codProj,
