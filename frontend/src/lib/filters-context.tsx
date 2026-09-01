@@ -52,6 +52,14 @@ function defaultFilters(): GlobalFilters {
 
 const Ctx = createContext<FiltersCtx | null>(null);
 
+/**
+ * Projetos que caem na faixa do grupo 04 mas nao sao empresa de destino.
+ * Espelha EXCLUIDOS_EMPRESA_DESTINO em services/rateio-classification.ts —
+ * as duas listas precisam concordar ou o filtro oferece um destino que a
+ * classificacao rejeita.
+ */
+const PROJETOS_EXCLUIDOS = new Set<number>([40_701_000]);
+
 export function FiltersProvider({ children }: { children: ReactNode }) {
   const [filters, setState] = useState<GlobalFilters>(defaultFilters);
   const options = useFilterOptions();
@@ -62,7 +70,9 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
     if (!snapshotDate || snapshotApplied.current) return;
     snapshotApplied.current = true;
     const grupo04 = (options.data?.projetos ?? [])
-      .filter((projeto) => projeto.codproj >= 40_100_000 && projeto.codproj <= 40_999_999)
+      .filter((projeto) => projeto.codproj >= 40_100_000 &&
+          projeto.codproj <= 40_999_999 &&
+          !PROJETOS_EXCLUIDOS.has(projeto.codproj))
       .map((projeto) => projeto.codproj);
     setState((previous) => ({
       ...previous,
@@ -82,7 +92,9 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
       const next = defaultFilters();
       const snapshotDate = options.data?.snapshotDate;
       const grupo04 = (options.data?.projetos ?? [])
-        .filter((projeto) => projeto.codproj >= 40_100_000 && projeto.codproj <= 40_999_999)
+        .filter((projeto) => projeto.codproj >= 40_100_000 &&
+          projeto.codproj <= 40_999_999 &&
+          !PROJETOS_EXCLUIDOS.has(projeto.codproj))
         .map((projeto) => projeto.codproj);
       setState({
         ...next,

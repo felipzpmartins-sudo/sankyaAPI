@@ -24,6 +24,15 @@ const FALLBACK_EMPRESA_DESTINO = [
   40_700_000,
 ] as const;
 
+/**
+ * Projetos que caem na faixa mas nao sao empresa de destino de rateio.
+ *
+ * 40701000 (PARAGUAI) foi excluido a pedido do financeiro. Nao ha impacto em
+ * numero: a consulta a TGFRAT na janela do sync nao encontrou nenhuma parcela
+ * destinada a ele, entao nenhum titulo muda de classificacao.
+ */
+const EXCLUIDOS_EMPRESA_DESTINO = new Set<number>([40_701_000]);
+
 const CACHE_MS = 60_000;
 let cache: { codigos: number[]; conjunto: Set<number>; expiraEm: number } | null = null;
 
@@ -36,7 +45,9 @@ function resolver(): { codigos: number[]; conjunto: Set<number> } {
       getDb()
         .prepare("SELECT CODPROJ FROM projetos WHERE CODPROJ BETWEEN ? AND ? ORDER BY CODPROJ")
         .all(FAIXA_EMPRESA_DESTINO.min, FAIXA_EMPRESA_DESTINO.max) as { CODPROJ: number }[]
-    ).map((linha) => linha.CODPROJ);
+    )
+      .map((linha) => linha.CODPROJ)
+      .filter((codigo) => !EXCLUIDOS_EMPRESA_DESTINO.has(codigo));
   } catch {
     codigos = [];
   }
