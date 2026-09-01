@@ -23,6 +23,7 @@ import {
 import { useState } from "react";
 
 import { KpiCard } from "@/components/dashboard/KpiCard";
+import { PeriodPresetToggle } from "@/components/dashboard/PeriodPresetToggle";
 import { PanelCard } from "@/components/dashboard/PanelCard";
 import { QueryState } from "@/components/dashboard/QueryState";
 import {
@@ -72,7 +73,7 @@ export const Route = createFileRoute("/dre")({
 });
 
 function DrePage() {
-  const { filters } = useFilters();
+  const { filters, setFilters } = useFilters();
   const [receberPage, setReceberPage] = useState(0);
   const [pagarPage, setPagarPage] = useState(0);
   const [exportando, setExportando] = useState<FinanceiroExportTipo | null>(null);
@@ -107,6 +108,17 @@ function DrePage() {
           {exportError}
         </div>
       )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          Hoje, semanal, mensal e período — {filters.dataInicio} a {filters.dataFim}
+        </p>
+        <PeriodPresetToggle
+          dataInicio={filters.dataInicio}
+          dataFim={filters.dataFim}
+          onChange={(faixa) => setFilters(faixa)}
+        />
+      </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
