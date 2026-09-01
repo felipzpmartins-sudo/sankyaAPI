@@ -214,7 +214,14 @@ export type VendasEscopo = {
 function vendasEscopoSql(alias: string, escopo: VendasEscopo = {}): { clause: string; params: number[] } {
   if (!escopo.codProj?.length) return { clause: "", params: [] };
   return {
-    clause: `${alias}.CODPROJ IN (${escopo.codProj.map(() => "?").join(", ")})`,
+    // Registro sem projeto (CODPROJ 0 ou nulo) sempre entra, mesmo com
+    // filtro ativo. Ele nao casa com nenhuma selecao, entao antes sumia do
+    // total: em agosto/2026 eram 26 notas e R$ 68.205,34, 18% do
+    // faturamento do mes, invisiveis sem nenhum aviso na tela. Um total de
+    // faturamento que descarta o nao classificado deixa de ser o
+    // faturamento da empresa.
+    clause: `(COALESCE(${alias}.CODPROJ, 0) IN (${escopo.codProj.map(() => "?").join(", ")})`
+      + ` OR COALESCE(${alias}.CODPROJ, 0) = 0)`,
     params: escopo.codProj,
   };
 }

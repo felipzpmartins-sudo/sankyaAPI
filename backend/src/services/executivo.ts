@@ -102,8 +102,14 @@ export function listarMovimentosFinanceiros(
 ): MovimentoFinanceiro[] {
   const [dataInicio, dataFimExclusivo] = makeRange(range);
   const empresaTitulos = empresaToSqlClause(filtro, "t.CODEMP");
+  // Registro sem projeto (CODPROJ 0 ou nulo) sempre entra, mesmo com
+  // filtro ativo. Ele nao casa com nenhuma selecao, entao antes sumia do
+  // total: em agosto/2026 eram 26 notas e R$ 68.205,34, 18% do
+  // faturamento do mes, invisiveis sem nenhum aviso na tela. Um total de
+  // faturamento que descarta o nao classificado deixa de ser o
+  // faturamento da empresa.
   const projetoWhere = codProj.length > 0
-    ? ` AND COALESCE(t.CODPROJ, 0) IN (${codProj.map(() => "?").join(", ")})`
+    ? ` AND (COALESCE(t.CODPROJ, 0) IN (${codProj.map(() => "?").join(", ")}) OR COALESCE(t.CODPROJ, 0) = 0)`
     : "";
   const limite = limit == null ? "" : " LIMIT ?";
   const params = [
@@ -169,7 +175,7 @@ export function executivoResumo(
   const empresaPedidos = empresaToSqlClause(filtro, "p.CODEMP");
   const empresaTitulos = empresaToSqlClause(filtro, "t.CODEMP");
   const vendedorSql = vendedorToSqlClause(vendedor, "p.CODVEND");
-  const projetoWhere = codProj.length > 0 ? ` AND COALESCE(p.CODPROJ, 0) IN (${codProj.map(() => "?").join(", ")})` : "";
+  const projetoWhere = codProj.length > 0 ? ` AND (COALESCE(p.CODPROJ, 0) IN (${codProj.map(() => "?").join(", ")}) OR COALESCE(p.CODPROJ, 0) = 0)` : "";
   const salesExtras = [empresaPedidos, vendedorSql].filter((item) => item.clause);
   const salesWhere = salesExtras.map((item) => ` AND ${item.clause}`).join("");
   const salesParams = salesExtras.flatMap((item) => item.params);
@@ -319,7 +325,7 @@ export function executivoResumo(
       FROM titulos t
       WHERE t.PROVISAO = 'N'
       ${empresaTitulos.clause ? ` AND ${empresaTitulos.clause}` : ""}
-      ${codProj.length > 0 ? ` AND COALESCE(t.CODPROJ, 0) IN (${codProj.map(() => "?").join(", ")})` : ""}
+      ${codProj.length > 0 ? ` AND (COALESCE(t.CODPROJ, 0) IN (${codProj.map(() => "?").join(", ")}) OR COALESCE(t.CODPROJ, 0) = 0)` : ""}
       `,
     )
     .get(...empresaTitulos.params, ...codProj) as {
@@ -340,7 +346,7 @@ export function executivoResumo(
         AND t.DHBAIXA IS NOT NULL
         AND t.DHBAIXA >= date(?) AND t.DHBAIXA < date(?)
         ${empresaTitulos.clause ? ` AND ${empresaTitulos.clause}` : ""}
-        ${codProj.length > 0 ? ` AND COALESCE(t.CODPROJ, 0) IN (${codProj.map(() => "?").join(", ")})` : ""}
+        ${codProj.length > 0 ? ` AND (COALESCE(t.CODPROJ, 0) IN (${codProj.map(() => "?").join(", ")}) OR COALESCE(t.CODPROJ, 0) = 0)` : ""}
       `,
     )
     .get(dataInicio, dataFimExclusivo, ...empresaTitulos.params, ...codProj) as { qtd: number; valor: number };
@@ -354,7 +360,7 @@ export function executivoResumo(
         AND t.DHBAIXA IS NOT NULL
         AND t.DHBAIXA >= date(?) AND t.DHBAIXA < date(?)
         ${empresaTitulos.clause ? ` AND ${empresaTitulos.clause}` : ""}
-        ${codProj.length > 0 ? ` AND COALESCE(t.CODPROJ, 0) IN (${codProj.map(() => "?").join(", ")})` : ""}
+        ${codProj.length > 0 ? ` AND (COALESCE(t.CODPROJ, 0) IN (${codProj.map(() => "?").join(", ")}) OR COALESCE(t.CODPROJ, 0) = 0)` : ""}
       `,
     )
     .get(dataInicio, dataFimExclusivo, ...empresaTitulos.params, ...codProj) as { qtd: number; valor: number };
@@ -373,7 +379,7 @@ export function executivoResumo(
           "LOWER(COALESCE(n.DESCRNAT, '')) LIKE '%factoring%'",
         ].join(" OR ")})
         ${empresaTitulos.clause ? ` AND ${empresaTitulos.clause}` : ""}
-        ${codProj.length > 0 ? ` AND COALESCE(t.CODPROJ, 0) IN (${codProj.map(() => "?").join(", ")})` : ""}
+        ${codProj.length > 0 ? ` AND (COALESCE(t.CODPROJ, 0) IN (${codProj.map(() => "?").join(", ")}) OR COALESCE(t.CODPROJ, 0) = 0)` : ""}
       `,
     )
     .get(dataInicio, dataFimExclusivo, ...empresaTitulos.params, ...codProj) as { qtd: number; valor: number };
@@ -387,7 +393,7 @@ export function executivoResumo(
         AND t.DHBAIXA >= date(?) AND t.DHBAIXA < date(?)
         AND date(t.DTVENC) < date(?)
         ${empresaTitulos.clause ? ` AND ${empresaTitulos.clause}` : ""}
-        ${codProj.length > 0 ? ` AND COALESCE(t.CODPROJ, 0) IN (${codProj.map(() => "?").join(", ")})` : ""}
+        ${codProj.length > 0 ? ` AND (COALESCE(t.CODPROJ, 0) IN (${codProj.map(() => "?").join(", ")}) OR COALESCE(t.CODPROJ, 0) = 0)` : ""}
       `,
     )
     .get(dataInicio, dataFimExclusivo, dataInicio, ...empresaTitulos.params, ...codProj) as { qtd: number; valor: number };
