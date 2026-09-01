@@ -1,10 +1,13 @@
 import { getDb } from "../db/connection.js";
-import { loadAllRecords } from "../sankhya/crud.js";
-import { executeQuery } from "../sankhya/query.js";
+import { countRows, executeQuery, executeQueryByCursor } from "../sankhya/query.js";
 import { parseIntOrNull } from "../utils/numbers.js";
 import { recordSyncError, recordSyncSuccess } from "./state.js";
 
-const FIELDS_CORE = [
+const ORIGEM = "TGFPRO";
+const FILTRO = "1 = 1";
+
+/** Colunas de TGFPRO, conferidas em ALL_TAB_COLUMNS. */
+const COLUNAS = [
   "CODPROD",
   "DESCRPROD",
   "REFERENCIA",
@@ -14,7 +17,7 @@ const FIELDS_CORE = [
   "CODGRUPOPROD",
   "UNIDADE",
   "ATIVO",
-];
+].join(", ");
 
 function parseAtivo(value: string | null | undefined): 0 | 1 {
   if (value == null) return 0;
@@ -51,10 +54,20 @@ async function loadGrupos(): Promise<Map<number, string>> {
 }
 
 async function loadProducts(): Promise<unknown[]> {
-  return await loadAllRecords({
-    rootEntity: "Produto",
-    fields: FIELDS_CORE,
+  const esperado = await countRows(ORIGEM, FILTRO);
+  const rows = await executeQueryByCursor({
+    select: COLUNAS,
+    from: ORIGEM,
+    where: FILTRO,
+    key: "CODPROD",
   });
+
+  if (rows.length !== esperado) {
+    throw new Error(
+      `leitura de produtos incompleta: ${rows.length} de ${esperado} no Sankhya`,
+    );
+  }
+  return rows;
 }
 
 export async function syncProdutos(): Promise<void> {

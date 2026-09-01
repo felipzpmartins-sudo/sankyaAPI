@@ -52,8 +52,15 @@ export type CursorQueryArgs = {
   from: string;
   /** Filtro fixo da varredura. O cursor e adicionado com AND. */
   where: string;
-  /** Coluna unica e crescente que ancora a paginacao. */
+  /** Coluna crescente que ancora a paginacao. */
   key: string;
+  /**
+   * Marque quando a chave se repete na origem (uma linha por item de um
+   * mesmo codigo, por exemplo). A varredura passa a ler a partir da chave
+   * inclusive e descarta o ultimo grupo de cada pagina cheia, que pode ter
+   * sido cortado no meio.
+   */
+  keyRepeats?: boolean;
   pageSize?: number;
 };
 
@@ -86,7 +93,9 @@ export async function executeQueryByCursor(
   for (let pagina = 0; ; pagina += 1) {
     if (pagina > 1_000) throw new Error("executeQueryByCursor: limite de paginacao excedido");
 
-    const filtroCursor = cursor === null ? "" : ` AND ${args.key} > ${cursor}`;
+    const comparador = args.keyRepeats ? ">=" : ">";
+    const filtroCursor =
+      cursor === null ? "" : ` AND ${args.key} ${comparador} ${cursor}`;
     const result = await executeQuery(`
       SELECT * FROM (
         SELECT ${args.select}
@@ -106,20 +115,47 @@ export async function executeQueryByCursor(
 
     // Mesma forma que o decoder do CRUD entrega: os parsers de data e valor
     // do sync recebem string.
-    for (const row of result.rows) {
+    const converte = (row: unknown[]): DecodedEntity => {
       const registro: DecodedEntity = {};
       for (const [field, i] of indice) {
         const valor = row[i];
         registro[field] = valor == null ? null : String(valor);
       }
-      todas.push(registro);
+      return registro;
+    };
+
+    const paginaCheia = result.rows.length >= pageSize;
+    const chaveDe = (row: unknown[]) => Number(row[posicaoChave]);
+
+    if (!paginaCheia) {
+      for (const row of result.rows) todas.push(converte(row));
+      break;
     }
 
-    if (result.rows.length < pageSize) break;
+    const ultimaChave = chaveDe(result.rows[result.rows.length - 1]);
+    if (!Number.isFinite(ultimaChave)) {
+      throw new Error("executeQueryByCursor: cursor nao numerico");
+    }
 
-    const ultimo = Number(result.rows[result.rows.length - 1][posicaoChave]);
-    if (!Number.isFinite(ultimo)) throw new Error("executeQueryByCursor: cursor nao numerico");
-    cursor = ultimo;
+    if (!args.keyRepeats) {
+      for (const row of result.rows) todas.push(converte(row));
+      cursor = ultimaChave;
+      continue;
+    }
+
+    // Chave repetida: o ultimo grupo pode ter sido cortado pelo teto da
+    // pagina. Descarta e retoma a partir dele.
+    const completos = result.rows.filter((row) => chaveDe(row) < ultimaChave);
+    if (completos.length === 0) {
+      // Um unico valor de chave ocupa a pagina inteira: aceita e avanca,
+      // senao a varredura trava relendo sempre a mesma pagina.
+      for (const row of result.rows) todas.push(converte(row));
+      cursor = ultimaChave + 1;
+      continue;
+    }
+
+    for (const row of completos) todas.push(converte(row));
+    cursor = ultimaChave;
   }
 
   return todas;

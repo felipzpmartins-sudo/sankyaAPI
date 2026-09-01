@@ -1,6 +1,5 @@
 import { getDb } from "../db/connection.js";
-import { loadAllRecords } from "../sankhya/crud.js";
-import { executeQuery } from "../sankhya/query.js";
+import { countRows, executeQuery, executeQueryByCursor } from "../sankhya/query.js";
 import type { DecodedEntity } from "../sankhya/types.js";
 import { parseDateBR } from "../utils/dates.js";
 import { parseDecimal } from "../utils/numbers.js";
@@ -10,37 +9,32 @@ import { recordSyncError, recordSyncSuccess } from "./state.js";
 
 const logger = pino({ level: config.LOG_LEVEL, transport: { target: "pino-pretty", options: { colorize: true } } });
 
-const FIELDSETS = [
-  [
-    "CODPARC",
-    "NOMEPARC",
-    "RAZAOSOCIAL",
-    "CGC_CPF",
-    "TIPPESSOA",
-    "EMAIL",
-    "TELEFONE",
-    "DTCAD",
-    "LIMCRED",
-    "CODCID",
-    "CLIENTE",
-    "FORNECEDOR",
-    "ATIVO",
-  ],
-  [
-    "CODPARC",
-    "NOMEPARC",
-    "RAZAOSOCIAL",
-    "CGC_CPF",
-    "TIPPESSOA",
-    "EMAIL",
-    "TELEFONE",
-    "DTCAD",
-    "CLIENTE",
-    "FORNECEDOR",
-    "ATIVO",
-  ],
-  ["CODPARC", "NOMEPARC", "RAZAOSOCIAL", "CGC_CPF", "TIPPESSOA", "CLIENTE", "FORNECEDOR", "ATIVO"],
-] as const;
+const ORIGEM = "TGFPAR";
+const FILTRO = "ATIVO = 'S'";
+
+/**
+ * Colunas de TGFPAR, todas conferidas em ALL_TAB_COLUMNS.
+ *
+ * CELULAR nao entra porque nao existe na tabela — o descritor recusado pela
+ * API nao era um problema de permissao. A coluna permanece no schema local,
+ * sempre nula. LIMCRED entra e e valido: no ERP ele e nulo para os 7.403
+ * parceiros ativos, entao zero no snapshot e o valor correto.
+ */
+const COLUNAS = [
+  "CODPARC",
+  "NOMEPARC",
+  "RAZAOSOCIAL",
+  "CGC_CPF",
+  "TIPPESSOA",
+  "EMAIL",
+  "TELEFONE",
+  "TO_CHAR(DTCAD, 'DD/MM/YYYY') AS DTCAD",
+  "LIMCRED",
+  "CODCID",
+  "CLIENTE",
+  "FORNECEDOR",
+  "ATIVO",
+].join(", ");
 
 type Localidade = { cidade: string; uf: string };
 
@@ -97,47 +91,24 @@ function text(value: unknown): string | null {
 }
 
 /**
- * Os conjuntos sao tentados do mais completo ao mais enxuto, e o `catch`
- * registra qual foi recusado — antes ele engolia o erro e o primeiro conjunto
- * falhava em todos os ciclos sem deixar rastro.
- *
- * O culpado era CELULAR: descritor invalido nesta instalacao (confirmado campo
- * a campo contra a API). Ele derrubava o conjunto inteiro e levava junto o
- * LIMCRED, que e valido — por isso o snapshot tinha CELULAR 100% nulo e
- * LIMCRED 100% zero. Sem CELULAR o conjunto completo passa. A coluna CELULAR
- * permanece na tabela, sempre nula, porque o dado nao existe via API.
+ * Varredura por cursor em CODPARC. A versao anterior ia pela entidade
+ * Parceiro do CRUD com tres conjuntos de campos em cascata, porque um
+ * descritor invalido derrubava a carga inteira. Em SQL cru o problema nao
+ * existe: as colunas sao conferidas no dicionario do banco.
  */
 async function loadParceiros(): Promise<DecodedEntity[]> {
-  let lastError: unknown;
-  for (const [indice, fields] of FIELDSETS.entries()) {
-    try {
-      const rows = await loadAllRecords({
-        rootEntity: "Parceiro",
-        fields: [...fields],
-        expression: "this.ATIVO = 'S'",
-      });
+  const esperado = await countRows(ORIGEM, FILTRO);
+  const rows = await executeQueryByCursor({
+    select: COLUNAS,
+    from: ORIGEM,
+    where: FILTRO,
+    key: "CODPARC",
+  });
 
-      if (indice > 0) {
-        const usados = fields as readonly string[];
-        logger.warn(
-          {
-            fieldsetUsado: indice,
-            camposPerdidos: FIELDSETS[0].filter((campo) => !usados.includes(campo)),
-          },
-          "sync de parceiros degradado: conjunto completo de campos recusado pelo Sankhya",
-        );
-      }
-
-      return rows;
-    } catch (err) {
-      lastError = err;
-      logger.warn(
-        { fieldset: indice, err: err instanceof Error ? err.message : String(err) },
-        "conjunto de campos de parceiros recusado pelo Sankhya",
-      );
-    }
+  if (rows.length !== esperado) {
+    logger.warn({ esperado, lidos: rows.length }, "leitura de parceiros incompleta");
   }
-  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  return rows;
 }
 
 export async function syncParceiros(): Promise<void> {
