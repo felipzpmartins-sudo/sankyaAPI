@@ -10,6 +10,12 @@ const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
 export type AppUser = {
   email: string;
+  /**
+   * Hoje todo login autenticado recebe "executive", que ve o painel inteiro.
+   * "viacerta" continua aceito na validacao de sessao para que os tokens
+   * emitidos antes dessa liberacao sigam validos ate expirar — e, como as
+   * restricoes por papel sairam, eles ja veem tudo tambem.
+   */
   role: "executive" | "viacerta";
 };
 
@@ -140,7 +146,7 @@ export function authenticateLogin(email: string, password: string): AppUser | nu
     config.JULIANA_LOGIN_PASSWORD &&
     credentialsMatch(config.JULIANA_LOGIN_EMAIL, config.JULIANA_LOGIN_PASSWORD, email, password)
   ) {
-    return { email: config.JULIANA_LOGIN_EMAIL.trim().toLowerCase(), role: "viacerta" };
+    return { email: config.JULIANA_LOGIN_EMAIL.trim().toLowerCase(), role: "executive" };
   }
 
   return null;

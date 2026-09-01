@@ -13,7 +13,6 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
-import { useAuthUser } from "@/components/LoginGate";
 
 type NavItem = {
   title: string;
@@ -26,6 +25,7 @@ const dashboards: NavItem[] = [
   { title: "Resumo executivo", icon: BarChart3, url: "/" },
   { title: "DRE por Projeto", icon: LineChart, url: "/dre" },
   { title: "Rateio por projeto", icon: ShieldAlert, url: "/qualidade" },
+  { title: "Alunos Via Certa", icon: GraduationCap, url: "/via-certa" },
 ];
 
 function NavList({ items, currentPath }: { items: NavItem[]; currentPath: string }) {
@@ -76,10 +76,7 @@ function NavList({ items, currentPath }: { items: NavItem[]; currentPath: string
 
 export function AppSidebar() {
   const currentPath = useRouterState({ select: (r) => r.location.pathname });
-  const user = useAuthUser();
-  const visibleDashboards: NavItem[] = user?.role === "viacerta"
-    ? [{ title: "Alunos Via Certa", icon: GraduationCap, url: "/via-certa" }]
-    : dashboards;
+  const visibleDashboards = dashboards;
 
   return (
     <Sidebar

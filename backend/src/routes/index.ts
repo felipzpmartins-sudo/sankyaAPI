@@ -147,10 +147,6 @@ const viaCertaAlunosAtivosQuery = z.object({
 
 router.get("/viacerta/alunos-ativos", async (req, res, next) => {
   try {
-    if (getRequestUser(req)?.role !== "viacerta") {
-      res.status(403).json({ error: "forbidden", message: "Este painel e exclusivo para o acesso Via Certa." });
-      return;
-    }
     const q = viaCertaAlunosAtivosQuery.parse(req.query);
     res.json(await alunosAtivosViaCerta(q));
   } catch (err) {
@@ -160,10 +156,6 @@ router.get("/viacerta/alunos-ativos", async (req, res, next) => {
 
 router.get("/viacerta/alunos-ativos/exportacao", async (req, res, next) => {
   try {
-    if (getRequestUser(req)?.role !== "viacerta") {
-      res.status(403).json({ error: "forbidden", message: "Este painel e exclusivo para o acesso Via Certa." });
-      return;
-    }
     const q = viaCertaAlunosAtivosQuery.parse(req.query);
     const buffer = await gerarViaCertaXlsx(await alunosAtivosViaCerta(q));
     const filename = `alunos-via-certa-${q.year}-${q.month}.xlsx`;
