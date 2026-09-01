@@ -1,6 +1,6 @@
 import { getDb } from "../db/connection.js";
-import { loadAllRecords } from "../sankhya/crud.js";
-import { executeQuery } from "../sankhya/query.js";
+import { countRows, executeQueryByCursor } from "../sankhya/query.js";
+import type { DecodedEntity } from "../sankhya/types.js";
 import { parseDateBR } from "../utils/dates.js";
 import { parseDecimal, parseIntOrNull } from "../utils/numbers.js";
 import { FATURAMENTO_TOPS } from "../services/operacoes.js";
@@ -11,46 +11,42 @@ import { recordSyncError, recordSyncSuccess } from "./state.js";
 const logger = pino({ level: config.LOG_LEVEL, transport: { target: "pino-pretty", options: { colorize: true } } });
 
 /**
- * Conjunto mínimo de campos que destravam a tela 14.1 (faturamento).
+ * Colunas lidas da TGFCAB. Todas conferidas em ALL_TAB_COLUMNS — a versao
+ * anterior ia pela entidade CabecalhoNota do CRUD e mantinha um conjunto
+ * reduzido de reserva porque campo invalido derrubava a carga inteira.
  *
- * Campos removidos do conjunto inicial após erro "Descritor do campo 'X'
- * inválido" no primeiro sync (2026-05-14):
- *   - VLRDESC   → provavelmente `VLRDESCTOT` no Maker. Validar no Postman.
- *   - AD_OBS    → campo customizado, pode não existir nessa instalação.
- *   - DTENTSAI  → não testado, foi removido por precaução.
- *
- * Reincluir gradualmente cada um após validar individualmente.
+ * As datas passam por TO_CHAR: em SQL cru o Sankhya devolve
+ * `"31082026 00:00:00"`, que parseDateBR nao reconhece.
  */
-const FIELDS_BASE = [
+const COLUNAS = [
   "NUNOTA",
   "CODEMP",
   "CODPARC",
   "CODVEND",
   "CODTIPOPER",
-  "NUMNOTA",
-  "SERIENOTA",
-  "DTNEG",
-  "DTFATUR",
-  "STATUSNOTA",
-  "VLRNOTA",
-  "VLRFRETE",
-];
-
-const FIELDS = [
-  ...FIELDS_BASE.slice(0, 5),
   "CODCENCUS",
   "CODPROJ",
   "CODPARCTRANSP",
-  ...FIELDS_BASE.slice(5, 9),
-  "DTENTSAI",
+  "NUMNOTA",
+  "SERIENOTA",
+  "TO_CHAR(DTNEG, 'DD/MM/YYYY') AS DTNEG",
+  "TO_CHAR(DTFATUR, 'DD/MM/YYYY') AS DTFATUR",
+  "TO_CHAR(DTENTSAI, 'DD/MM/YYYY') AS DTENTSAI",
   "CIF_FOB",
   "QTDVOL",
-  ...FIELDS_BASE.slice(9),
-];
+  "STATUSNOTA",
+  "VLRNOTA",
+  "VLRFRETE",
+].join(", ");
 
 const DATA_INICIO = "01/01/2025";
 /** Mesma janela de DATA_INICIO, no formato em que DTNEG e gravado no SQLite. */
 const DATA_INICIO_ISO = "2025-01-01";
+
+const ORIGEM = "TGFCAB";
+const ORIGEM_EXC = "TGFCAB_EXC";
+const FILTRO = `DTNEG >= TO_DATE('${DATA_INICIO}','DD/MM/YYYY')`;
+const FILTRO_EXC = `${FILTRO} AND CODTIPOPER IN (${FATURAMENTO_TOPS.join(", ")})`;
 
 /** Ver nota equivalente em sync/titulos.ts. */
 const LIMITE_REMOCAO_PCT = 0.05;
@@ -80,17 +76,22 @@ function upsertEmpresaStub(codemp: number): void {
     .run(codemp, `EMPRESA ${codemp}`, new Date().toISOString());
 }
 
-async function loadPedidosSankhya() {
-  const args = {
-    rootEntity: "CabecalhoNota",
-    expression: `this.DTNEG >= TO_DATE('${DATA_INICIO}','DD/MM/YYYY')`,
-  };
+type Leitura<T> = { rows: T[]; completo: boolean };
 
-  try {
-    return await loadAllRecords({ ...args, fields: FIELDS });
-  } catch {
-    return loadAllRecords({ ...args, fields: FIELDS_BASE });
-  }
+/**
+ * Conta antes de varrer e devolve se a leitura veio inteira. Sem essa
+ * referencia nao ha como distinguir nota excluida no ERP de linha que a
+ * varredura perdeu — e a limpeza de orfaos apaga as duas.
+ */
+async function loadPedidosSankhya(): Promise<Leitura<DecodedEntity>> {
+  const esperado = await countRows(ORIGEM, FILTRO);
+  const rows = await executeQueryByCursor({
+    select: COLUNAS,
+    from: ORIGEM,
+    where: FILTRO,
+    key: "NUNOTA",
+  });
+  return { rows, completo: rows.length === esperado };
 }
 
 type PedidoCancelado = {
@@ -104,27 +105,27 @@ type PedidoCancelado = {
   VLRNOTA: number;
 };
 
-async function loadPedidosCancelados(): Promise<PedidoCancelado[]> {
-  const result = await executeQuery(`
-    SELECT NUNOTA, CODEMP, CODPARC, CODVEND, CODTIPOPER, CODPROJ,
-           TO_CHAR(DTNEG, 'DD/MM/YYYY') AS DTNEG, VLRNOTA
-    FROM TGFCAB_EXC
-    WHERE DTNEG >= TO_DATE('${DATA_INICIO}', 'DD/MM/YYYY')
-      AND CODTIPOPER IN (${FATURAMENTO_TOPS.join(", ")})
-  `);
-  const fieldIndex = new Map(result.fields.map((field, index) => [field, index]));
-  const value = (row: unknown[], field: string) => row[fieldIndex.get(field) ?? -1];
+async function loadPedidosCancelados(): Promise<Leitura<PedidoCancelado>> {
+  const esperado = await countRows(ORIGEM_EXC, FILTRO_EXC);
+  const brutos = await executeQueryByCursor({
+    select:
+      "NUNOTA, CODEMP, CODPARC, CODVEND, CODTIPOPER, CODPROJ, " +
+      "TO_CHAR(DTNEG, 'DD/MM/YYYY') AS DTNEG, VLRNOTA",
+    from: ORIGEM_EXC,
+    where: FILTRO_EXC,
+    key: "NUNOTA",
+  });
 
-  return result.rows
+  const rows = brutos
     .map((row) => ({
-      NUNOTA: Number(value(row, "NUNOTA")),
-      CODEMP: Number(value(row, "CODEMP")),
-      CODPARC: Number(value(row, "CODPARC")),
-      CODVEND: parseIntOrNull(String(value(row, "CODVEND") ?? "")),
-      CODTIPOPER: Number(value(row, "CODTIPOPER")),
-      CODPROJ: parseIntOrNull(String(value(row, "CODPROJ") ?? "")),
-      DTNEG: parseDateBR(String(value(row, "DTNEG") ?? "")),
-      VLRNOTA: parseDecimal(String(value(row, "VLRNOTA") ?? "")),
+      NUNOTA: Number(row.NUNOTA),
+      CODEMP: Number(row.CODEMP),
+      CODPARC: Number(row.CODPARC),
+      CODVEND: parseIntOrNull(row.CODVEND),
+      CODTIPOPER: Number(row.CODTIPOPER),
+      CODPROJ: parseIntOrNull(row.CODPROJ),
+      DTNEG: parseDateBR(row.DTNEG),
+      VLRNOTA: parseDecimal(row.VLRNOTA),
     }))
     .filter(
       (row) =>
@@ -134,6 +135,8 @@ async function loadPedidosCancelados(): Promise<PedidoCancelado[]> {
         Number.isFinite(row.CODTIPOPER) &&
         row.DTNEG,
     );
+
+  return { rows, completo: brutos.length === esperado };
 }
 
 export async function syncPedidos(): Promise<void> {
@@ -145,10 +148,19 @@ export async function syncPedidos(): Promise<void> {
       );
     }
 
-    const [rows, cancelados] = await Promise.all([
+    const [ativos, excluidos] = await Promise.all([
       loadPedidosSankhya(),
       loadPedidosCancelados(),
     ]);
+    const rows = ativos.rows;
+    const cancelados = excluidos.rows;
+    const leituraCompleta = ativos.completo && excluidos.completo;
+    if (!leituraCompleta) {
+      logger.warn(
+        { tgfcab: ativos.completo, tgfcabExc: excluidos.completo },
+        "leitura de pedidos incompleta: limpeza de orfaos suspensa neste ciclo",
+      );
+    }
 
     const db = getDb();
     const now = new Date().toISOString();
@@ -253,8 +265,7 @@ export async function syncPedidos(): Promise<void> {
           TIPMOV: tipmovMap.get(codtipoper) ?? "?",
           CODPARCTRANSP: codparctransp,
           TRANSPORTADORA_NOME:
-            r.ParceiroTransportadora_NOMEPARC ??
-            (codparctransp != null ? nomeParceiro.get(codparctransp) ?? null : null),
+            codparctransp != null ? nomeParceiro.get(codparctransp) ?? null : null,
           NUMNOTA: parseIntOrNull(r.NUMNOTA),
           SERIENOTA: r.SERIENOTA ?? null,
           DTNEG: parseDateBR(r.DTNEG),
@@ -309,6 +320,9 @@ export async function syncPedidos(): Promise<void> {
       }
 
       if (inserted === 0) return { removidos: 0, ignorada: null };
+      // Leitura parcial nao autoriza apagar nada: o que faltou na resposta e
+      // indistinguivel do que foi excluido no ERP.
+      if (!leituraCompleta) return { removidos: 0, ignorada: null };
 
       const alvo = { janela: DATA_INICIO_ISO, carimbo: now };
       const totalJanela = (contarJanela.get(alvo) as { total: number }).total;

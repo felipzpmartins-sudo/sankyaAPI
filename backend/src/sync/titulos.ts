@@ -1,6 +1,6 @@
 import { getDb } from "../db/connection.js";
-import { loadAllRecords } from "../sankhya/crud.js";
-import { parseDateBR, parseDateTimeBR } from "../utils/dates.js";
+import { countRows, executeQueryByCursor } from "../sankhya/query.js";
+import { parseDateBR } from "../utils/dates.js";
 import { parseDecimal } from "../utils/numbers.js";
 import pino from "pino";
 import { config } from "../config.js";
@@ -9,17 +9,17 @@ import { recordSyncError, recordSyncSuccess } from "./state.js";
 const logger = pino({ level: config.LOG_LEVEL, transport: { target: "pino-pretty", options: { colorize: true } } });
 
 /**
- * Conjunto de campos do TGFFIN suficiente para DRE + fluxo de caixa +
- * contas a receber/pagar. Validados via `scripts/explore-sankhya.ts`.
+ * Colunas lidas da TGFFIN, no formato que DbExplorerSP.executeQuery devolve.
  *
- * Campos NÃO incluídos (testar antes de adicionar):
- *   - DTBAIXA, DTPAGAMENTO, DTLIQUIDACAO, STATUS, VLRBAIXADO → 'Descritor inválido'
+ * As datas passam por TO_CHAR porque em SQL cru o Sankhya devolve
+ * `"31082026 00:00:00"` (sem barras), que parseDateBR nao reconhece.
  *
- * `DHBAIXA` é DATA da baixa (formato 'dd/MM/yyyy'), apesar do prefixo DH —
- * o Sankhya guarda como data simples nesse campo. Já `DHCONCIL` é
- * data/hora completa.
+ * DHCONCIL saiu do conjunto: nao existe como coluna em nenhuma tabela do
+ * banco — e campo calculado da entidade Financeiro do CRUD —, e nenhuma
+ * consulta do backend ou do frontend le esse campo. A coluna permanece no
+ * schema, sem escrita.
  */
-const FIELDS = [
+const COLUNAS = [
   "NUFIN",
   "NUNOTA",
   "CODEMP",
@@ -30,15 +30,14 @@ const FIELDS = [
   "CODNAT",
   "RECDESP",
   "PROVISAO",
-  "DTNEG",
-  "DTVENC",
-  "DHBAIXA",
-  "DHCONCIL",
-  "DTCONTAB",
+  "TO_CHAR(DTNEG, 'DD/MM/YYYY') AS DTNEG",
+  "TO_CHAR(DTVENC, 'DD/MM/YYYY') AS DTVENC",
+  "TO_CHAR(DHBAIXA, 'DD/MM/YYYY') AS DHBAIXA",
+  "TO_CHAR(DTCONTAB, 'DD/MM/YYYY') AS DTCONTAB",
   "VLRDESDOB",
   "VLRBAIXA",
   // Composicao do valor: sem estes campos nao da para dizer se o valor do
-  // titulo embute juros, multa ou desconto — validados um a um contra a API.
+  // titulo embute juros, multa ou desconto.
   "VLRJURO",
   "VLRMULTA",
   "VLRDESC",
@@ -49,7 +48,7 @@ const FIELDS = [
   "RATEADO",
   "NUMNOTA",
   "SERIENOTA",
-];
+].join(", ");
 
 /**
  * Janela inicial reduzida para o ano atual, suficiente para a tela 14.2
@@ -61,10 +60,13 @@ const DATA_INICIO = "01/01/2025";
 /** Mesma janela de DATA_INICIO, no formato em que DTNEG e gravado no SQLite. */
 const DATA_INICIO_ISO = "2025-01-01";
 
+const ORIGEM = "TGFFIN";
+const FILTRO = `DTNEG >= TO_DATE('${DATA_INICIO}','DD/MM/YYYY')`;
+
 /**
- * Teto de seguranca para a remocao de orfaos. A paginacao do Sankhya roda
- * sobre tabela viva: se uma resposta vier truncada, tudo que faltou pareceria
- * excluido no ERP. Acima deste limite a limpeza e ignorada e registrada.
+ * Teto de seguranca para a remocao de orfaos, segunda linha de defesa atras
+ * da conferencia de contagem: mesmo com a leitura batendo com o COUNT(*) do
+ * ERP, uma exclusao em massa inesperada fica registrada em vez de aplicada.
  */
 const LIMITE_REMOCAO_PCT = 0.05;
 const LIMITE_REMOCAO_MIN = 100;
@@ -86,11 +88,23 @@ function upsertEmpresaStub(codemp: number): void {
 
 export async function syncTitulos(): Promise<void> {
   try {
-    const rows = await loadAllRecords({
-      rootEntity: "Financeiro",
-      fields: FIELDS,
-      expression: `this.DTNEG >= TO_DATE('${DATA_INICIO}','DD/MM/YYYY')`,
+    // Conta antes de varrer: e a referencia para saber se a leitura veio
+    // inteira. Sem ela nao ha como distinguir "titulo apagado no ERP" de
+    // "linha que a varredura perdeu", e a limpeza de orfaos apaga as duas.
+    const esperado = await countRows(ORIGEM, FILTRO);
+    const rows = await executeQueryByCursor({
+      select: COLUNAS,
+      from: ORIGEM,
+      where: FILTRO,
+      key: "NUFIN",
     });
+    const leituraCompleta = rows.length === esperado;
+    if (!leituraCompleta) {
+      logger.warn(
+        { esperado, lidos: rows.length },
+        "leitura de titulos incompleta: limpeza de orfaos suspensa neste ciclo",
+      );
+    }
 
     const db = getDb();
     const now = new Date().toISOString();
@@ -104,13 +118,13 @@ export async function syncTitulos(): Promise<void> {
     const upsert = db.prepare(
       `INSERT INTO titulos
           (NUFIN, NUNOTA, CODEMP, CODPARC, CODCENCUS, CODPROJ, CODTIPTIT, CODNAT, RECDESP, PROVISAO, tipo,
-          DTNEG, DTVENC, DHBAIXA, DHCONCIL, DTCONTAB,
+          DTNEG, DTVENC, DHBAIXA, DTCONTAB,
             VLRDESDOB, VLRBAIXA, VLRJURO, VLRMULTA, VLRDESC,
             HISTORICO, RATEADO, NUMNOTA, SERIENOTA,
             valor_aberto, is_em_aberto, synced_at)
        VALUES
           (@NUFIN, @NUNOTA, @CODEMP, @CODPARC, @CODCENCUS, @CODPROJ, @CODTIPTIT, @CODNAT, @RECDESP, @PROVISAO, @tipo,
-          @DTNEG, @DTVENC, @DHBAIXA, @DHCONCIL, @DTCONTAB,
+          @DTNEG, @DTVENC, @DHBAIXA, @DTCONTAB,
             @VLRDESDOB, @VLRBAIXA, @VLRJURO, @VLRMULTA, @VLRDESC,
             @HISTORICO, @RATEADO, @NUMNOTA, @SERIENOTA,
             @valor_aberto, @is_em_aberto, @synced_at)
@@ -128,7 +142,6 @@ export async function syncTitulos(): Promise<void> {
          DTNEG        = excluded.DTNEG,
          DTVENC       = excluded.DTVENC,
          DHBAIXA      = excluded.DHBAIXA,
-         DHCONCIL     = excluded.DHCONCIL,
          DTCONTAB     = excluded.DTCONTAB,
          VLRDESDOB    = excluded.VLRDESDOB,
          VLRBAIXA     = excluded.VLRBAIXA,
@@ -212,7 +225,6 @@ export async function syncTitulos(): Promise<void> {
           DTNEG: parseDateBR(r.DTNEG),
           DTVENC: parseDateBR(r.DTVENC),
           DHBAIXA: dhbaixa,
-          DHCONCIL: parseDateTimeBR(r.DHCONCIL),
           DTCONTAB: parseDateBR(r.DTCONTAB),
           VLRDESDOB: vlrdesdob,
           VLRBAIXA: vlrbaixa,
@@ -231,6 +243,9 @@ export async function syncTitulos(): Promise<void> {
       }
 
       if (inserted === 0) return { removidos: 0, ignorada: null };
+      // Leitura parcial nao autoriza apagar nada: o que faltou na resposta e
+      // indistinguivel do que foi excluido no ERP.
+      if (!leituraCompleta) return { removidos: 0, ignorada: null };
 
       const alvo = { janela: DATA_INICIO_ISO, carimbo: now };
       const totalJanela = (contarJanela.get(alvo) as { total: number }).total;

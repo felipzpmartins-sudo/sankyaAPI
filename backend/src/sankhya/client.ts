@@ -71,7 +71,7 @@ export type RequestOptions = {
   body?: unknown;
 };
 
-export async function sankhyaRequest<T>(opts: RequestOptions): Promise<T> {
+async function sankhyaRequestOnce<T>(opts: RequestOptions): Promise<T> {
   const url = new URL(opts.path, config.SANKHYA_BASE_URL);
   if (opts.query) {
     for (const [k, v] of Object.entries(opts.query)) {
@@ -106,4 +106,64 @@ export async function sankhyaRequest<T>(opts: RequestOptions): Promise<T> {
   }
 
   return payload as T;
+}
+
+const RETRY_ATTEMPTS = 4;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/**
+ * Falha de infraestrutura, nao erro de programa: vale tentar de novo.
+ *
+ * O 400 do /authenticate entra na lista porque o gateway devolve
+ * "Erro ao se autenticar com o serviço externo" de forma intermitente quando
+ * o ERP atras dele nao responde — nada muda tentando com outro payload. Sem
+ * isso, um unico 400 derrubava o ciclo inteiro da entidade: era a origem dos
+ * 132 erros de pedidos e 153 de titulos acumulados no sync_state.
+ */
+export function isRetryableError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (err.message === "fetch failed") return true;
+  // AbortSignal.timeout lanca DOMException TimeoutError, que nao traz cause.
+  if (err.name === "TimeoutError" || err.name === "AbortError") return true;
+  if (/^Sankhya (429|5dd):/.test(err.message)) return true;
+  if (/^Falha na autenticação Sankhya (d+):/.test(err.message)) return true;
+
+  const cause = err.cause;
+  if (cause instanceof Error) {
+    return /timeout|ECONNRESET|ENOTFOUND|EAI_AGAIN|UND_ERR/i.test(
+      `${cause.name} ${cause.message}`,
+    );
+  }
+
+  return false;
+}
+
+/**
+ * Toda chamada ao Sankhya passa por aqui com retry. Antes o retry existia so
+ * em crud.ts, e as varreduras por DbExplorerSP.executeQuery — que hoje
+ * carregam titulos, pedidos e rateio — nao tinham nenhuma protecao.
+ *
+ * Todas as chamadas do projeto sao leitura, entao repetir e seguro.
+ */
+export async function sankhyaRequest<T>(opts: RequestOptions): Promise<T> {
+  let ultimoErro: unknown;
+
+  for (let tentativa = 1; tentativa <= RETRY_ATTEMPTS; tentativa += 1) {
+    try {
+      return await sankhyaRequestOnce<T>(opts);
+    } catch (err) {
+      ultimoErro = err;
+      if (!isRetryableError(err) || tentativa === RETRY_ATTEMPTS) break;
+      // Token invalidado no meio da varredura: forca reautenticacao.
+      cachedToken = null;
+      await sleep(750 * tentativa);
+    }
+  }
+
+  throw ultimoErro;
 }
