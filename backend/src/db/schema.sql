@@ -433,3 +433,21 @@ CREATE TABLE IF NOT EXISTS sankhya_raw_records (
 
 CREATE INDEX IF NOT EXISTS idx_sankhya_raw_records_entity
   ON sankhya_raw_records(entity);
+
+-- ----------------------------------------------------------------------------
+-- usuarios: contas com senha propria, guardadas no snapshot.
+--
+-- As contas de APP_LOGIN_* e JULIANA_LOGIN_* continuam vindo do ambiente e nao
+-- aparecem aqui. Esta tabela existe porque 'trocar a senha no primeiro acesso'
+-- precisa de estado por usuario, e variavel de ambiente nao guarda estado.
+--
+-- A senha nunca e gravada em texto: senha_hash e scrypt sobre senha + salt.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS usuarios (
+  email              TEXT PRIMARY KEY,
+  senha_hash         TEXT NOT NULL,
+  senha_salt         TEXT NOT NULL,
+  deve_trocar_senha  INTEGER NOT NULL DEFAULT 1,
+  criado_em          TEXT NOT NULL,
+  senha_alterada_em  TEXT
+);

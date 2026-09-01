@@ -7,6 +7,7 @@ import { requireApiToken } from "./auth.js";
 import { migrate } from "./db/migrate.js";
 import { router } from "./routes/index.js";
 import { startScheduler } from "./sync/scheduler.js";
+import { semearUsuariosIniciais } from "./usuarios.js";
 
 const logger = pino({
   level: config.LOG_LEVEL,
@@ -18,6 +19,14 @@ logger.info(
   { schemaVersion: dbInfo.schemaVersion, tables: dbInfo.tables, indexes: dbInfo.indexes },
   "SQLite snapshot pronto",
 );
+
+const usuarios = semearUsuariosIniciais();
+if (usuarios.criados.length > 0) {
+  logger.info({ contas: usuarios.criados }, "contas criadas com troca de senha obrigatoria");
+}
+if (usuarios.ignorados.length > 0) {
+  logger.warn({ entradas: usuarios.ignorados }, "USUARIOS_INICIAIS: entradas fora do formato email:senha");
+}
 
 startScheduler();
 

@@ -14,6 +14,7 @@ import {
   getTotpSetup,
   isValidTotpCode,
 } from "../auth.js";
+import { trocarSenha } from "../usuarios.js";
 import { getSyncState } from "../sync/state.js";
 import { FATURAMENTO_TOPS, inListClause } from "../services/operacoes.js";
 
@@ -125,6 +126,45 @@ router.post("/auth/validate", (req, res) => {
   }
 
   res.json({ ok: true, ...createSessionToken({ email: config.APP_LOGIN_EMAIL, role: "executive" }) });
+});
+
+/**
+ * Troca de senha da propria conta. Exige sessao valida e a senha atual —
+ * sessao sozinha nao basta, senao um token vazado trocaria a senha e
+ * expulsaria o dono da conta.
+ */
+router.post("/auth/trocar-senha", (req, res) => {
+  const usuario = getRequestUser(req);
+  if (!usuario) {
+    res.status(401).json({ error: "unauthorized", message: "Sessao invalida ou expirada." });
+    return;
+  }
+
+  const body = z
+    .object({
+      senhaAtual: z.string().min(1).max(200),
+      novaSenha: z.string().min(8).max(200),
+    })
+    .safeParse(req.body);
+
+  if (!body.success) {
+    res.status(400).json({
+      error: "bad_request",
+      message: "A nova senha precisa ter pelo menos 8 caracteres.",
+    });
+    return;
+  }
+
+  const resultado = trocarSenha(usuario.email, body.data.senhaAtual, body.data.novaSenha);
+  if (!resultado.ok) {
+    res.status(400).json({ error: "bad_request", message: resultado.motivo });
+    return;
+  }
+
+  // Token novo sem a marca de troca pendente: o antigo ainda diria que ela
+  // esta pendente e a tela voltaria a pedir a senha.
+  const atualizado = { ...usuario, deveTrocarSenha: false };
+  res.json({ ok: true, user: atualizado, ...createSessionToken(atualizado) });
 });
 
 router.get("/auth/session", (req, res) => {

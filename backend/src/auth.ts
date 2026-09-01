@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { config } from "./config.js";
+import { autenticarUsuarioArmazenado } from "./usuarios.js";
 
 const PUBLIC_ROUTES = new Set(["/health", "/auth/login"]);
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
@@ -17,6 +18,12 @@ export type AppUser = {
    * restricoes por papel sairam, eles ja veem tudo tambem.
    */
   role: "executive" | "viacerta";
+  /**
+   * Conta criada com senha inicial e ainda nao trocada. Enquanto for true a
+   * tela so mostra o formulario de nova senha. Ausente nos tokens emitidos
+   * antes desta funcionalidade, e ausente vale como false.
+   */
+  deveTrocarSenha?: boolean;
 };
 
 function base64url(input: Buffer | string): string {
@@ -147,6 +154,15 @@ export function authenticateLogin(email: string, password: string): AppUser | nu
     credentialsMatch(config.JULIANA_LOGIN_EMAIL, config.JULIANA_LOGIN_PASSWORD, email, password)
   ) {
     return { email: config.JULIANA_LOGIN_EMAIL.trim().toLowerCase(), role: "executive" };
+  }
+
+  const armazenado = autenticarUsuarioArmazenado(email, password);
+  if (armazenado) {
+    return {
+      email: armazenado.email,
+      role: "executive",
+      deveTrocarSenha: armazenado.deve_trocar_senha === 1,
+    };
   }
 
   return null;

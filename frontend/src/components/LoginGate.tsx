@@ -15,6 +15,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TrocarSenha } from "@/components/TrocarSenha";
 import {
   clearStoredAuthToken,
   getApiBaseUrl,
@@ -31,6 +32,8 @@ type LoginResponse = {
 export type AppUser = {
   email: string;
   role: "executive" | "viacerta";
+  /** Conta criada com senha temporaria e ainda nao trocada. */
+  deveTrocarSenha?: boolean;
 };
 
 const AuthUserContext = createContext<AppUser | null>(null);
@@ -110,6 +113,13 @@ export function LoginGate({ children }: { children: ReactNode }) {
       </main>
     );
   }
+  // Senha temporaria ainda em uso: a troca vem antes do painel, e nao por
+  // cima dele. Vale tambem ao recarregar a pagina, porque /auth/session
+  // devolve a mesma marca que o login.
+  if (authenticated && user?.deveTrocarSenha) {
+    return <TrocarSenha email={user.email} onTrocada={setUser} />;
+  }
+
   if (authenticated && user) {
     return <AuthUserContext.Provider value={user}>{children}</AuthUserContext.Provider>;
   }
