@@ -58,6 +58,31 @@ const Ctx = createContext<FiltersCtx | null>(null);
  * as duas listas precisam concordar ou o filtro oferece um destino que a
  * classificacao rejeita.
  */
+/**
+ * Mantem dataInicio <= dataFim.
+ *
+ * Os dois campos de data escrevem separadamente no filtro, entao trocar
+ * apenas um deles cria um instante com a faixa invertida. A consulta dispara
+ * nesse estado, o backend recusa com 400 ("dataInicio deve ser menor ou igual
+ * a dataFim") e a tela cai no boundary de erro.
+ *
+ * Quando a faixa fica invertida, a ponta que NAO foi editada acompanha a que
+ * foi — comportamento usual de seletor de periodo, e nunca gera pedido
+ * invalido.
+ */
+function normalizaPeriodo(
+  anterior: GlobalFilters,
+  patch: Partial<GlobalFilters>,
+): Partial<GlobalFilters> {
+  const dataInicio = patch.dataInicio ?? anterior.dataInicio;
+  const dataFim = patch.dataFim ?? anterior.dataFim;
+  if (!dataInicio || !dataFim || dataInicio <= dataFim) return patch;
+
+  return patch.dataInicio !== undefined
+    ? { ...patch, dataFim: dataInicio }
+    : { ...patch, dataInicio: dataFim };
+}
+
 const PROJETOS_EXCLUIDOS = new Set<number>([40_701_000]);
 
 export function FiltersProvider({ children }: { children: ReactNode }) {
@@ -87,7 +112,8 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
     empresas: options.data?.empresas ?? [],
     projetos: options.data?.projetos ?? [],
     vendedores: options.data?.vendedores ?? [],
-    setFilters: (patch) => setState((previous) => ({ ...previous, ...patch })),
+    setFilters: (patch) =>
+      setState((previous) => ({ ...previous, ...normalizaPeriodo(previous, patch) })),
     resetFilters: () => {
       const next = defaultFilters();
       const snapshotDate = options.data?.snapshotDate;
