@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useFilters } from "@/lib/filters-context";
 
@@ -72,13 +71,12 @@ function MultiSelect({
           </button>
         </div>
         <Separator />
-        {/* type="always" mantem a barra visivel: no padrao "hover" do Radix a
-            lista parecia terminar no oitavo item. */}
-        <ScrollArea
-          type="always"
-          className="max-h-72 [&_[data-radix-scroll-area-thumb]]:bg-muted-foreground/40"
-        >
-          <div className="p-1">
+        {/* Rolagem nativa em vez do ScrollArea do Radix: o max-h ficava na Root,
+            mas o Viewport interno usa h-full, e height:100% dentro de um pai que
+            so tem max-height resolve para auto. O Viewport crescia com o conteudo
+            e a Root apenas cortava com overflow:hidden — nao havia container
+            rolavel, entao a roda do mouse nao fazia efeito. */}
+        <div className="max-h-72 overflow-y-auto overscroll-contain p-1 [scrollbar-width:thin]">
             {options.map((opt) => {
               const checked = selected.includes(opt.value);
               return (
@@ -94,8 +92,7 @@ function MultiSelect({
                 </label>
               );
             })}
-          </div>
-        </ScrollArea>
+        </div>
       </PopoverContent>
     </Popover>
   );
