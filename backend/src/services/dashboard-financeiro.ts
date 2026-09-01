@@ -6,6 +6,7 @@ import {
   classificarRateio,
   isProjetoEmpresaDestino,
   type RateioCategoria,
+  EXCLUIDOS_EMPRESA_DESTINO,
 } from "./rateio-classification.js";
 
 /**
@@ -418,9 +419,22 @@ export function drePorProjeto(
   const vendedorPedidos = vendedorToSqlClause(vendedor, "p.CODVEND");
   const vendedorPedidosWhere = vendedorPedidos.clause ? ` AND ${vendedorPedidos.clause}` : "";
   const codProj = normalizedCodProj(intervalo.codProj);
+  // Receita e despesa sem projeto entram sempre, com coluna propria. Sem
+  // isso a DRE nao fechava com o faturamento do mes: MAKER MATRIZ mostrava
+  // R$ 109.333,81 de receita num mes de R$ 121.574,41 porque os R$ 12.240,60
+  // lancados sem projeto nao tinham onde aparecer. So as empresas sem
+  // movimento fora de projeto e que batiam.
   const projetoWhere = (alias: string) => codProj.length > 0
-    ? `${alias}.CODPROJ IN (${placeholders(codProj)})`
-    : `${alias}.CODPROJ >= 40000000 AND ${alias}.CODPROJ < 50000000`;
+    ? `(${alias}.CODPROJ IN (${placeholders(codProj)}) OR COALESCE(${alias}.CODPROJ, 0) = 0)`
+    : `((${alias}.CODPROJ >= 40000000 AND ${alias}.CODPROJ < 50000000)`
+      + ` OR COALESCE(${alias}.CODPROJ, 0) = 0)`;
+
+  // O catalogo de projetos vira coluna mesmo sem movimento no periodo. Manter
+  // PARAGUAI ali enchia a tabela de uma coluna zerada; ele ainda aparece
+  // quando tiver lancamento, pelos dois ramos de baixo do UNION.
+  const catalogoSemExcluidos = EXCLUIDOS_EMPRESA_DESTINO.size > 0
+    ? ` AND NOT (${inListClause("p.CODPROJ", [...EXCLUIDOS_EMPRESA_DESTINO])})`
+    : "";
 
   const sql = `
     WITH despesas_base AS (
@@ -462,7 +476,7 @@ export function drePorProjeto(
     projetos_alvo AS (
       SELECT p.CODPROJ, p.CODPROJPAI, p.IDENTIFICACAO, p.DESCRPROJ
       FROM projetos p
-      WHERE ${projetoWhere("p")}
+      WHERE ${projetoWhere("p")}${catalogoSemExcluidos}
 
       UNION
 
@@ -528,7 +542,9 @@ export function drePorProjeto(
       periodo: describePeriodo(periodo, intervalo),
       codProj: [row.CODPROJ],
       codproj: row.CODPROJ,
-      nome: row.DESCRPROJ ?? row.IDENTIFICACAO ?? `Projeto ${row.CODPROJ}`,
+      nome: row.CODPROJ === 0
+        ? "SEM PROJETO"
+        : row.DESCRPROJ ?? row.IDENTIFICACAO ?? `Projeto ${row.CODPROJ}`,
       CODPROJ: row.CODPROJ,
       CODPROJPAI: row.CODPROJPAI,
       IDENTIFICACAO: row.IDENTIFICACAO,

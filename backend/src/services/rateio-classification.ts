@@ -31,7 +31,7 @@ const FALLBACK_EMPRESA_DESTINO = [
  * numero: a consulta a TGFRAT na janela do sync nao encontrou nenhuma parcela
  * destinada a ele, entao nenhum titulo muda de classificacao.
  */
-const EXCLUIDOS_EMPRESA_DESTINO = new Set<number>([40_701_000]);
+export const EXCLUIDOS_EMPRESA_DESTINO = new Set<number>([40_701_000]);
 
 const CACHE_MS = 60_000;
 let cache: { codigos: number[]; conjunto: Set<number>; expiraEm: number } | null = null;
