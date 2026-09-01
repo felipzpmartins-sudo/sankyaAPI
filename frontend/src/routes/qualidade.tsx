@@ -8,6 +8,8 @@ import {
   FolderKanban,
   Info,
   LoaderCircle,
+  Search,
+  X,
   XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -18,6 +20,7 @@ import { PanelCard } from "@/components/dashboard/PanelCard";
 import { QueryState } from "@/components/dashboard/QueryState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -50,6 +53,9 @@ export const Route = createFileRoute("/qualidade")({
 });
 
 const RATEIO_PAGE_SIZE = 20;
+
+const ABAS = ["com", "sem", "incompleto"] as const;
+type Aba = (typeof ABAS)[number];
 type PeriodPreset = "semana" | "mes" | "ano" | "periodo";
 type PageMeta = { page: number; pageSize: number; total: number };
 
@@ -312,6 +318,9 @@ function QualidadePage() {
   const [comRateioPage, setComRateioPage] = useState(0);
   const [exportando, setExportando] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [buscaTexto, setBuscaTexto] = useState("");
+  const [buscaAplicada, setBuscaAplicada] = useState("");
+  const [aba, setAba] = useState<Aba>("com");
   const empresaFilterKey = filters.empresas.join(",");
   const projetoFilterKey = filters.projetos.join(",");
 
@@ -324,14 +333,37 @@ function QualidadePage() {
     }
   }, [filters.dataInicio, filters.dataFim, periodPreset]);
 
+  // Espera a digitacao parar antes de consultar: quem cola um NUFIN nao
+  // deveria disparar seis requisicoes pelo caminho.
+  useEffect(() => {
+    const id = window.setTimeout(() => setBuscaAplicada(buscaTexto.trim()), 350);
+    return () => window.clearTimeout(id);
+  }, [buscaTexto]);
+
   useEffect(() => {
     setComRateioPage(0);
-  }, [filters.dataInicio, filters.dataFim, empresaFilterKey, projetoFilterKey]);
+  }, [filters.dataInicio, filters.dataFim, empresaFilterKey, projetoFilterKey, buscaAplicada]);
 
   // A categoria de destino unico foi unificada em "com rateio"; a lista
   // separada segue no contrato da API, sempre vazia, e nao e mais paginada.
-  const query = useRateioDashboard(filters, comRateioPage, 0, RATEIO_PAGE_SIZE);
+  const query = useRateioDashboard(filters, comRateioPage, 0, RATEIO_PAGE_SIZE, buscaAplicada);
   usePageSnapshot(query.data?.snapshot_at);
+
+  // Buscar um NUFIN e cair numa aba vazia parece 'nao encontrado'. Quando ha
+  // resultado em outra aba, a tela vai ate ele.
+  const resumoAtual = query.data?.status === "OK" ? query.data.resumo : undefined;
+  const comRateioTotal = query.data?.com_rateio_page?.total ?? 0;
+  useEffect(() => {
+    if (!buscaAplicada || !resumoAtual) return;
+    const contagem: Record<Aba, number> = {
+      com: comRateioTotal,
+      sem: resumoAtual.sem_rateio,
+      incompleto: resumoAtual.rateio_incompleto,
+    };
+    if (contagem[aba] > 0) return;
+    const proxima = ABAS.find((chave) => contagem[chave] > 0);
+    if (proxima) setAba(proxima);
+  }, [buscaAplicada, resumoAtual, comRateioTotal, aba]);
 
   if (query.isPending || query.error) {
     return (
@@ -369,6 +401,7 @@ function QualidadePage() {
   const semRateio = query.data.sem_rateio ?? [];
   const rateioIncompleto = query.data.rateio_incompleto ?? [];
   const rateioPorProjeto = query.data.rateio_por_projeto ?? [];
+  const buscaAusente = query.data.busca_ausente ?? null;
   const titulosSemProjeto = rateioResumo.titulos_sem_projeto ?? 0;
   const valorSemProjeto = rateioResumo.valor_sem_projeto ?? 0;
   const valorRateadoTotal = rateioResumo.valor_rateado_total ?? 0;
@@ -600,25 +633,47 @@ function QualidadePage() {
         title="Detalhamento por lançamento"
         description="Um projeto de destino somando 100% já conta como rateio, seja uma empresa ou várias. Pendências ficam separadas."
         action={
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 gap-1.5 border-border/70 bg-surface"
-            onClick={() => void exportarExcel()}
-            disabled={exportando || rateioResumo.total_titulos === 0}
-            title="Exportar todos os títulos e parcelas do período"
-          >
-            {exportando ? (
-              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Download className="h-3.5 w-3.5" />
-            )}
-            {exportando ? "Gerando Excel..." : "Exportar Excel completo"}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={buscaTexto}
+                onChange={(evento) => setBuscaTexto(evento.target.value)}
+                placeholder="Código Sankhya, nota ou fornecedor"
+                aria-label="Buscar lançamento pelo código do Sankhya"
+                className="h-8 w-56 border-border/70 bg-surface pl-8 pr-8 text-xs sm:w-72"
+              />
+              {buscaTexto && (
+                <button
+                  type="button"
+                  onClick={() => setBuscaTexto("")}
+                  aria-label="Limpar busca"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 border-border/70 bg-surface"
+              onClick={() => void exportarExcel()}
+              disabled={exportando || rateioResumo.total_titulos === 0}
+              title="Exportar todos os títulos e parcelas do período"
+            >
+              {exportando ? (
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              {exportando ? "Gerando Excel..." : "Exportar Excel completo"}
+            </Button>
+          </div>
         }
         bodyClassName="p-0"
       >
-        <Tabs defaultValue="com" className="w-full">
+        <Tabs value={aba} onValueChange={(valor) => setAba(valor as Aba)} className="w-full">
           <div className="overflow-x-auto border-b border-border/50 px-5 pt-3">
             <TabsList className="w-max bg-surface-elevated">
               <TabsTrigger value="com" className="gap-2">
@@ -649,6 +704,35 @@ function QualidadePage() {
             </TabsList>
           </div>
 
+
+          {buscaAplicada && (
+            <div
+              className="flex items-start gap-2 border-b border-border/50 bg-surface-elevated/60 px-5 py-3 text-xs text-muted-foreground"
+              role={buscaAusente ? "alert" : undefined}
+            >
+              {buscaAusente ? (
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+              ) : (
+                <Search className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              )}
+              <p>
+                {buscaAusente ? (
+                  <>
+                    <span className="font-medium text-foreground">
+                      Nada para “{buscaAplicada}” neste recorte.
+                    </span>
+                    <span> {buscaAusente.motivo}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Mostrando apenas lançamentos que casam com </span>
+                    <span className="font-medium text-foreground">“{buscaAplicada}”</span>
+                    <span>. Os contadores das abas seguem a busca.</span>
+                  </>
+                )}
+              </p>
+            </div>
+          )}
           <TabsContent value="com" className="m-0 overflow-x-auto">
             <RateioValidoTable
               items={comRateio}

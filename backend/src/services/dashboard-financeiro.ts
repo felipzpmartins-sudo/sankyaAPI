@@ -171,6 +171,12 @@ export type RateioDiagnostico = {
   sem_rateio: RateioDiagnosticoItem[];
   rateio_incompleto: RateioDiagnosticoItem[];
   rateio_por_projeto: RateioProjetoResumo[];
+  /**
+   * Preenchido quando a busca nao devolveu nada mas o titulo existe no
+   * snapshot: diz por que ele ficou de fora, em vez de deixar a tela vazia
+   * sem explicacao.
+   */
+  busca_ausente?: { termo: string; motivo: string } | null;
   snapshot_at: string | null;
 };
 
@@ -183,6 +189,8 @@ export type RateioDiagnosticoArgs = {
   pageSize?: number;
   naoPage?: number;
   naoPageSize?: number;
+  /** NUFIN, numero da nota, nome do fornecedor ou trecho do historico. */
+  busca?: string | null;
 };
 
 export type RateioDiagnosticoCompleto = Omit<
@@ -725,6 +733,88 @@ export function listarRateio(args: { dataInicio: string; dataFim: string; codEmp
   return { rows, snapshot_at: snapshotTitulosAt() };
 }
 
+type Busca = {
+  termo: string;
+  numero: number | null;
+  clause: string;
+  params: string[];
+};
+
+/**
+ * Busca por lancamento. O termo casa com NUFIN, numero interno da nota,
+ * numero fiscal, nome do fornecedor ou trecho do historico — quem consulta
+ * na reuniao tem em maos qualquer um desses, nao necessariamente o NUFIN.
+ *
+ * O numero entra na SQL literal por ja ter passado por Number.isSafeInteger;
+ * o texto vai por parametro.
+ */
+function montarBusca(termoBruto: string | null | undefined): Busca | null {
+  const termo = (termoBruto ?? "").trim();
+  if (!termo) return null;
+
+  const somenteDigitos = /^\d{1,15}$/.test(termo);
+  const numero = somenteDigitos && Number.isSafeInteger(Number(termo)) ? Number(termo) : null;
+  const like = `%${termo.toUpperCase()}%`;
+
+  const condicoes: string[] = [
+    "UPPER(COALESCE(p.NOMEPARC, '')) LIKE ?",
+    "UPPER(COALESCE(t.HISTORICO, '')) LIKE ?",
+  ];
+  const params = [like, like];
+
+  if (numero !== null) {
+    condicoes.unshift(
+      `t.NUFIN = ${numero}`,
+      `t.NUNOTA = ${numero}`,
+      `t.NUMNOTA = ${numero}`,
+    );
+  }
+
+  return { termo, numero, clause: ` AND (${condicoes.join(" OR ")})`, params };
+}
+
+/**
+ * Explica por que um codigo procurado nao apareceu. Sem isso a tela fica
+ * vazia e quem esta apresentando nao sabe se errou o numero ou se o titulo
+ * so nao pertence a este recorte.
+ */
+function diagnosticarBuscaVazia(busca: Busca, args: RateioDiagnosticoArgs): string {
+  if (busca.numero === null) {
+    return "Nenhum lancamento com esse texto no periodo selecionado.";
+  }
+
+  const titulo = getDb()
+    .prepare(
+      `SELECT NUFIN, DTNEG, RECDESP, PROVISAO, CODEMP
+       FROM titulos
+       WHERE NUFIN = ? OR NUNOTA = ? OR NUMNOTA = ?
+       ORDER BY NUFIN LIMIT 1`,
+    )
+    .get(busca.numero, busca.numero, busca.numero) as
+      | { NUFIN: number; DTNEG: string | null; RECDESP: number; PROVISAO: string | null; CODEMP: number }
+      | undefined;
+
+  if (!titulo) {
+    return `Nenhum titulo com o codigo ${busca.termo} na base. A janela sincronizada comeca em 01/01/2025.`;
+  }
+
+  const partes: string[] = [];
+  if (titulo.RECDESP !== -1) partes.push("e um titulo a receber, e esta tela analisa apenas despesa");
+  if (titulo.PROVISAO !== "N") partes.push("esta marcado como provisao");
+  if (titulo.DTNEG && (titulo.DTNEG < args.dataInicio || titulo.DTNEG > args.dataFim)) {
+    partes.push(`tem data de negociacao ${titulo.DTNEG}, fora do periodo selecionado`);
+  }
+  const empresas = normalizedCodEmp(args.codEmp);
+  if (empresas.length > 0 && !empresas.includes(titulo.CODEMP)) {
+    partes.push(`pertence a empresa ${titulo.CODEMP}, que nao esta no filtro`);
+  }
+
+  if (partes.length === 0) {
+    return `O titulo ${titulo.NUFIN} existe, mas nao entrou neste recorte.`;
+  }
+  return `O titulo ${titulo.NUFIN} existe, mas ${partes.join("; ")}.`;
+}
+
 export function rateioDiagnosticoCompleto(args: RateioDiagnosticoArgs): RateioDiagnosticoCompleto {
   const db = getDb();
   const { dataInicio, dataFim, codEmp, codProj } = args;
@@ -733,14 +823,16 @@ export function rateioDiagnosticoCompleto(args: RateioDiagnosticoArgs): RateioDi
   const empresaWhere = empresaIds.length > 0
     ? ` AND t.CODEMP IN (${placeholders(empresaIds)})`
     : "";
-  const params = [dataInicio, dataFim, ...empresaIds];
+  const busca = montarBusca(args.busca);
+  const params = [dataInicio, dataFim, ...empresaIds, ...(busca?.params ?? [])];
   const periodoWhere = `t.DTNEG >= ? AND t.DTNEG < date(?, '+1 day')
     AND t.PROVISAO = 'N'
-    AND t.RECDESP = -1${empresaWhere}`;
+    AND t.RECDESP = -1${empresaWhere}${busca?.clause ?? ""}`;
 
   const totalRow = db.prepare(`
     SELECT COUNT(*) AS total
     FROM titulos t
+    LEFT JOIN parceiros p ON p.CODPARC = t.CODPARC
     WHERE ${periodoWhere}
   `).get(...params) as { total: number };
 
@@ -1149,6 +1241,10 @@ export function rateioDiagnosticoCompleto(args: RateioDiagnosticoArgs): RateioDi
     sem_rateio: semRateio,
     rateio_incompleto: incompletos,
     rateio_por_projeto: rateioPorProjeto,
+    busca_ausente:
+      busca && comRateio.length === 0 && semRateio.length === 0 && incompletos.length === 0
+        ? { termo: busca.termo, motivo: diagnosticarBuscaVazia(busca, args) }
+        : null,
     snapshot_at: snapshotTitulosAt(),
   };
 }

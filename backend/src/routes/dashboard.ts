@@ -373,6 +373,8 @@ const rateioDiagnosticoQuery = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   naoPage: z.coerce.number().int().min(0).default(0),
   naoPageSize: z.coerce.number().int().min(1).max(100).default(20),
+  // Busca por lancamento: NUFIN, numero da nota, fornecedor ou historico.
+  busca: z.string().trim().max(80).optional(),
 }).refine((q) => q.dataInicio <= q.dataFim, {
   message: "dataInicio deve ser menor ou igual a dataFim.",
 });

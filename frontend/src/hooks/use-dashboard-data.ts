@@ -171,6 +171,8 @@ export type RateioResponse = {
   sem_rateio: RateioItem[];
   rateio_incompleto: RateioItem[];
   rateio_por_projeto: RateioProjetoResumo[];
+  /** Por que a busca nao trouxe nada, quando o titulo existe fora do recorte. */
+  busca_ausente?: { termo: string; motivo: string } | null;
   snapshot_at: string | null;
 };
 
@@ -321,9 +323,15 @@ export function useDreDashboard(
   });
 }
 
-export function useRateioDashboard(filters: GlobalFilters, page = 0, naoPage = 0, pageSize = 20) {
+export function useRateioDashboard(
+  filters: GlobalFilters,
+  page = 0,
+  naoPage = 0,
+  pageSize = 20,
+  busca = "",
+) {
   return useQuery({
-    queryKey: ["rateio-dashboard", filters, page, naoPage, pageSize],
+    queryKey: ["rateio-dashboard", filters, page, naoPage, pageSize, busca],
     queryFn: () =>
       apiJson<RateioResponse>("/api/dashboard/financeiro/rateio-diagnostico", {
         dataInicio: filters.dataInicio,
@@ -334,6 +342,7 @@ export function useRateioDashboard(filters: GlobalFilters, page = 0, naoPage = 0
         pageSize,
         naoPage,
         naoPageSize: pageSize,
+        busca: busca.trim() || undefined,
       }),
     placeholderData: (previousData) => previousData,
     staleTime: 30_000,
