@@ -405,7 +405,13 @@ function ContasTable({
 }: {
   title: string;
   tipo: "receber" | "pagar";
-  data: { parceiro: string; vencimento: string; valor_aberto: number; dias_atraso: number }[];
+  data: {
+    parceiro: string;
+    historico: string | null;
+    vencimento: string;
+    valor_aberto: number;
+    dias_atraso: number;
+  }[];
   meta: { page: number; pageSize: number; total: number; valorTotal: number };
   exporting: boolean;
   exportDisabled: boolean;
@@ -433,16 +439,23 @@ function ContasTable({
         <TableHeader>
           <TableRow className="border-border/60 hover:bg-transparent">
             <TableHead className="text-[11px] uppercase text-muted-foreground">Parceiro</TableHead>
+            <TableHead className="text-[11px] uppercase text-muted-foreground">Histórico</TableHead>
             <TableHead className="text-[11px] uppercase text-muted-foreground">Vencimento</TableHead>
             <TableHead className="text-right text-[11px] uppercase text-muted-foreground">Valor aberto</TableHead>
             <TableHead className="text-right text-[11px] uppercase text-muted-foreground">Atraso</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.length === 0 && <EmptyTableRow colSpan={4} />}
+          {data.length === 0 && <EmptyTableRow colSpan={5} />}
           {data.map((r, i) => (
             <TableRow key={i} className="border-border/40 hover:bg-surface-elevated/60">
               <TableCell className="text-foreground">{r.parceiro}</TableCell>
+              <TableCell
+                className="max-w-[260px] truncate text-muted-foreground"
+                title={r.historico ?? ""}
+              >
+                {r.historico || "—"}
+              </TableCell>
               <TableCell className="text-muted-foreground">{formatDate(r.vencimento)}</TableCell>
               <TableCell className="text-right font-medium text-foreground">
                 {formatCurrency(r.valor_aberto)}
@@ -462,7 +475,7 @@ function ContasTable({
             </TableRow>
           ))}
           <TableRow className="border-t-2 border-border/70 bg-surface-elevated/30">
-            <TableCell colSpan={2} className="text-sm font-semibold text-foreground">Total</TableCell>
+            <TableCell colSpan={3} className="text-sm font-semibold text-foreground">Total</TableCell>
             <TableCell className="text-right text-sm font-bold text-foreground">
               {formatCurrency(meta.valorTotal)}
             </TableCell>

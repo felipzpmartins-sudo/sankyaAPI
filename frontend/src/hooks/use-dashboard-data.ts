@@ -76,6 +76,7 @@ type ContasResponse = {
   titulos: Array<{
     NOMEPARC: string | null;
     DTVENC: string | null;
+    HISTORICO: string | null;
     valor_aberto: number;
     dias_atraso: number;
   }>;
@@ -295,6 +296,7 @@ export function useDreDashboard(
       const mapConta = (conta: ContasResponse["titulos"][number]) => ({
         parceiro: conta.NOMEPARC ?? "Sem parceiro",
         vencimento: conta.DTVENC ?? "",
+        historico: conta.HISTORICO,
         valor_aberto: conta.valor_aberto,
         dias_atraso: conta.dias_atraso,
       });

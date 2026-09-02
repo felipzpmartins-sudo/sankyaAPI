@@ -1374,6 +1374,7 @@ export function listarContasAbertas(args: {
     DESCRNAT: string | null;
     DTNEG: string | null;
     DTVENC: string | null;
+    HISTORICO: string | null;
     valor_aberto: number;
     dias_atraso: number;
   }[];
@@ -1414,6 +1415,7 @@ export function listarContasAbertas(args: {
          n.DESCRNAT,
          t.DTNEG,
          t.DTVENC,
+         t.HISTORICO,
          t.valor_aberto,
          CASE
            WHEN t.DTVENC IS NULL THEN 0
@@ -1441,6 +1443,7 @@ export function listarContasAbertas(args: {
       DESCRNAT: string | null;
       DTNEG: string | null;
       DTVENC: string | null;
+      HISTORICO: string | null;
       valor_aberto: number;
       dias_atraso: number;
     }>;
