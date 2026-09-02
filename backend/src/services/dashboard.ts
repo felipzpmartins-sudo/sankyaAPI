@@ -8,6 +8,7 @@ import {
 import {
   COMODATO_RETORNO_TOPS,
   COMODATO_SAIDA_TOPS,
+  FATURAMENTO_AVULSO_TOPS,
   FATURAMENTO_TOPS,
   inListClause,
 } from "./operacoes.js";
@@ -109,6 +110,13 @@ export function listarProdutos(): Produto[] {
  * aparece nos KPIs e no gráfico por empresa (`PLAN`/stakeholder 2026-05-14).
  */
 const WHERE_FATURAMENTO = `${inListClause("CODTIPOPER", FATURAMENTO_TOPS)} AND STATUSNOTA = 'L' AND DTFATUR IS NOT NULL`;
+
+/**
+ * Lado avulso do faturamento: TGFFIN em vez de nota. RECDESP = 1 garante que
+ * so receita entra; PROVISAO = 'N' descarta o que ainda e previsao.
+ */
+const WHERE_FATURAMENTO_AVULSO = `${inListClause("CODTIPOPER", FATURAMENTO_AVULSO_TOPS)}`
+  + " AND RECDESP = 1 AND PROVISAO = 'N'";
 
 const JOIN_PEDIDO_FATURAMENTO = `${inListClause("p.CODTIPOPER", FATURAMENTO_TOPS)} AND p.STATUSNOTA = 'L' AND p.DTFATUR IS NOT NULL`;
 
@@ -385,6 +393,66 @@ export function vendedoresRanking(
   };
 }
 
+/**
+ * As duas origens do faturamento, como uma fonte so.
+ *
+ * A nota fiscal (pedidos) responde por quase tudo. O lancamento financeiro
+ * avulso (titulos, TOP 1811) e receita que nunca vira nota — royalties, por
+ * exemplo — e entra pela DTNEG, porque lancamento avulso nao tem DTFATUR.
+ *
+ * A coluna e_nota preserva a diferenca: contagem de notas e ticket medio
+ * continuam olhando so para o que e nota de verdade.
+ */
+function fonteFaturamento(args: {
+  empresa: EmpresaFiltro;
+  vendedor: VendedorFiltro;
+  escopo: VendasEscopo;
+  inicio: string;
+  fim: string;
+}): { sql: string; params: unknown[] } {
+  const pedidoEmpresa = empresaToSqlClause(args.empresa);
+  const pedidoVendedor = vendedorToSqlClause(args.vendedor);
+  const pedidoProjeto = vendasEscopoSql("pedidos", args.escopo);
+  const pedidoExtras = [pedidoEmpresa.clause, pedidoVendedor.clause, pedidoProjeto.clause]
+    .filter(Boolean)
+    .map((c) => ` AND ${c}`)
+    .join("");
+
+  // Lancamento avulso nao tem vendedor. Com filtro de vendedor ativo ele fica
+  // de fora, em vez de aparecer somado a todos eles.
+  const semVendedor = args.vendedor.modo !== "todos";
+  const tituloEmpresa = empresaToSqlClause(args.empresa);
+  const tituloProjeto = vendasEscopoSql("titulos", args.escopo);
+  const tituloExtras = semVendedor
+    ? " AND 1 = 0"
+    : [tituloEmpresa.clause, tituloProjeto.clause]
+        .filter(Boolean)
+        .map((c) => ` AND ${c}`)
+        .join("");
+
+  return {
+    sql: `
+      SELECT DTFATUR AS data, VLRNOTA AS valor, 1 AS e_nota
+      FROM pedidos
+      WHERE ${WHERE_FATURAMENTO}${pedidoExtras}
+        AND DTFATUR >= date(?) AND DTFATUR < date(?)
+      UNION ALL
+      SELECT DTNEG AS data, VLRDESDOB AS valor, 0 AS e_nota
+      FROM titulos
+      WHERE ${WHERE_FATURAMENTO_AVULSO}${tituloExtras}
+        AND DTNEG >= date(?) AND DTNEG < date(?)`,
+    params: [
+      ...pedidoEmpresa.params,
+      ...pedidoVendedor.params,
+      ...pedidoProjeto.params,
+      args.inicio,
+      args.fim,
+      ...(semVendedor ? [] : [...tituloEmpresa.params, ...tituloProjeto.params]),
+      args.inicio,
+      args.fim,
+    ],
+  };
+}
 export function faturamentoConsolidado(
   empresa: EmpresaFiltro,
   vendedor: VendedorFiltro = { modo: "todos" },
@@ -397,92 +465,76 @@ export function faturamentoConsolidado(
   const anteriorFim = addYearsIso(selecionadoFim, -1);
   const anoInicio = `${refDate.slice(0, 4)}-01-01`;
   const anoFim = `${Number(refDate.slice(0, 4)) + 1}-01-01`;
-  const empresaSql = empresaToSqlClause(empresa);
-  const vendedorSql = vendedorToSqlClause(vendedor);
-  const projetoSql = vendasEscopoSql("pedidos", escopo);
-  const whereExtras = [empresaSql.clause, vendedorSql.clause, projetoSql.clause]
-    .filter(Boolean)
-    .map((c) => ` AND ${c}`)
-    .join("");
+  const fonteAno = fonteFaturamento({ empresa, vendedor, escopo, inicio: anoInicio, fim: anoFim });
 
   const sql = `
-    WITH base AS (
-      SELECT DTFATUR, VLRNOTA
-      FROM pedidos
-      WHERE ${WHERE_FATURAMENTO}${whereExtras}
-        AND DTFATUR >= date(?) AND DTFATUR < date(?)
-    )
+    WITH base AS (${fonteAno.sql})
     SELECT
-      COALESCE((SELECT SUM(VLRNOTA) FROM base WHERE DTFATUR = date(?)), 0) AS dia,
-      COALESCE((SELECT SUM(VLRNOTA) FROM base WHERE DTFATUR >= date(?, '-6 days') AND DTFATUR <= date(?)), 0) AS semana_7d,
-      COALESCE((SELECT SUM(VLRNOTA) FROM base WHERE strftime('%Y-%m', DTFATUR) = strftime('%Y-%m', ?)), 0) AS mes_atual,
-      COALESCE((SELECT SUM(VLRNOTA) FROM base), 0) AS ano_atual
+      COALESCE((SELECT SUM(valor) FROM base WHERE data = date(?)), 0) AS dia,
+      COALESCE((SELECT SUM(valor) FROM base WHERE data >= date(?, '-6 days') AND data <= date(?)), 0) AS semana_7d,
+      COALESCE((SELECT SUM(valor) FROM base WHERE strftime('%Y-%m', data) = strftime('%Y-%m', ?)), 0) AS mes_atual,
+      COALESCE((SELECT SUM(valor) FROM base), 0) AS ano_atual
   `;
 
   const row = getDb()
     .prepare(sql)
-    .get(
-      ...empresaSql.params,
-      ...vendedorSql.params,
-      ...projetoSql.params,
-      anoInicio,
-      anoFim,
-      refDate,
-      refDate,
-      refDate,
-      refDate,
-    ) as {
+    .get(...fonteAno.params, refDate, refDate, refDate, refDate) as {
     dia: number;
     semana_7d: number;
     mes_atual: number;
     ano_atual: number;
   };
 
+  // A janela cobre do ano anterior ate o fim do mes selecionado, porque a
+  // mesma leitura responde pelo periodo atual e pelo comparativo.
+  const fonteComparativo = fonteFaturamento({
+    empresa,
+    vendedor,
+    escopo,
+    inicio: anteriorInicio,
+    fim: selecionadoFim,
+  });
   const comparativo = getDb()
     .prepare(`
       SELECT
-        COUNT(CASE WHEN DTFATUR >= date(?) AND DTFATUR < date(?) THEN 1 END) AS qtd_notas,
-        COALESCE(SUM(CASE WHEN DTFATUR >= date(?) AND DTFATUR < date(?) THEN VLRNOTA ELSE 0 END), 0) AS atual,
-        COALESCE(SUM(CASE WHEN DTFATUR >= date(?) AND DTFATUR < date(?) THEN VLRNOTA ELSE 0 END), 0) AS anterior
-      FROM pedidos
-      WHERE ${WHERE_FATURAMENTO}${whereExtras}
-        AND DTFATUR >= date(?) AND DTFATUR < date(?)
+        COUNT(CASE WHEN e_nota = 1 AND data >= date(?) AND data < date(?) THEN 1 END) AS qtd_notas,
+        COALESCE(SUM(CASE WHEN data >= date(?) AND data < date(?) THEN valor ELSE 0 END), 0) AS atual,
+        COALESCE(SUM(CASE WHEN e_nota = 1 AND data >= date(?) AND data < date(?) THEN valor ELSE 0 END), 0) AS atual_notas,
+        COALESCE(SUM(CASE WHEN data >= date(?) AND data < date(?) THEN valor ELSE 0 END), 0) AS anterior
+      FROM (${fonteComparativo.sql})
     `)
     .get(
       selecionadoInicio,
       selecionadoFim,
       selecionadoInicio,
       selecionadoFim,
+      selecionadoInicio,
+      selecionadoFim,
       anteriorInicio,
       anteriorFim,
-      ...empresaSql.params,
-      ...vendedorSql.params,
-      ...projetoSql.params,
-      anteriorInicio,
-      selecionadoFim,
-    ) as { qtd_notas: number; atual: number; anterior: number };
+      ...fonteComparativo.params,
+    ) as { qtd_notas: number; atual: number; atual_notas: number; anterior: number };
 
   const variacaoPct = comparativo.anterior > 0
     ? ((comparativo.atual - comparativo.anterior) / comparativo.anterior) * 100
     : 0;
 
   const ano = Number(refDate.slice(0, 4));
+  const fonteEvolucao = fonteFaturamento({
+    empresa,
+    vendedor,
+    escopo,
+    inicio: `${ano - 1}-01-01`,
+    fim: `${ano + 1}-01-01`,
+  });
   const evolucaoRows = getDb()
     .prepare(`
-      SELECT strftime('%Y-%m', DTFATUR) AS mes, COALESCE(SUM(VLRNOTA), 0) AS total
-      FROM pedidos
-      WHERE ${WHERE_FATURAMENTO}${whereExtras}
-        AND DTFATUR >= date(?) AND DTFATUR < date(?)
-      GROUP BY strftime('%Y-%m', DTFATUR)
+      SELECT strftime('%Y-%m', data) AS mes, COALESCE(SUM(valor), 0) AS total
+      FROM (${fonteEvolucao.sql})
+      GROUP BY strftime('%Y-%m', data)
       ORDER BY mes
     `)
-    .all(
-      ...empresaSql.params,
-      ...vendedorSql.params,
-      ...projetoSql.params,
-      `${ano - 1}-01-01`,
-      `${ano + 1}-01-01`,
-    ) as Array<{ mes: string; total: number }>;
+    .all(...fonteEvolucao.params) as Array<{ mes: string; total: number }>;
   const evolucaoMap = new Map(evolucaoRows.map((item) => [item.mes, item.total]));
   const meses = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
   const ultimoMes = Number(refDate.slice(5, 7));
@@ -500,7 +552,9 @@ export function faturamentoConsolidado(
     ano_atual: round2(row.ano_atual),
     faturamento_bruto: round2(comparativo.atual),
     qtd_notas: comparativo.qtd_notas,
-    ticket_medio: comparativo.qtd_notas > 0 ? round2(comparativo.atual / comparativo.qtd_notas) : 0,
+    // Ticket medio e valor de nota dividido por quantidade de nota. Somar o
+    // avulso no numerador sem ter denominador inflaria o indicador.
+    ticket_medio: comparativo.qtd_notas > 0 ? round2(comparativo.atual_notas / comparativo.qtd_notas) : 0,
     variacao_pct: round2(variacaoPct),
     evolucao,
     snapshot_at: snapshotPedidosAt(),

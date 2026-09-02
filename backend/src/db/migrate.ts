@@ -225,6 +225,7 @@ function migrateTitulosShape(): void {
     ["RATEADO", "ALTER TABLE titulos ADD COLUMN RATEADO TEXT"],
     ["NUMNOTA", "ALTER TABLE titulos ADD COLUMN NUMNOTA INTEGER"],
     ["SERIENOTA", "ALTER TABLE titulos ADD COLUMN SERIENOTA TEXT"],
+    ["CODTIPOPER", "ALTER TABLE titulos ADD COLUMN CODTIPOPER INTEGER"],
   ];
 
   for (const [name, sql] of additions) {

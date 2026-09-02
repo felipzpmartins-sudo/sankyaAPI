@@ -1,7 +1,7 @@
 import { getDb } from "../db/connection.js";
 import { type EmpresaFiltro, empresaToSqlClause } from "../utils/empresa.js";
 import { type VendedorFiltro, vendedorToSqlClause } from "../utils/vendedor.js";
-import { FATURAMENTO_TOPS, inListClause } from "./operacoes.js";
+import { FATURAMENTO_AVULSO_TOPS, FATURAMENTO_TOPS, inListClause } from "./operacoes.js";
 import {
   classificarRateio,
   isProjetoEmpresaDestino,
@@ -381,9 +381,26 @@ export function dre(filtro: EmpresaFiltro, periodo: Periodo, intervalo: Interval
         AND STATUSNOTA = 'L'
         AND DTFATUR IS NOT NULL${pedidoEmpresaWhere}`;
 
-    receita_bruta = (db
+    // Lancamento financeiro avulso (TOP 1811) e receita que nunca vira nota.
+    // Entra pela DTNEG, que baseWhere ja usa. Com filtro de TOP ativo, so
+    // conta se a operacao avulsa estiver entre as escolhidas.
+    const avulsoTops = intervalo.codTipOper?.length
+      ? FATURAMENTO_AVULSO_TOPS.filter((top) => intervalo.codTipOper?.includes(top))
+      : [...FATURAMENTO_AVULSO_TOPS];
+    const receitaAvulsaSql = `
+      SELECT COALESCE(SUM(VLRDESDOB), 0) AS total
+      FROM titulos
+      WHERE ${baseWhere}
+        AND RECDESP = 1
+        AND ${inListClause("CODTIPOPER", avulsoTops)}`;
+
+    const receitaNotas = (db
       .prepare(receitaSql)
       .get(...periodoWhereParams, ...pedidoEmpresa.params) as { total: number }).total;
+    const receitaAvulsa = (db
+      .prepare(receitaAvulsaSql)
+      .get(...periodoWhereParams, ...empresaParams) as { total: number }).total;
+    receita_bruta = receitaNotas + receitaAvulsa;
     custos = (db.prepare(somaSql(-1, "2")).get(...periodoWhereParams, ...empresaParams) as { total: number }).total;
     despesas_admin = (db.prepare(somaSql(-1, "3")).get(...periodoWhereParams, ...empresaParams) as { total: number }).total;
     despesas_comerciais = (db.prepare(somaSql(-1, "4")).get(...periodoWhereParams, ...empresaParams) as { total: number }).total;

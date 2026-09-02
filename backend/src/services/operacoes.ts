@@ -29,6 +29,22 @@ export const FATURAMENTO_TOPS = [
   1770, // VENDA NF-E EXTERIOR
 ] as const;
 
+/**
+ * TOPs de LANÇAMENTO FINANCEIRO que contam como receita mesmo sem nota fiscal.
+ *
+ * Diferente de FATURAMENTO_TOPS, que filtra notas (TGFCAB), estas vivem só na
+ * TGFFIN: TIPMOV = 'I', sem NUNOTA. Entram pela data de negociação, porque
+ * lançamento avulso não tem DTFATUR.
+ *
+ * Decisão de produto (2026-09-02, pedido do financeiro): 1811 entra no
+ * faturamento e na receita do DRE. Manter a lista curta é proposital — a irmã
+ * dela, a TOP 1300 (LANÇAMENTO FINANCEIRO), tem R$ 120 milhões em lançamentos
+ * de receita e multiplicaria o faturamento se fosse incluída sem análise.
+ */
+export const FATURAMENTO_AVULSO_TOPS = [
+  1811, // LANÇAMENTO FINANCEIRO - AVULSO (royalties)
+] as const;
+
 /** TOPs de saída em comodato (escola recebe o kit). */
 export const COMODATO_SAIDA_TOPS = [
   1109, // NFE REMESSA EM COMODATO

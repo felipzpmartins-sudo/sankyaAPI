@@ -27,6 +27,8 @@ const COLUNAS = [
   "CODCENCUS",
   "CODPROJ",
   "CODTIPTIT",
+  // Distingue nota fiscal de lancamento financeiro avulso (TOP 1811).
+  "CODTIPOPER",
   "CODNAT",
   "RECDESP",
   "PROVISAO",
@@ -117,13 +119,13 @@ export async function syncTitulos(): Promise<void> {
 
     const upsert = db.prepare(
       `INSERT INTO titulos
-          (NUFIN, NUNOTA, CODEMP, CODPARC, CODCENCUS, CODPROJ, CODTIPTIT, CODNAT, RECDESP, PROVISAO, tipo,
+          (NUFIN, NUNOTA, CODEMP, CODPARC, CODCENCUS, CODPROJ, CODTIPTIT, CODTIPOPER, CODNAT, RECDESP, PROVISAO, tipo,
           DTNEG, DTVENC, DHBAIXA, DTCONTAB,
             VLRDESDOB, VLRBAIXA, VLRJURO, VLRMULTA, VLRDESC,
             HISTORICO, RATEADO, NUMNOTA, SERIENOTA,
             valor_aberto, is_em_aberto, synced_at)
        VALUES
-          (@NUFIN, @NUNOTA, @CODEMP, @CODPARC, @CODCENCUS, @CODPROJ, @CODTIPTIT, @CODNAT, @RECDESP, @PROVISAO, @tipo,
+          (@NUFIN, @NUNOTA, @CODEMP, @CODPARC, @CODCENCUS, @CODPROJ, @CODTIPTIT, @CODTIPOPER, @CODNAT, @RECDESP, @PROVISAO, @tipo,
           @DTNEG, @DTVENC, @DHBAIXA, @DTCONTAB,
             @VLRDESDOB, @VLRBAIXA, @VLRJURO, @VLRMULTA, @VLRDESC,
             @HISTORICO, @RATEADO, @NUMNOTA, @SERIENOTA,
@@ -135,6 +137,7 @@ export async function syncTitulos(): Promise<void> {
          CODCENCUS    = excluded.CODCENCUS,
          CODPROJ      = excluded.CODPROJ,
          CODTIPTIT    = excluded.CODTIPTIT,
+         CODTIPOPER   = excluded.CODTIPOPER,
          CODNAT       = excluded.CODNAT,
          RECDESP      = excluded.RECDESP,
          PROVISAO     = excluded.PROVISAO,
@@ -218,6 +221,7 @@ export async function syncTitulos(): Promise<void> {
           CODCENCUS: r.CODCENCUS != null ? Number(r.CODCENCUS) : null,
           CODPROJ: r.CODPROJ != null ? Number(r.CODPROJ) : null,
           CODTIPTIT: r.CODTIPTIT != null ? Number(r.CODTIPTIT) : null,
+          CODTIPOPER: r.CODTIPOPER != null ? Number(r.CODTIPOPER) : null,
           CODNAT: r.CODNAT != null ? Number(r.CODNAT) : null,
           RECDESP: recdesp,
           PROVISAO: r.PROVISAO ?? null,
