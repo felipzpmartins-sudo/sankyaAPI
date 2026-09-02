@@ -13,6 +13,8 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
+import { useAuthUser } from "@/components/LoginGate";
+import { podeVerViaCerta } from "@/lib/acesso";
 
 type NavItem = {
   title: string;
@@ -76,7 +78,10 @@ function NavList({ items, currentPath }: { items: NavItem[]; currentPath: string
 
 export function AppSidebar() {
   const currentPath = useRouterState({ select: (r) => r.location.pathname });
-  const visibleDashboards = dashboards;
+  const user = useAuthUser();
+  const visibleDashboards = podeVerViaCerta(user?.email)
+    ? dashboards
+    : dashboards.filter((item) => item.url !== "/via-certa");
 
   return (
     <Sidebar

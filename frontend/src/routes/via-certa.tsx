@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { Navigate, createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { Activity, CalendarDays, Download, GraduationCap, LoaderCircle } from "lucide-react";
 
@@ -9,6 +9,8 @@ import { QueryState } from "@/components/dashboard/QueryState";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiBlob, apiJson } from "@/lib/api";
+import { useAuthUser } from "@/components/LoginGate";
+import { podeVerViaCerta } from "@/lib/acesso";
 
 type ViaCertaResponse = {
   filtro: { month: string; year: string };
@@ -17,7 +19,17 @@ type ViaCertaResponse = {
   alunos: Array<{ mes: string; matricula: number; aulas_assistidas: number }>;
 };
 
-export const Route = createFileRoute("/via-certa")({ component: ViaCertaPage });
+export const Route = createFileRoute("/via-certa")({ component: ViaCertaRoute });
+
+/**
+ * Quem nao ve o item no menu tambem nao chega aqui pela URL: volta para o
+ * resumo antes de a pagina montar, entao nenhuma consulta de aluno dispara.
+ */
+function ViaCertaRoute() {
+  const user = useAuthUser();
+  if (!podeVerViaCerta(user?.email)) return <Navigate to="/" replace />;
+  return <ViaCertaPage />;
+}
 
 function ViaCertaPage() {
   const today = new Date();

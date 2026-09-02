@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { Navigate, createFileRoute } from "@tanstack/react-router";
 import { AlertTriangle, KeyRound } from "lucide-react";
 
 import { AnalyticsKpi } from "@/components/dashboard/AnalyticsKpi";
@@ -8,6 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { apiJson, empresaQuery } from "@/lib/api";
 import { useFilters, type GlobalFilters } from "@/lib/filters-context";
 import { formatCompactCurrency, formatCurrency, formatDate, formatInt, formatPercent } from "@/lib/format";
+import { useAuthUser } from "@/components/LoginGate";
+import { podeVerViaCerta } from "@/lib/acesso";
 
 type Kind = "text" | "currency" | "int" | "percent" | "date" | "status";
 type Metric = { label: string; value: string; delta?: number | null };
@@ -33,8 +35,16 @@ const SUPPORTED = new Set([
 
 export const Route = createFileRoute("/modulos/$modulo")({
   head: () => ({ meta: [{ title: "Módulos · Dashboards Sankhya" }] }),
-  component: ModulePage,
+  component: ModuleRoute,
 });
+
+/** Mesma regra da tela /via-certa: o modulo de alunos some para quem nao o ve. */
+function ModuleRoute() {
+  const { modulo } = Route.useParams();
+  const user = useAuthUser();
+  if (modulo === "viacerta" && !podeVerViaCerta(user?.email)) return <Navigate to="/" replace />;
+  return <ModulePage />;
+}
 
 function metric(label: string, value: string, delta?: number | null): Metric {
   return { label, value, delta };
