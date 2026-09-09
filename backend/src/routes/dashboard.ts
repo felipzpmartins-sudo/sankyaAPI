@@ -20,6 +20,7 @@ import {
   type FinanceiroExportTipo,
 } from "../services/financeiro-export.js";
 import { gerarRateioXlsx } from "../services/rateio-export.js";
+import { gerarProdutosSemVendaXlsx } from "../services/produtos-export.js";
 import {
   comodatoConsolidado,
   empresasResumo,
@@ -33,6 +34,7 @@ import {
 } from "../services/dashboard.js";
 import {
   curvaAbc,
+  produtosSemVenda,
   pedidosVsNota,
   rankingProdutos,
   rankingVendedores,
@@ -489,6 +491,31 @@ dashboardRouter.get("/produtos/curva-abc", (req, res, next) => {
 dashboardRouter.get("/produtos/ranking", (req, res, next) => {
   try {
     res.json(rankingProdutos(comercialArgs(req.query)));
+  } catch (err) {
+    next(err);
+  }
+});
+
+dashboardRouter.get("/produtos/sem-venda", (req, res, next) => {
+  try {
+    res.json(produtosSemVenda(comercialArgs(req.query)));
+  } catch (err) {
+    next(err);
+  }
+});
+
+dashboardRouter.get("/produtos/sem-venda/exportacao", async (req, res, next) => {
+  try {
+    const { empresa, vendedor, periodo } = comercialArgs(req.query);
+    const buffer = await gerarProdutosSemVendaXlsx({ empresa, vendedor, periodo });
+    const nome = `produtos-sem-venda-${periodo.dataInicio}-a-${periodo.dataFim}.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${nome}"`);
+    res.setHeader("Content-Length", String(buffer.length));
+    res.send(buffer);
   } catch (err) {
     next(err);
   }

@@ -36,7 +36,8 @@ const { syncProdutos } = await import("../src/sync/produtos.js");
 const { syncPedidos } = await import("../src/sync/pedidos.js");
 const { syncVinculos } = await import("../src/sync/vinculos.js");
 const { syncItens } = await import("../src/sync/itens.js");
-const { pedidosVsNota, curvaAbc, rankingProdutos, rankingVendedores } =
+const { syncEstoque } = await import("../src/sync/estoque.js");
+const { pedidosVsNota, curvaAbc, rankingProdutos, rankingVendedores, produtosSemVenda } =
   await import("../src/services/comercial.js");
 
 migrate();
@@ -51,6 +52,7 @@ const passos = [
   ["pedidos", syncPedidos],
   ["vinculos", syncVinculos],
   ["itens", syncItens],
+  ["estoque", syncEstoque],
 ] as const;
 
 for (const [nome, fn] of passos) {
@@ -95,5 +97,23 @@ for (const r of rv.vendedores.slice(0, 5)) {
   console.log(
     `  ${r.vendedor.padEnd(22)} ${String(r.pedidos).padStart(4)} pedidos` +
       ` · R$ ${r.valor.toFixed(2)} · ${r.participacao_pct}%`,
+  );
+}
+
+const sv = produtosSemVenda(filtros);
+console.log("");
+console.log("=== produtos ativos sem venda (2026) ===");
+console.log("  total de ativos    :", sv.total_ativos, " | ERP disse 3082");
+console.log("  sem venda          :", sv.sem_venda, " | ERP disse 2516");
+console.log("  pararam de vender  :", sv.pararam_de_vender, " | ERP disse 184");
+console.log("  nunca na janela    :", sv.nunca_na_janela, " | ERP disse 2332");
+console.log("  com estoque > 0    :", sv.com_estoque);
+console.log("  historico comeca em:", sv.inicio_do_historico);
+console.log("");
+console.log("  os 5 primeiros que pararam de vender:");
+for (const r of sv.produtos.filter((x) => x.parou_de_vender).slice(0, 5)) {
+  console.log(
+    `    ${String(r.produto).slice(0, 38).padEnd(40)}` +
+    ` ult. venda ${r.ultima_venda} · ${r.dias_sem_vender}d · estoque ${r.estoque}`,
   );
 }

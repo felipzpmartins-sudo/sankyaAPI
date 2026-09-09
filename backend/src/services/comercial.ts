@@ -18,6 +18,9 @@ import { FATURAMENTO_TOPS, inListClause } from "./operacoes.js";
 
 export type PeriodoComercial = { dataInicio: string; dataFim: string };
 
+/** Janela do snapshot. Antes disso o painel simplesmente não tem histórico. */
+const INICIO_DO_HISTORICO = "2025-01-01";
+
 /** Pedido de venda na TGFCAB. A nota emitida a partir dele é TIPMOV 'V'. */
 const TIPMOV_PEDIDO = "P";
 
@@ -436,5 +439,124 @@ export function vendedoresPorProduto(args: Filtros & {
       valor: round2(r.valor),
       participacao_pct: total > 0 ? round2((r.valor / total) * 100) : 0,
     })),
+  };
+}
+
+/**
+ * Produtos ativos que nao venderam no periodo.
+ *
+ * Tres cuidados que mudam o que o numero significa:
+ *
+ * 1. So produto ATIVO entra. TGFPRO.ATIVO ja vinha no sync desde sempre —
+ *    sem esse corte a lista traria 1.923 produtos que a empresa nem vende
+ *    mais, e o indicador viraria ruido.
+ * 2. A ultima venda so enxerga o que esta no snapshot, que comeca em
+ *    01/01/2025. Produto vendido pela ultima vez em 2024 aparece aqui como
+ *    "nunca vendeu" — por isso a resposta separa quem parou de vender de
+ *    quem nunca apareceu na janela.
+ * 3. Estoque entra para separar catalogo morto de dinheiro parado.
+ */
+export function produtosSemVenda(args: Filtros & { limite?: number }): {
+  periodo: PeriodoComercial;
+  inicio_do_historico: string;
+  total_ativos: number;
+  sem_venda: number;
+  pararam_de_vender: number;
+  nunca_na_janela: number;
+  com_estoque: number;
+  produtos: Array<{
+    CODPROD: number;
+    produto: string;
+    grupo: string | null;
+    estoque: number;
+    ultima_venda: string | null;
+    dias_sem_vender: number | null;
+    parou_de_vender: boolean;
+  }>;
+} {
+  const empresa = empresaToSqlClause(args.empresa, "p.CODEMP");
+  const vendedor = vendedorToSqlClause(args.vendedor, "p.CODVEND");
+  const extras = [empresa.clause, vendedor.clause]
+    .filter(Boolean)
+    .map((c) => ` AND ${c}`)
+    .join("");
+  const empresaEstoque = empresaToSqlClause(args.empresa, "CODEMP");
+  const estoqueWhere = empresaEstoque.clause ? ` WHERE ${empresaEstoque.clause}` : "";
+
+  const faturado = `${inListClause("p.CODTIPOPER", FATURAMENTO_TOPS)}
+      AND p.STATUSNOTA = 'L'
+      AND p.DTFATUR IS NOT NULL`;
+
+  const sql = `
+    WITH vendas AS (
+      SELECT i.CODPROD, MAX(p.DTFATUR) AS ultima
+      FROM pedido_itens i
+      INNER JOIN pedidos p ON p.NUNOTA = i.NUNOTA
+      WHERE ${faturado}${extras}
+      GROUP BY i.CODPROD
+    ),
+    no_periodo AS (
+      SELECT DISTINCT i.CODPROD
+      FROM pedido_itens i
+      INNER JOIN pedidos p ON p.NUNOTA = i.NUNOTA
+      WHERE ${faturado}${extras}
+        AND p.DTFATUR >= date(?) AND p.DTFATUR <= date(?)
+    ),
+    estoque AS (
+      SELECT CODPROD, SUM(ESTOQUE) AS qtd FROM produto_estoque${estoqueWhere} GROUP BY CODPROD
+    )
+    SELECT
+      pr.CODPROD,
+      pr.DESCRPROD AS produto,
+      pr.GRUPO_DESCR AS grupo,
+      COALESCE(e.qtd, 0) AS estoque,
+      v.ultima AS ultima_venda,
+      CASE WHEN v.ultima IS NULL THEN NULL
+           ELSE CAST(julianday(?) - julianday(v.ultima) AS INTEGER) END AS dias_sem_vender
+    FROM produtos pr
+    LEFT JOIN vendas  v ON v.CODPROD = pr.CODPROD
+    LEFT JOIN estoque e ON e.CODPROD = pr.CODPROD
+    WHERE pr.ativo = 1
+      AND pr.CODPROD NOT IN (SELECT CODPROD FROM no_periodo)
+    ORDER BY (v.ultima IS NULL), v.ultima DESC, COALESCE(e.qtd, 0) DESC`;
+
+  const params = [
+    ...empresa.params, ...vendedor.params,          // vendas
+    ...empresa.params, ...vendedor.params,          // no_periodo
+    args.periodo.dataInicio, args.periodo.dataFim,  // no_periodo
+    ...empresaEstoque.params,                       // estoque
+    args.periodo.dataFim,                           // dias_sem_vender
+  ];
+
+  const linhas = getDb().prepare(sql).all(...params) as Array<{
+    CODPROD: number;
+    produto: string;
+    grupo: string | null;
+    estoque: number;
+    ultima_venda: string | null;
+    dias_sem_vender: number | null;
+  }>;
+
+  const totalAtivos = (getDb()
+    .prepare("SELECT COUNT(*) AS qt FROM produtos WHERE ativo = 1")
+    .get() as { qt: number }).qt;
+
+  const produtos = linhas.map((r) => ({
+    ...r,
+    estoque: round2(r.estoque),
+    parou_de_vender: r.ultima_venda != null,
+  }));
+
+  const limite = Math.min(Math.max(1, args.limite ?? 500), 3_000);
+
+  return {
+    periodo: args.periodo,
+    inicio_do_historico: INICIO_DO_HISTORICO,
+    total_ativos: totalAtivos,
+    sem_venda: produtos.length,
+    pararam_de_vender: produtos.filter((r) => r.parou_de_vender).length,
+    nunca_na_janela: produtos.filter((r) => !r.parou_de_vender).length,
+    com_estoque: produtos.filter((r) => r.estoque > 0).length,
+    produtos: produtos.slice(0, limite),
   };
 }

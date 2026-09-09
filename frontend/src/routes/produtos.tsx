@@ -11,7 +11,16 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Layers, Package, TrendingDown, TrendingUp } from "lucide-react";
+import {
+  ChevronDown,
+  Download,
+  Layers,
+  LoaderCircle,
+  PackageX,
+  Package,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react";
 
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { PanelCard } from "@/components/dashboard/PanelCard";
@@ -27,7 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { apiJson, empresaQuery } from "@/lib/api";
+import { apiBlob, apiJson, empresaQuery } from "@/lib/api";
 import {
   barTooltipCursor,
   chartTooltipItemStyle,
@@ -35,7 +44,7 @@ import {
   chartTooltipStyle,
 } from "@/lib/chart-style";
 import { useFilters } from "@/lib/filters-context";
-import { formatCompactCurrency, formatCurrency, formatInt } from "@/lib/format";
+import { formatCompactCurrency, formatCurrency, formatDate, formatInt } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type Curva = "A" | "B" | "C";
@@ -70,6 +79,24 @@ type PorProduto = {
     qtd: number;
     valor: number;
     participacao_pct: number;
+  }>;
+};
+
+type SemVenda = {
+  inicio_do_historico: string;
+  total_ativos: number;
+  sem_venda: number;
+  pararam_de_vender: number;
+  nunca_na_janela: number;
+  com_estoque: number;
+  produtos: Array<{
+    CODPROD: number;
+    produto: string;
+    grupo: string | null;
+    estoque: number;
+    ultima_venda: string | null;
+    dias_sem_vender: number | null;
+    parou_de_vender: boolean;
   }>;
 };
 
@@ -108,6 +135,10 @@ function ProdutosPage() {
     dataFim: filters.dataFim,
   };
 
+  const [verTodosSemVenda, setVerTodosSemVenda] = useState(false);
+  const [listaAberta, setListaAberta] = useState(false);
+  const [exportando, setExportando] = useState(false);
+
   const abc = useQuery({
     queryKey: ["produtos-curva-abc", query],
     queryFn: () => apiJson<CurvaAbc>("/api/dashboard/produtos/curva-abc", query),
@@ -129,11 +160,38 @@ function ProdutosPage() {
     staleTime: 60_000,
   });
 
+  const semVenda = useQuery({
+    queryKey: ["produtos-sem-venda", query],
+    queryFn: () => apiJson<SemVenda>("/api/dashboard/produtos/sem-venda", query),
+    staleTime: 60_000,
+  });
+
+  async function exportarSemVenda() {
+    setExportando(true);
+    try {
+      const blob = await apiBlob("/api/dashboard/produtos/sem-venda/exportacao", query);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `produtos-sem-venda-${filters.dataInicio}-a-${filters.dataFim}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    } finally {
+      setExportando(false);
+    }
+  }
+
   if (abc.isPending || abc.error) {
     return <QueryState loading={abc.isPending} error={abc.error} retry={() => void abc.refetch()} />;
   }
 
   const dados = abc.data;
+  const listaSemVenda = (semVenda.data?.produtos ?? []).filter(
+    (r) => verTodosSemVenda || r.parou_de_vender,
+  );
+
   const pareto = dados.produtos.slice(0, PARETO_LIMITE).map((p) => ({
     ...p,
     curto: p.produto.length > 22 ? `${p.produto.slice(0, 22)}…` : p.produto,
@@ -267,6 +325,127 @@ function ProdutosPage() {
         />
       </div>
 
+      <PanelCard
+        title="Produtos ativos sem venda"
+        description={
+          semVenda.data
+            ? "De " + formatInt(semVenda.data.total_ativos) + " produtos ativos no cadastro"
+            : "Carregando..."
+        }
+        action={
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={exportando || !semVenda.data}
+            onClick={() => void exportarSemVenda()}
+          >
+            {exportando ? (
+              <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
+            Exportar Excel
+          </Button>
+        }
+      >
+        {semVenda.data && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Estatistica
+                rotulo="Sem venda no período"
+                valor={formatInt(semVenda.data.sem_venda)}
+                nota="ativos que não faturaram nada"
+                destaque
+              />
+              <Estatistica
+                rotulo="Pararam de vender"
+                valor={formatInt(semVenda.data.pararam_de_vender)}
+                nota={"já venderam desde " + formatDate(semVenda.data.inicio_do_historico)}
+              />
+              <Estatistica
+                rotulo="Com estoque em mãos"
+                valor={formatInt(semVenda.data.com_estoque)}
+                nota="produto parado custando dinheiro"
+              />
+            </div>
+
+            <p className="text-xs leading-5 text-muted-foreground">
+              Só produto marcado como ativo no Sankhya entra aqui — os inativos
+              ficam de fora para o número não inflar com o que a empresa nem vende
+              mais. Dos {formatInt(semVenda.data.sem_venda)} sem venda,{" "}
+              <strong className="text-foreground">
+                {formatInt(semVenda.data.nunca_na_janela)}
+              </strong>{" "}
+              nunca apareceram numa nota desde {formatDate(semVenda.data.inicio_do_historico)},
+              que é onde o histórico do painel começa.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => setListaAberta((a) => !a)}>
+                <ChevronDown
+                  className={cn(
+                    "mr-2 h-4 w-4 transition-transform",
+                    listaAberta && "rotate-180",
+                  )}
+                />
+                {listaAberta ? "Ocultar lista" : "Ver lista"}
+              </Button>
+              {listaAberta && (
+                <Button
+                  size="sm"
+                  variant={verTodosSemVenda ? "default" : "outline"}
+                  onClick={() => setVerTodosSemVenda((v) => !v)}
+                >
+                  {verTodosSemVenda ? "Mostrando todos" : "Só os que pararam de vender"}
+                </Button>
+              )}
+            </div>
+
+            {listaAberta && (
+              <div className="-mx-5 -mb-5 border-t border-border/50">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-border/60 hover:bg-transparent">
+                      <TableHead className="text-[11px] uppercase text-muted-foreground">Código</TableHead>
+                      <TableHead className="text-[11px] uppercase text-muted-foreground">Produto</TableHead>
+                      <TableHead className="text-[11px] uppercase text-muted-foreground">Grupo</TableHead>
+                      <TableHead className="text-right text-[11px] uppercase text-muted-foreground">Estoque</TableHead>
+                      <TableHead className="text-[11px] uppercase text-muted-foreground">Última venda</TableHead>
+                      <TableHead className="text-right text-[11px] uppercase text-muted-foreground">Sem vender</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {listaSemVenda.length === 0 && <EmptyTableRow colSpan={6} />}
+                    {listaSemVenda.map((r) => (
+                      <TableRow key={r.CODPROD} className="border-border/40 hover:bg-surface-elevated/60">
+                        <TableCell className="tabular-nums text-muted-foreground">{r.CODPROD}</TableCell>
+                        <TableCell className="max-w-[320px] truncate text-foreground" title={r.produto}>
+                          {r.produto}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{r.grupo ?? "—"}</TableCell>
+                        <TableCell
+                          className={cn(
+                            "text-right tabular-nums",
+                            r.estoque > 0 ? "font-medium text-warning" : "text-muted-foreground",
+                          )}
+                        >
+                          {formatInt(r.estoque)}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {r.ultima_venda ? formatDate(r.ultima_venda) : "sem registro"}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {r.dias_sem_vender == null ? "—" : formatInt(r.dias_sem_vender) + "d"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        )}
+      </PanelCard>
       <PanelCard
         title="Quem vende o quê"
         description={
@@ -423,5 +602,38 @@ function ListaProdutos({
         </TableBody>
       </Table>
     </PanelCard>
+  );
+}
+
+/**
+ * Número solto dentro de um painel. Não é KpiCard porque não é um indicador
+ * de topo de tela: são três recortes do mesmo total, e ficam juntos.
+ */
+function Estatistica({
+  rotulo,
+  valor,
+  nota,
+  destaque = false,
+}: {
+  rotulo: string;
+  valor: string;
+  nota: string;
+  destaque?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-lg border px-4 py-3",
+        destaque ? "border-warning/30 bg-warning/5" : "border-border/50 bg-surface-elevated/40",
+      )}
+    >
+      <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        {rotulo}
+      </p>
+      <p className={cn("mt-1 text-2xl font-semibold tabular-nums", destaque ? "text-warning" : "text-foreground")}>
+        {valor}
+      </p>
+      <p className="mt-0.5 text-xs text-muted-foreground">{nota}</p>
+    </div>
   );
 }
