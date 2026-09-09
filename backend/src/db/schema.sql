@@ -294,6 +294,27 @@ CREATE TABLE IF NOT EXISTS pedido_itens (
   PRIMARY KEY (NUNOTA, SEQUENCIA)
 );
 
+-- ----------------------------------------------------------------------------
+-- pedido_nota: vínculo pedido -> nota fiscal (origem TGFVAR)
+--
+-- Na TGFCAB o pedido e a nota são lançamentos separados: TIPMOV 'P' é o
+-- pedido de venda, TIPMOV 'V' é a nota emitida a partir dele. A TGFVAR liga
+-- os dois (NUNOTAORIG = pedido, NUNOTA = nota) com uma linha por item; aqui
+-- fica consolidado em um par por vínculo.
+--
+-- Sem esta tabela não dá para responder "quais pedidos ainda não viraram
+-- nota", que é a pergunta da tela comercial.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pedido_nota (
+  NUNOTA_PEDIDO INTEGER NOT NULL,
+  NUNOTA_NOTA   INTEGER NOT NULL,
+  synced_at     TEXT NOT NULL,
+  PRIMARY KEY (NUNOTA_PEDIDO, NUNOTA_NOTA)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pedido_nota_pedido ON pedido_nota(NUNOTA_PEDIDO);
+CREATE INDEX IF NOT EXISTS idx_pedido_nota_nota   ON pedido_nota(NUNOTA_NOTA);
+
 -- ============================================================================
 -- v2 (2026-05-14): categorização de despesas para o donut da tela Financeira
 --   ver PLAN_DATA_BASE.md seção 14.2.

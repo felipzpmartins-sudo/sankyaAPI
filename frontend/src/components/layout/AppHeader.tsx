@@ -10,6 +10,8 @@ const TITLES: Record<string, { section: string; page: string }> = {
   "/dre": { section: "Dashboard", page: "DRE por Projeto" },
   "/qualidade": { section: "Dashboard", page: "Rateio por projeto" },
   "/estoque": { section: "Dashboard", page: "Estoque" },
+  "/comercial": { section: "Comercial", page: "Vendas por vendedor" },
+  "/produtos": { section: "Produtos", page: "Curva ABC e ranking" },
   "/via-certa": { section: "Via Certa", page: "Alunos ativos" },
 };
 

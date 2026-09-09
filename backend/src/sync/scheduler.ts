@@ -13,6 +13,8 @@ import { syncTiposTitulo } from "./tipos_titulo.js";
 import { syncTitulos } from "./titulos.js";
 import { syncVendedores } from "./vendedores.js";
 import { syncRateio } from "./rateio.js";
+import { syncVinculos } from "./vinculos.js";
+import { syncItens } from "./itens.js";
 import { getSyncState } from "./state.js";
 
 const logger = pino({
@@ -97,6 +99,8 @@ async function initialSync(): Promise<void> {
     return;
   }
   await runIfMissing("rateio", syncRateio);
+  await runIfMissing("vinculos", syncVinculos);
+  await runIfMissing("itens", syncItens);
 }
 
 const timers: NodeJS.Timeout[] = [];
@@ -127,6 +131,7 @@ async function runMainSync(): Promise<void> {
       return;
     }
     await runSync("rateio", syncRateio);
+    await runSync("vinculos", syncVinculos);
   } finally {
     mainSyncInProgress = false;
   }
@@ -174,6 +179,7 @@ export function startScheduler(): void {
       // entao sincronizavam uma unica vez na vida da instancia e nunca mais.
       void runSync("estoque", syncEstoque);
       void runSync("produtos", syncProdutos);
+      void runSync("itens", syncItens);
     }, config.SYNC_INTERVAL_SLOW_MS),
   );
 

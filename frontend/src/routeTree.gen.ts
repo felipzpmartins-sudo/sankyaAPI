@@ -11,7 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ViaCertaRouteImport } from './routes/via-certa'
 import { Route as QualidadeRouteImport } from './routes/qualidade'
+import { Route as ProdutosRouteImport } from './routes/produtos'
 import { Route as DreRouteImport } from './routes/dre'
+import { Route as ComercialRouteImport } from './routes/comercial'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ModulosModuloRouteImport } from './routes/modulos.$modulo'
 
@@ -25,9 +27,19 @@ const QualidadeRoute = QualidadeRouteImport.update({
   path: '/qualidade',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProdutosRoute = ProdutosRouteImport.update({
+  id: '/produtos',
+  path: '/produtos',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DreRoute = DreRouteImport.update({
   id: '/dre',
   path: '/dre',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ComercialRoute = ComercialRouteImport.update({
+  id: '/comercial',
+  path: '/comercial',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -43,14 +55,18 @@ const ModulosModuloRoute = ModulosModuloRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/comercial': typeof ComercialRoute
   '/dre': typeof DreRoute
+  '/produtos': typeof ProdutosRoute
   '/qualidade': typeof QualidadeRoute
   '/via-certa': typeof ViaCertaRoute
   '/modulos/$modulo': typeof ModulosModuloRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/comercial': typeof ComercialRoute
   '/dre': typeof DreRoute
+  '/produtos': typeof ProdutosRoute
   '/qualidade': typeof QualidadeRoute
   '/via-certa': typeof ViaCertaRoute
   '/modulos/$modulo': typeof ModulosModuloRoute
@@ -58,23 +74,48 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/comercial': typeof ComercialRoute
   '/dre': typeof DreRoute
+  '/produtos': typeof ProdutosRoute
   '/qualidade': typeof QualidadeRoute
   '/via-certa': typeof ViaCertaRoute
   '/modulos/$modulo': typeof ModulosModuloRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/dre' | '/qualidade' | '/via-certa' | '/modulos/$modulo'
+  fullPaths:
+    | '/'
+    | '/comercial'
+    | '/dre'
+    | '/produtos'
+    | '/qualidade'
+    | '/via-certa'
+    | '/modulos/$modulo'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dre' | '/qualidade' | '/via-certa' | '/modulos/$modulo'
+  to:
+    | '/'
+    | '/comercial'
+    | '/dre'
+    | '/produtos'
+    | '/qualidade'
+    | '/via-certa'
+    | '/modulos/$modulo'
   id:
-    '__root__' | '/' | '/dre' | '/qualidade' | '/via-certa' | '/modulos/$modulo'
+    | '__root__'
+    | '/'
+    | '/comercial'
+    | '/dre'
+    | '/produtos'
+    | '/qualidade'
+    | '/via-certa'
+    | '/modulos/$modulo'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ComercialRoute: typeof ComercialRoute
   DreRoute: typeof DreRoute
+  ProdutosRoute: typeof ProdutosRoute
   QualidadeRoute: typeof QualidadeRoute
   ViaCertaRoute: typeof ViaCertaRoute
   ModulosModuloRoute: typeof ModulosModuloRoute
@@ -96,11 +137,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof QualidadeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/produtos': {
+      id: '/produtos'
+      path: '/produtos'
+      fullPath: '/produtos'
+      preLoaderRoute: typeof ProdutosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dre': {
       id: '/dre'
       path: '/dre'
       fullPath: '/dre'
       preLoaderRoute: typeof DreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/comercial': {
+      id: '/comercial'
+      path: '/comercial'
+      fullPath: '/comercial'
+      preLoaderRoute: typeof ComercialRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -122,7 +177,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ComercialRoute: ComercialRoute,
   DreRoute: DreRoute,
+  ProdutosRoute: ProdutosRoute,
   QualidadeRoute: QualidadeRoute,
   ViaCertaRoute: ViaCertaRoute,
   ModulosModuloRoute: ModulosModuloRoute,

@@ -31,6 +31,13 @@ import {
   lancamentosHoje,
   vendedoresRanking,
 } from "../services/dashboard.js";
+import {
+  curvaAbc,
+  pedidosVsNota,
+  rankingProdutos,
+  rankingVendedores,
+  vendedoresPorProduto,
+} from "../services/comercial.js";
 import { estoqueVisaoGeral, listarLocaisEstoque } from "../services/dashboard-estoque.js";
 import { empresaParam } from "../utils/empresa.js";
 import { vendedorParam } from "../utils/vendedor.js";
@@ -425,6 +432,77 @@ dashboardRouter.get("/rh", (_req, res, next) => {
 dashboardRouter.get("/entregas", (_req, res, next) => {
   try {
     res.json(entregasBI());
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Telas comerciais. O período aqui é obrigatório e inclusivo nas duas pontas,
+ * diferente das telas financeiras que assumem "ano corrente" quando omitido —
+ * comparar vendedor sem dizer de quando não significa nada.
+ */
+const comercialQuery = z.object({
+  empresa: empresaParam,
+  vendedor: vendedorParam,
+  dataInicio: z.string().regex(/^d{4}-d{2}-d{2}$/),
+  dataFim: z.string().regex(/^d{4}-d{2}-d{2}$/),
+  limite: z.coerce.number().int().min(1).max(500).optional(),
+}).refine((q) => q.dataInicio <= q.dataFim, {
+  message: "dataInicio deve ser menor ou igual a dataFim.",
+});
+
+function comercialArgs(query: unknown) {
+  const q = comercialQuery.parse(query);
+  return {
+    empresa: q.empresa,
+    vendedor: q.vendedor,
+    periodo: { dataInicio: q.dataInicio, dataFim: q.dataFim },
+    limite: q.limite,
+  };
+}
+
+dashboardRouter.get("/vendedores/pedidos-vs-nota", (req, res, next) => {
+  try {
+    res.json(pedidosVsNota(comercialArgs(req.query)));
+  } catch (err) {
+    next(err);
+  }
+});
+
+dashboardRouter.get("/vendedores/ranking-geral", (req, res, next) => {
+  try {
+    res.json(rankingVendedores(comercialArgs(req.query)));
+  } catch (err) {
+    next(err);
+  }
+});
+
+dashboardRouter.get("/produtos/curva-abc", (req, res, next) => {
+  try {
+    res.json(curvaAbc(comercialArgs(req.query)));
+  } catch (err) {
+    next(err);
+  }
+});
+
+dashboardRouter.get("/produtos/ranking", (req, res, next) => {
+  try {
+    res.json(rankingProdutos(comercialArgs(req.query)));
+  } catch (err) {
+    next(err);
+  }
+});
+
+const porProdutoQuery = z.object({
+  codProd: z.coerce.number().int().min(1).optional(),
+  curva: z.enum(["A", "B", "C"]).optional(),
+});
+
+dashboardRouter.get("/vendedores/por-produto", (req, res, next) => {
+  try {
+    const extra = porProdutoQuery.parse(req.query);
+    res.json(vendedoresPorProduto({ ...comercialArgs(req.query), ...extra }));
   } catch (err) {
     next(err);
   }

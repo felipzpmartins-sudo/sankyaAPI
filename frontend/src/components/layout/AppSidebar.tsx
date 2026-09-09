@@ -1,5 +1,15 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BarChart3, GraduationCap, LineChart, Search, ShieldAlert, Sparkles, type LucideIcon } from "lucide-react";
+import {
+  BarChart3,
+  GraduationCap,
+  LineChart,
+  Package,
+  Search,
+  ShieldAlert,
+  Sparkles,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 
 import {
   Sidebar,
@@ -27,6 +37,8 @@ const dashboards: NavItem[] = [
   { title: "Resumo executivo", icon: BarChart3, url: "/" },
   { title: "DRE por Projeto", icon: LineChart, url: "/dre" },
   { title: "Rateio por projeto", icon: ShieldAlert, url: "/qualidade" },
+  { title: "Comercial", icon: Users, url: "/comercial" },
+  { title: "Produtos", icon: Package, url: "/produtos" },
   { title: "Alunos Via Certa", icon: GraduationCap, url: "/via-certa" },
 ];
 
