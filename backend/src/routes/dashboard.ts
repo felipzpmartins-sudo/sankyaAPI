@@ -445,8 +445,8 @@ dashboardRouter.get("/entregas", (_req, res, next) => {
 const comercialQuery = z.object({
   empresa: empresaParam,
   vendedor: vendedorParam,
-  dataInicio: z.string().regex(/^d{4}-d{2}-d{2}$/),
-  dataFim: z.string().regex(/^d{4}-d{2}-d{2}$/),
+  dataInicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  dataFim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   limite: z.coerce.number().int().min(1).max(500).optional(),
 }).refine((q) => q.dataInicio <= q.dataFim, {
   message: "dataInicio deve ser menor ou igual a dataFim.",
