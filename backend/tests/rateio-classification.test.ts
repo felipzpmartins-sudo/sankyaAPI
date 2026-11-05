@@ -17,9 +17,11 @@ test("sem linhas e SEM_RATEIO", () => {
   assert.equal(classificarRateio([]).status, "SEM_RATEIO");
 });
 
-test("100% em uma empresa de destino e NAO_RATEIO", () => {
+// Desde 31/08/2026 um unico projeto de destino fechando 100% ja e rateio
+// valido; NAO_RATEIO nao e mais produzido (ver classificarRateio).
+test("100% em uma empresa de destino e COM_RATEIO", () => {
   const resultado = classificarRateio([{ codproj: 40_100_000, percentual: 100 }]);
-  assert.equal(resultado.status, "NAO_RATEIO");
+  assert.equal(resultado.status, "COM_RATEIO");
   assert.deepEqual(resultado.projetosValidos, [40_100_000]);
 });
 
@@ -56,7 +58,7 @@ test("linha de zero por cento fora da faixa nao invalida um destino completo", (
     { codproj: 40_100_000, percentual: 100 },
     { codproj: null, percentual: 0 },
   ]);
-  assert.equal(resultado.status, "NAO_RATEIO");
+  assert.equal(resultado.status, "COM_RATEIO");
 });
 
 test("percentuais invalidos que se anulam nao escondem uma distribuicao incorreta", () => {
