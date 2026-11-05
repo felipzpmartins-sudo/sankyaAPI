@@ -15,10 +15,20 @@ import { recordSyncError, recordSyncSuccess } from "./state.js";
  * que é o relatório pedido pelo comercial.
  */
 
-const ORIGEM = "TGFVAR v INNER JOIN TGFCAB p ON p.NUNOTA = v.NUNOTAORIG";
+/**
+ * O destino precisa ser nota de fato. A TGFVAR também guarda autorreferências
+ * (NUNOTAORIG = NUNOTA, uma por componente de kit dentro do próprio pedido) e
+ * ligações pedido -> pedido. Antes elas entravam aqui e faziam pedido sem nota
+ * nenhuma aparecer como "virou nota".
+ */
+const ORIGEM =
+  "TGFVAR v INNER JOIN TGFCAB p ON p.NUNOTA = v.NUNOTAORIG " +
+  "INNER JOIN TGFCAB n ON n.NUNOTA = v.NUNOTA";
 const DATA_INICIO = "01/01/2025";
 /** Mesma janela do sync de pedidos: vínculo de pedido que não temos é inútil. */
-const FILTRO = `p.DTNEG >= TO_DATE('${DATA_INICIO}','DD/MM/YYYY')`;
+const FILTRO =
+  `p.DTNEG >= TO_DATE('${DATA_INICIO}','DD/MM/YYYY')` +
+  " AND v.NUNOTA <> v.NUNOTAORIG AND n.TIPMOV <> 'P'";
 
 export async function syncVinculos(): Promise<void> {
   try {

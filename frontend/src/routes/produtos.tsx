@@ -206,7 +206,7 @@ function ProdutosPage() {
             Curva ABC e ranking
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Faturamento por item de nota emitida — mesmo critério da tela financeira.
+            Valor dos produtos nas notas emitidas, já com desconto e sem frete — kit conta uma vez.
           </p>
         </div>
         <PeriodPresetToggle
@@ -365,7 +365,7 @@ function ProdutosPage() {
               <Estatistica
                 rotulo="Com estoque em mãos"
                 valor={formatInt(semVenda.data.com_estoque)}
-                nota="produto parado custando dinheiro"
+                nota="estoque próprio, sem o que está com terceiros"
               />
             </div>
 

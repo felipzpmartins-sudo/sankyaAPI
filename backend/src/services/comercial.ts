@@ -1,7 +1,7 @@
 import { getDb } from "../db/connection.js";
 import { type EmpresaFiltro, empresaToSqlClause } from "../utils/empresa.js";
 import { type VendedorFiltro, vendedorToSqlClause } from "../utils/vendedor.js";
-import { FATURAMENTO_TOPS, inListClause } from "./operacoes.js";
+import { FATURAMENTO_TOPS, PEDIDO_VENDA_TOPS, inListClause } from "./operacoes.js";
 
 /**
  * Telas comerciais (vendedores e produtos).
@@ -21,8 +21,27 @@ export type PeriodoComercial = { dataInicio: string; dataFim: string };
 /** Janela do snapshot. Antes disso o painel simplesmente não tem histórico. */
 const INICIO_DO_HISTORICO = "2025-01-01";
 
-/** Pedido de venda na TGFCAB. A nota emitida a partir dele é TIPMOV 'V'. */
-const TIPMOV_PEDIDO = "P";
+/**
+ * Pedido de venda na TGFCAB. TIPMOV 'P' cobre também orçamento, comodato,
+ * bonificação e remessas, por isso o corte é pela lista de TOPs de venda.
+ */
+const PEDIDO_DE_VENDA = `p.TIPMOV = 'P' AND ${inListClause("p.CODTIPOPER", PEDIDO_VENDA_TOPS)}`;
+
+/**
+ * Item que conta como produto vendido. Nota de kit traz o conjunto e os
+ * componentes desmembrados (USOPROD 'D'); a soma dos componentes repete o
+ * valor do conjunto, então eles ficam de fora de qualquer soma de valor.
+ */
+const ITEM_VENDIDO = "COALESCE(i.USOPROD, '') <> 'D'";
+
+/** Valor do item líquido do desconto de item, como entra no VLRNOTA. */
+const VALOR_ITEM = "(i.VLRTOT - i.VLRDESC)";
+
+/**
+ * Pendente pelo critério do Sankhya (TGFCAB.PENDENTE). Enquanto o snapshot
+ * não tiver a coluna preenchida, cai no critério antigo: sem nota = pendente.
+ */
+const PENDENTE = "COALESCE(p.PENDENTE, CASE WHEN v.NUNOTA_NOTA IS NULL THEN 'S' ELSE 'N' END) = 'S'";
 
 function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -59,20 +78,33 @@ function base(filtros: Filtros, alias: string): { where: string; params: unknown
   };
 }
 
+/** Primeiro vínculo de cada pedido com uma nota de verdade (ver sync/vinculos). */
+const VINCULO = `LEFT JOIN (SELECT NUNOTA_PEDIDO, MIN(NUNOTA_NOTA) AS NUNOTA_NOTA
+                  FROM pedido_nota GROUP BY NUNOTA_PEDIDO) v
+              ON v.NUNOTA_PEDIDO = p.NUNOTA`;
+
 /**
  * Pedidos de venda x nota emitida.
  *
- * "Em aberto" é pedido que ainda não tem vínculo em `pedido_nota`. Pedido
- * cancelado (STATUSNOTA 'C') não conta como pendência — ele não vai virar nota
- * e ficaria envelhecendo na lista para sempre.
+ * Três situações, a mesma divisão que o Sankhya faz:
+ * - "com nota": tem ao menos uma nota emitida a partir dele;
+ * - "pendente": TGFCAB.PENDENTE = 'S', ainda há saldo a faturar. Inclui o
+ *   pedido parcialmente faturado, que tem nota e continua pendente;
+ * - "sem nota": pendente e sem nenhuma nota.
+ *
+ * Pedido cancelado (STATUSNOTA 'C') não conta — ele não vai virar nota e
+ * ficaria envelhecendo na lista para sempre.
  */
 export function pedidosVsNota(args: Filtros & { limite?: number }): {
   periodo: PeriodoComercial;
   total_pedidos: number;
   com_nota: number;
   sem_nota: number;
+  pendentes: number;
+  parciais: number;
   valor_total: number;
   valor_sem_nota: number;
+  valor_pendente: number;
   pedidos: Array<{
     NUNOTA: number;
     NUMNOTA: number | null;
@@ -84,6 +116,7 @@ export function pedidosVsNota(args: Filtros & { limite?: number }): {
     nota: number | null;
     DTFATUR: string | null;
     dias_em_aberto: number | null;
+    parcial: boolean;
   }>;
 } {
   const { where, params } = base(args, "p");
@@ -94,23 +127,29 @@ export function pedidosVsNota(args: Filtros & { limite?: number }): {
       `SELECT
          COUNT(*) AS total,
          COUNT(v.NUNOTA_NOTA) AS com_nota,
+         COALESCE(SUM(CASE WHEN ${PENDENTE} THEN 1 ELSE 0 END), 0) AS pendentes,
+         COALESCE(SUM(CASE WHEN ${PENDENTE} AND v.NUNOTA_NOTA IS NULL THEN 1 ELSE 0 END), 0) AS sem_nota,
          COALESCE(SUM(p.VLRNOTA), 0) AS valor_total,
-         COALESCE(SUM(CASE WHEN v.NUNOTA_NOTA IS NULL THEN p.VLRNOTA ELSE 0 END), 0) AS valor_sem_nota
+         COALESCE(SUM(CASE WHEN ${PENDENTE} THEN p.VLRNOTA ELSE 0 END), 0) AS valor_pendente,
+         COALESCE(SUM(CASE WHEN ${PENDENTE} AND v.NUNOTA_NOTA IS NULL THEN p.VLRNOTA ELSE 0 END), 0) AS valor_sem_nota
        FROM pedidos p
-       LEFT JOIN (SELECT NUNOTA_PEDIDO, MIN(NUNOTA_NOTA) AS NUNOTA_NOTA
-                  FROM pedido_nota GROUP BY NUNOTA_PEDIDO) v
-              ON v.NUNOTA_PEDIDO = p.NUNOTA
-       WHERE p.TIPMOV = '${TIPMOV_PEDIDO}'
+       ${VINCULO}
+       WHERE ${PEDIDO_DE_VENDA}
          AND COALESCE(p.STATUSNOTA, '') <> 'C'
          AND ${where}`,
     )
     .get(...params) as {
       total: number;
       com_nota: number;
+      pendentes: number;
+      sem_nota: number;
       valor_total: number;
+      valor_pendente: number;
       valor_sem_nota: number;
     };
 
+  // Só os pendentes: é a lista que o comercial cobra. Os sem nota primeiro,
+  // depois os parciais, cada grupo do mais antigo para o mais novo.
   const pedidos = getDb()
     .prepare(
       `SELECT
@@ -121,19 +160,16 @@ export function pedidosVsNota(args: Filtros & { limite?: number }): {
          p.DTNEG,
          v.NUNOTA_NOTA AS nota,
          n.DTFATUR,
-         CASE
-           WHEN v.NUNOTA_NOTA IS NOT NULL THEN NULL
-           ELSE CAST(julianday('now') - julianday(p.DTNEG) AS INTEGER)
-         END AS dias_em_aberto
+         CAST(julianday('now') - julianday(p.DTNEG) AS INTEGER) AS dias_em_aberto,
+         (v.NUNOTA_NOTA IS NOT NULL) AS parcial
        FROM pedidos p
-       LEFT JOIN (SELECT NUNOTA_PEDIDO, MIN(NUNOTA_NOTA) AS NUNOTA_NOTA
-                  FROM pedido_nota GROUP BY NUNOTA_PEDIDO) v
-              ON v.NUNOTA_PEDIDO = p.NUNOTA
+       ${VINCULO}
        LEFT JOIN pedidos    n  ON n.NUNOTA   = v.NUNOTA_NOTA
        LEFT JOIN parceiros  pa ON pa.CODPARC = p.CODPARC
        LEFT JOIN vendedores ve ON ve.CODVEND = p.CODVEND
-       WHERE p.TIPMOV = '${TIPMOV_PEDIDO}'
+       WHERE ${PEDIDO_DE_VENDA}
          AND COALESCE(p.STATUSNOTA, '') <> 'C'
+         AND ${PENDENTE}
          AND ${where}
        ORDER BY (v.NUNOTA_NOTA IS NOT NULL), p.DTNEG ASC, p.NUNOTA ASC
        LIMIT ?`,
@@ -149,16 +185,20 @@ export function pedidosVsNota(args: Filtros & { limite?: number }): {
       nota: number | null;
       DTFATUR: string | null;
       dias_em_aberto: number | null;
+      parcial: number;
     }>;
 
   return {
     periodo: args.periodo,
     total_pedidos: resumo.total,
     com_nota: resumo.com_nota,
-    sem_nota: resumo.total - resumo.com_nota,
+    sem_nota: resumo.sem_nota,
+    pendentes: resumo.pendentes,
+    parciais: resumo.pendentes - resumo.sem_nota,
     valor_total: round2(resumo.valor_total),
     valor_sem_nota: round2(resumo.valor_sem_nota),
-    pedidos: pedidos.map((r) => ({ ...r, valor: round2(r.valor) })),
+    valor_pendente: round2(resumo.valor_pendente),
+    pedidos: pedidos.map((r) => ({ ...r, valor: round2(r.valor), parcial: r.parcial === 1 })),
   };
 }
 
@@ -186,11 +226,11 @@ export function rankingVendedores(args: Filtros): {
          COALESCE(SUM(p.VLRNOTA), 0) AS valor
        FROM pedidos p
        LEFT JOIN vendedores v ON v.CODVEND = p.CODVEND
-       WHERE p.TIPMOV = '${TIPMOV_PEDIDO}'
+       WHERE ${PEDIDO_DE_VENDA}
          AND COALESCE(p.STATUSNOTA, '') <> 'C'
          AND ${where}
        GROUP BY COALESCE(p.CODVEND, 0), COALESCE(v.APELIDO, 'Sem vendedor')
-       ORDER BY valor DESC`,
+       ORDER BY valor DESC, CODVEND ASC`,
     )
     .all(...params) as Array<{
       CODVEND: number;
@@ -220,6 +260,11 @@ export function rankingVendedores(args: Filtros): {
  *
  * Sai da NOTA faturada, não do pedido: curva ABC é classificação de receita
  * realizada, e é assim que o financeiro confere o número.
+ *
+ * Valor = VLRTOT - VLRDESC do item, sem os componentes de kit. Assim a soma
+ * fecha com o VLRNOTA das mesmas notas menos o frete (conferido contra o
+ * Sankhya em 2026-11-05: antes passava R$ 342 mil por conta dos kits em
+ * dobro e R$ 36 mil por ignorar o desconto).
  */
 function faturamentoPorProduto(args: {
   empresa: EmpresaFiltro;
@@ -237,17 +282,18 @@ function faturamentoPorProduto(args: {
          COALESCE(pr.DESCRPROD, 'Produto ' || i.CODPROD) AS produto,
          pr.GRUPO_DESCR AS grupo,
          COALESCE(SUM(i.QTDNEG), 0) AS qtd,
-         COALESCE(SUM(i.VLRTOT), 0) AS valor
+         COALESCE(SUM(${VALOR_ITEM}), 0) AS valor
        FROM pedido_itens i
        INNER JOIN pedidos p ON p.NUNOTA = i.NUNOTA
        LEFT JOIN produtos pr ON pr.CODPROD = i.CODPROD
        WHERE ${inListClause("p.CODTIPOPER", FATURAMENTO_TOPS)}
          AND p.STATUSNOTA = 'L'
          AND p.DTFATUR IS NOT NULL
+         AND ${ITEM_VENDIDO}
          AND p.DTFATUR >= date(?) AND p.DTFATUR <= date(?)${extras}
        GROUP BY i.CODPROD, pr.DESCRPROD, pr.GRUPO_DESCR
-       HAVING SUM(i.VLRTOT) > 0
-       ORDER BY valor DESC`,
+       HAVING SUM(${VALOR_ITEM}) > 0
+       ORDER BY valor DESC, i.CODPROD ASC`,
     )
     .all(
       args.periodo.dataInicio,
@@ -339,8 +385,12 @@ export function rankingProdutos(args: Filtros & { limite?: number }): {
     total: round2(total),
     mais_vendidos: linhas.slice(0, limite).map(enxuto),
     // Só produtos que venderam alguma coisa. "Menos vendido" com zero seria a
-    // lista do catálogo inteiro, que não responde nada.
-    menos_vendidos: linhas.slice(-limite).reverse().map(enxuto),
+    // lista do catálogo inteiro, que não responde nada. Empate desempata por
+    // código, para a lista não mudar de ordem a cada consulta.
+    menos_vendidos: [...linhas]
+      .sort((a, b) => a.valor - b.valor || a.CODPROD - b.CODPROD)
+      .slice(0, limite)
+      .map(enxuto),
   };
 }
 
@@ -401,16 +451,17 @@ export function vendedoresPorProduto(args: Filtros & {
          COALESCE(p.CODVEND, 0) AS CODVEND,
          COALESCE(v.APELIDO, 'Sem vendedor') AS vendedor,
          COALESCE(SUM(i.QTDNEG), 0) AS qtd,
-         COALESCE(SUM(i.VLRTOT), 0) AS valor
+         COALESCE(SUM(${VALOR_ITEM}), 0) AS valor
        FROM pedido_itens i
        INNER JOIN pedidos p ON p.NUNOTA = i.NUNOTA
        LEFT JOIN vendedores v ON v.CODVEND = p.CODVEND
        WHERE ${inListClause("p.CODTIPOPER", FATURAMENTO_TOPS)}
          AND p.STATUSNOTA = 'L'
          AND p.DTFATUR IS NOT NULL
+         AND ${ITEM_VENDIDO}
          AND p.DTFATUR >= date(?) AND p.DTFATUR <= date(?)${extras}
        GROUP BY COALESCE(p.CODVEND, 0), COALESCE(v.APELIDO, 'Sem vendedor')
-       ORDER BY valor DESC`,
+       ORDER BY valor DESC, CODVEND ASC`,
     )
     .all(
       args.periodo.dataInicio,
@@ -454,7 +505,13 @@ export function vendedoresPorProduto(args: Filtros & {
  *    01/01/2025. Produto vendido pela ultima vez em 2024 aparece aqui como
  *    "nunca vendeu" — por isso a resposta separa quem parou de vender de
  *    quem nunca apareceu na janela.
- * 3. Estoque entra para separar catalogo morto de dinheiro parado.
+ * 3. Estoque entra para separar catalogo morto de dinheiro parado. So conta
+ *    o estoque PROPRIO em maos (TGFEST.TIPO 'P' sem parceiro): saldo com
+ *    parceiro ou de terceiros (TIPO 'T') nao e mercadoria parada na casa.
+ *
+ * Aqui componente de kit (USOPROD 'D') conta como venda: ele saiu na nota, so
+ * nao soma valor. Sem isso o material didatico vendido dentro do kit apareceria
+ * como produto parado.
  */
 export function produtosSemVenda(args: Filtros & { limite?: number }): {
   periodo: PeriodoComercial;
@@ -481,7 +538,9 @@ export function produtosSemVenda(args: Filtros & { limite?: number }): {
     .map((c) => ` AND ${c}`)
     .join("");
   const empresaEstoque = empresaToSqlClause(args.empresa, "CODEMP");
-  const estoqueWhere = empresaEstoque.clause ? ` WHERE ${empresaEstoque.clause}` : "";
+  const estoqueWhere =
+    " WHERE COALESCE(NULLIF(TIPO, ''), 'P') = 'P' AND CODPARC = 0" +
+    (empresaEstoque.clause ? ` AND ${empresaEstoque.clause}` : "");
 
   const faturado = `${inListClause("p.CODTIPOPER", FATURAMENTO_TOPS)}
       AND p.STATUSNOTA = 'L'

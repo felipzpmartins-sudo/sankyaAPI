@@ -24,6 +24,7 @@ export function migrate(): MigrateResult {
   migrateProdutosShape();
   migrateProjetosShape();
   migratePedidosShape();
+  migratePedidoItensShape();
   migrateTitulosShape();
   migrateCentrosResultadoShape();
   migrateRateioShape();
@@ -77,11 +78,35 @@ function migratePedidosShape(): void {
     ["TRANSPORTADORA_NOME", "ALTER TABLE pedidos ADD COLUMN TRANSPORTADORA_NOME TEXT"],
     ["CIF_FOB", "ALTER TABLE pedidos ADD COLUMN CIF_FOB TEXT"],
     ["QTDVOL", "ALTER TABLE pedidos ADD COLUMN QTDVOL REAL NOT NULL DEFAULT 0"],
+    ["PENDENTE", "ALTER TABLE pedidos ADD COLUMN PENDENTE TEXT"],
   ];
 
   for (const [name, sql] of additions) {
     if (!names.has(name)) db.exec(sql);
   }
+
+  // Coluna nova chega vazia. Zerar o row_count faz o boot ressincronizar na
+  // hora (runIfMissing) em vez de esperar o proximo ciclo. Os vinculos vao
+  // junto: o filtro deles mudou na mesma versao.
+  if (!names.has("PENDENTE")) forcarSyncNoBoot("pedidos", "vinculos");
+}
+
+function migratePedidoItensShape(): void {
+  const db = getDb();
+  const columns = db.prepare("PRAGMA table_info(pedido_itens)").all() as Array<{ name: string }>;
+  const names = new Set(columns.map((col) => col.name));
+
+  if (!names.has("USOPROD")) {
+    db.exec("ALTER TABLE pedido_itens ADD COLUMN USOPROD TEXT");
+    // Itens rodam no ciclo lento (30 min). Sem isto a tela de produtos seguiria
+    // contando kit em dobro ate la.
+    forcarSyncNoBoot("itens");
+  }
+}
+
+function forcarSyncNoBoot(...entidades: string[]): void {
+  const reset = getDb().prepare("UPDATE sync_state SET row_count = 0 WHERE entity = ?");
+  for (const entidade of entidades) reset.run(entidade);
 }
 
 function migratePedidosIndexes(): void {

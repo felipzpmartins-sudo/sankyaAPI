@@ -130,8 +130,8 @@ export function isRetryableError(err: unknown): boolean {
   if (err.message === "fetch failed") return true;
   // AbortSignal.timeout lanca DOMException TimeoutError, que nao traz cause.
   if (err.name === "TimeoutError" || err.name === "AbortError") return true;
-  if (/^Sankhya (429|5dd):/.test(err.message)) return true;
-  if (/^Falha na autenticação Sankhya (d+):/.test(err.message)) return true;
+  if (/^Sankhya (429|5\d\d):/.test(err.message)) return true;
+  if (/^Falha na autenticação Sankhya \(\d+\):/.test(err.message)) return true;
 
   const cause = err.cause;
   if (cause instanceof Error) {
@@ -161,7 +161,10 @@ export async function sankhyaRequest<T>(opts: RequestOptions): Promise<T> {
       if (!isRetryableError(err) || tentativa === RETRY_ATTEMPTS) break;
       // Token invalidado no meio da varredura: forca reautenticacao.
       cachedToken = null;
-      await sleep(750 * tentativa);
+      // 1,5s / 3s / 6s. O 400 intermitente do /authenticate costuma durar
+      // alguns segundos; com 0,75s / 1,5s / 2,25s as quatro tentativas caiam
+      // todas dentro da mesma janela de falha.
+      await sleep(1_500 * 2 ** (tentativa - 1));
     }
   }
 

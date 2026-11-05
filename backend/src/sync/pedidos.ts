@@ -35,6 +35,9 @@ const COLUNAS = [
   "CIF_FOB",
   "QTDVOL",
   "STATUSNOTA",
+  // 'S' enquanto o pedido tem saldo a atender. E o criterio do proprio
+  // Sankhya para "pedido pendente" — inclusive o parcialmente faturado.
+  "PENDENTE",
   "VLRNOTA",
   "VLRFRETE",
 ].join(", ");
@@ -169,13 +172,13 @@ export async function syncPedidos(): Promise<void> {
        `INSERT INTO pedidos
          (NUNOTA, CODEMP, CODPARC, CODVEND, CODTIPOPER, TIPMOV,
           CODPARCTRANSP, TRANSPORTADORA_NOME, NUMNOTA, SERIENOTA,
-           DTNEG, DTFATUR, DTENTSAI, CIF_FOB, QTDVOL, STATUSNOTA,
+           DTNEG, DTFATUR, DTENTSAI, CIF_FOB, QTDVOL, STATUSNOTA, PENDENTE,
            CODCENCUS, CODPROJ,
           VLRNOTA, VLRDESC, VLRFRETE, AD_OBS, synced_at)
        VALUES
          (@NUNOTA, @CODEMP, @CODPARC, @CODVEND, @CODTIPOPER, @TIPMOV,
           @CODPARCTRANSP, @TRANSPORTADORA_NOME, @NUMNOTA, @SERIENOTA,
-          @DTNEG, @DTFATUR, @DTENTSAI, @CIF_FOB, @QTDVOL, @STATUSNOTA,
+          @DTNEG, @DTFATUR, @DTENTSAI, @CIF_FOB, @QTDVOL, @STATUSNOTA, @PENDENTE,
           @CODCENCUS, @CODPROJ,
           @VLRNOTA, @VLRDESC, @VLRFRETE, @AD_OBS, @synced_at)
        ON CONFLICT(NUNOTA) DO UPDATE SET
@@ -196,6 +199,7 @@ export async function syncPedidos(): Promise<void> {
          CIF_FOB    = excluded.CIF_FOB,
          QTDVOL     = excluded.QTDVOL,
          STATUSNOTA = excluded.STATUSNOTA,
+         PENDENTE   = excluded.PENDENTE,
          VLRNOTA    = excluded.VLRNOTA,
          VLRDESC    = excluded.VLRDESC,
          VLRFRETE   = excluded.VLRFRETE,
@@ -276,6 +280,7 @@ export async function syncPedidos(): Promise<void> {
             CODCENCUS: parseIntOrNull(r.CODCENCUS),
             CODPROJ: parseIntOrNull(r.CODPROJ),
           STATUSNOTA: r.STATUSNOTA ?? null,
+          PENDENTE: r.PENDENTE ?? null,
           VLRNOTA: parseDecimal(r.VLRNOTA),
           VLRDESC: 0,
           VLRFRETE: parseDecimal(r.VLRFRETE),
@@ -308,6 +313,7 @@ export async function syncPedidos(): Promise<void> {
           CIF_FOB: null,
           QTDVOL: 0,
           STATUSNOTA: "C",
+          PENDENTE: "N",
           CODCENCUS: null,
           CODPROJ: r.CODPROJ,
           VLRNOTA: r.VLRNOTA,

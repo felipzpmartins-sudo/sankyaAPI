@@ -270,6 +270,7 @@ CREATE TABLE IF NOT EXISTS pedidos (
   CIF_FOB     TEXT,
   QTDVOL      REAL NOT NULL DEFAULT 0,
   STATUSNOTA  TEXT,
+  PENDENTE    TEXT,
   VLRNOTA     REAL NOT NULL DEFAULT 0,
   VLRDESC     REAL NOT NULL DEFAULT 0,
   VLRFRETE    REAL NOT NULL DEFAULT 0,
@@ -290,6 +291,9 @@ CREATE TABLE IF NOT EXISTS pedido_itens (
   VLRTOT       REAL NOT NULL DEFAULT 0,
   VLRDESC      REAL NOT NULL DEFAULT 0,
   CODLOCALORIG INTEGER,
+  -- TGFITE.USOPROD. 'D' = componente de kit desmembrado: o valor dele ja esta
+  -- no item do conjunto, entao soma de faturamento por item precisa ignora-lo.
+  USOPROD      TEXT,
   synced_at    TEXT NOT NULL,
   PRIMARY KEY (NUNOTA, SEQUENCIA)
 );

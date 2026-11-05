@@ -26,6 +26,10 @@ const COLUNAS = [
   "i.VLRTOT",
   "i.VLRDESC",
   "i.CODLOCALORIG",
+  // Nota de kit traz o conjunto E os componentes desmembrados (USOPROD 'D'),
+  // e a soma dos componentes repete o valor do conjunto. Sem esta coluna a
+  // tela de produtos contava o kit duas vezes.
+  "i.USOPROD",
 ].join(", ");
 
 function decimal(value: unknown): number {
@@ -54,9 +58,9 @@ export async function syncItens(): Promise<void> {
     const now = new Date().toISOString();
     const upsert = db.prepare(
       `INSERT INTO pedido_itens
-         (NUNOTA, SEQUENCIA, CODPROD, QTDNEG, VLRUNIT, VLRTOT, VLRDESC, CODLOCALORIG, synced_at)
+         (NUNOTA, SEQUENCIA, CODPROD, QTDNEG, VLRUNIT, VLRTOT, VLRDESC, CODLOCALORIG, USOPROD, synced_at)
        VALUES
-         (@NUNOTA, @SEQUENCIA, @CODPROD, @QTDNEG, @VLRUNIT, @VLRTOT, @VLRDESC, @CODLOCALORIG, @synced_at)
+         (@NUNOTA, @SEQUENCIA, @CODPROD, @QTDNEG, @VLRUNIT, @VLRTOT, @VLRDESC, @CODLOCALORIG, @USOPROD, @synced_at)
        ON CONFLICT(NUNOTA, SEQUENCIA) DO UPDATE SET
          CODPROD      = excluded.CODPROD,
          QTDNEG       = excluded.QTDNEG,
@@ -64,6 +68,7 @@ export async function syncItens(): Promise<void> {
          VLRTOT       = excluded.VLRTOT,
          VLRDESC      = excluded.VLRDESC,
          CODLOCALORIG = excluded.CODLOCALORIG,
+         USOPROD      = excluded.USOPROD,
          synced_at    = excluded.synced_at`,
     );
 
@@ -87,6 +92,7 @@ export async function syncItens(): Promise<void> {
           CODLOCALORIG: parseIntOrNull(
             record.CODLOCALORIG == null ? null : String(record.CODLOCALORIG),
           ),
+          USOPROD: record.USOPROD == null ? null : String(record.USOPROD).trim() || null,
           synced_at: now,
         });
         inserted += 1;

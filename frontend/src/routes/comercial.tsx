@@ -39,8 +39,12 @@ type PedidosVsNota = {
   total_pedidos: number;
   com_nota: number;
   sem_nota: number;
+  pendentes: number;
+  parciais: number;
   valor_total: number;
   valor_sem_nota: number;
+  valor_pendente: number;
+  /** Só os pendentes no Sankhya (PENDENTE = 'S'). */
   pedidos: Array<{
     NUNOTA: number;
     parceiro: string | null;
@@ -50,6 +54,7 @@ type PedidosVsNota = {
     nota: number | null;
     DTFATUR: string | null;
     dias_em_aberto: number | null;
+    parcial: boolean;
   }>;
 };
 
@@ -110,7 +115,7 @@ function ComercialPage() {
 
   const dados = pedidos.data;
   const conversao = dados.total_pedidos > 0 ? (dados.com_nota / dados.total_pedidos) * 100 : 0;
-  const emAberto = dados.pedidos.filter((p) => p.nota == null);
+  const pendentes = dados.pedidos;
 
   return (
     <div className="space-y-6">
@@ -121,7 +126,7 @@ function ComercialPage() {
             Vendas por vendedor
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Pela ótica do pedido — a venda existe quando o pedido é feito, não quando a nota sai.
+            Pela ótica do pedido de venda — orçamento, comodato, bonificação e remessas ficam de fora.
           </p>
         </div>
         <PeriodPresetToggle
@@ -133,7 +138,7 @@ function ComercialPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          label="Pedidos no período"
+          label="Pedidos de venda"
           value={formatInt(dados.total_pedidos)}
           hint={formatCurrency(dados.valor_total)}
           icon={FileText}
@@ -146,11 +151,11 @@ function ComercialPage() {
           tone="success"
         />
         <KpiCard
-          label="Sem nota emitida"
-          value={formatInt(dados.sem_nota)}
-          hint={formatCurrency(dados.valor_sem_nota)}
+          label="Pendentes no Sankhya"
+          value={formatInt(dados.pendentes)}
+          hint={`${formatCurrency(dados.valor_pendente)} · ${formatInt(dados.sem_nota)} sem nota, ${formatInt(dados.parciais)} parciais`}
           icon={AlertTriangle}
-          tone={dados.sem_nota > 0 ? "warning" : "default"}
+          tone={dados.pendentes > 0 ? "warning" : "default"}
           critical={dados.sem_nota > 0}
         />
         <KpiCard
@@ -162,8 +167,8 @@ function ComercialPage() {
       </div>
 
       <PanelCard
-        title="Pedidos ainda sem nota"
-        description={`${emAberto.length} pedidos em aberto · ${formatCurrency(dados.valor_sem_nota)}`}
+        title="Pedidos pendentes"
+        description={`${formatInt(dados.sem_nota)} sem nenhuma nota (${formatCurrency(dados.valor_sem_nota)}) · ${formatInt(dados.parciais)} parcialmente faturados`}
         bodyClassName="p-0"
       >
         <Table>
@@ -173,13 +178,14 @@ function ComercialPage() {
               <TableHead className="text-[11px] uppercase text-muted-foreground">Parceiro</TableHead>
               <TableHead className="text-[11px] uppercase text-muted-foreground">Vendedor</TableHead>
               <TableHead className="text-[11px] uppercase text-muted-foreground">Data</TableHead>
+              <TableHead className="text-[11px] uppercase text-muted-foreground">Situação</TableHead>
               <TableHead className="text-right text-[11px] uppercase text-muted-foreground">Valor</TableHead>
               <TableHead className="text-right text-[11px] uppercase text-muted-foreground">Em aberto</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {emAberto.length === 0 && <EmptyTableRow colSpan={6} />}
-            {emAberto.map((p) => (
+            {pendentes.length === 0 && <EmptyTableRow colSpan={7} />}
+            {pendentes.map((p) => (
               <TableRow key={p.NUNOTA} className="border-border/40 hover:bg-surface-elevated/60">
                 <TableCell className="font-medium tabular-nums text-foreground">{p.NUNOTA}</TableCell>
                 <TableCell className="max-w-[280px] truncate text-foreground" title={p.parceiro ?? ""}>
@@ -187,6 +193,9 @@ function ComercialPage() {
                 </TableCell>
                 <TableCell className="text-muted-foreground">{p.vendedor ?? "Sem vendedor"}</TableCell>
                 <TableCell className="text-muted-foreground">{formatDate(p.DTNEG ?? "")}</TableCell>
+                <TableCell className={cn("text-sm", p.parcial ? "text-muted-foreground" : "text-warning")}>
+                  {p.parcial ? "Parcial" : "Sem nota"}
+                </TableCell>
                 <TableCell className="text-right font-medium tabular-nums text-foreground">
                   {formatCurrency(p.valor)}
                 </TableCell>

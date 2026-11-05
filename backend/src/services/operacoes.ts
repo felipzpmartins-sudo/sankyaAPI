@@ -45,6 +45,24 @@ export const FATURAMENTO_AVULSO_TOPS = [
   1811, // LANÇAMENTO FINANCEIRO - AVULSO (royalties)
 ] as const;
 
+/**
+ * TOPs de PEDIDO que contam como venda na tela Comercial.
+ *
+ * TIPMOV 'P' sozinho não serve: o Sankhya marca assim também orçamento (900),
+ * bonificação (1003), comodato (1767), remessa para feira (1741),
+ * demonstração (1788), consignação (1753), amostra (1810), garantia (1701) e
+ * brinde (1785) — R$ 3,2 milhões em 2026 que não são venda. A lista abaixo
+ * saiu de onde cada pedido termina na TGFVAR: 1000 e 1714 viram nota de
+ * FATURAMENTO_TOPS; as outras viram remessa, bonificação ou comodato.
+ * 1768 ainda não tem nota emitida, mas é venda de serviço pelo próprio nome
+ * da TOP — revisar com o comercial se isso mudar.
+ */
+export const PEDIDO_VENDA_TOPS = [
+  1000, // PEDIDO DE VENDA
+  1714, // PEDIDO - TRAY COMMERCE (loja online, fatura na 1100)
+  1768, // PEDIDO DE VENDA - ACESSO E CAPACITAÇÃO
+] as const;
+
 /** TOPs de saída em comodato (escola recebe o kit). */
 export const COMODATO_SAIDA_TOPS = [
   1109, // NFE REMESSA EM COMODATO
