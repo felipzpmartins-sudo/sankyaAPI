@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight, type LucideIcon } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, ChevronRight, type LucideIcon } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -50,6 +50,8 @@ export function KpiCard({
   tone = "default",
   icon: Icon,
   critical = false,
+  onClick,
+  actionLabel = "Ver lista",
 }: {
   label: string;
   value: string;
@@ -59,7 +61,11 @@ export function KpiCard({
   tone?: Tone;
   icon?: LucideIcon;
   critical?: boolean;
+  /** Torna o cartão clicável (abre a lista por trás do número). */
+  onClick?: () => void;
+  actionLabel?: string;
 }) {
+  const clicavel = Boolean(onClick);
   const varTone =
     variation == null
       ? "text-muted-foreground"
@@ -71,9 +77,25 @@ export function KpiCard({
 
   return (
     <Card
+      role={clicavel ? "button" : undefined}
+      tabIndex={clicavel ? 0 : undefined}
+      aria-label={clicavel ? `${label}: ${value}. ${actionLabel}` : undefined}
+      onClick={onClick}
+      onKeyDown={
+        clicavel
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick?.();
+              }
+            }
+          : undefined
+      }
       className={cn(
-        "relative overflow-hidden p-5 transition-all",
+        "group relative overflow-hidden p-5 transition-all",
         critical && toneGlow[tone],
+        clicavel &&
+          "cursor-pointer hover:-translate-y-0.5 hover:border-primary/40 hover:bg-surface-elevated/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -109,6 +131,12 @@ export function KpiCard({
           </span>
         )}
         {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
+        {clicavel && (
+          <span className="ml-auto inline-flex shrink-0 items-center gap-0.5 text-[11px] font-medium text-muted-foreground transition-colors group-hover:text-primary group-focus-visible:text-primary">
+            {actionLabel}
+            <ChevronRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+          </span>
+        )}
       </div>
       {detail && (
         <p className="mt-2 text-[11px] leading-4 text-muted-foreground">

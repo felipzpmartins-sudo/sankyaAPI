@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Bar,
   CartesianGrid,
@@ -22,6 +22,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 
+import { DetalheSheet, combinaBusca } from "@/components/dashboard/DetalheSheet";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { PanelCard } from "@/components/dashboard/PanelCard";
 import { PeriodPresetToggle } from "@/components/dashboard/PeriodPresetToggle";
@@ -166,6 +167,25 @@ function ProdutosPage() {
     staleTime: 60_000,
   });
 
+  /** Lista aberta no painel lateral: catálogo inteiro ou uma curva. */
+  const [detalhe, setDetalhe] = useState<"todos" | Curva | null>(null);
+  const [buscaDetalhe, setBuscaDetalhe] = useState("");
+  const produtosDetalhe = useMemo(
+    () =>
+      (abc.data?.produtos ?? []).filter(
+        (p) =>
+          (detalhe === "todos" || p.curva === detalhe) &&
+          combinaBusca(buscaDetalhe, [p.CODPROD, p.produto, p.grupo]),
+      ),
+    [abc.data, detalhe, buscaDetalhe],
+  );
+  const valorDetalhe = produtosDetalhe.reduce((soma, p) => soma + p.valor, 0);
+
+  function abrirDetalhe(qual: "todos" | Curva) {
+    setBuscaDetalhe("");
+    setDetalhe(qual);
+  }
+
   async function exportarSemVenda() {
     setExportando(true);
     try {
@@ -222,6 +242,7 @@ function ProdutosPage() {
           value={formatCompactCurrency(dados.total)}
           hint={`${formatInt(dados.produtos.length)} produtos com venda`}
           icon={Package}
+          onClick={() => abrirDetalhe("todos")}
         />
         {dados.resumo.map((r) => (
           <KpiCard
@@ -231,9 +252,85 @@ function ProdutosPage() {
             hint={`${formatCurrency(r.valor)} · ${r.participacao_pct.toFixed(1)}%`}
             icon={Layers}
             tone={r.curva === "A" ? "success" : r.curva === "B" ? "warning" : "default"}
+            onClick={() => abrirDetalhe(r.curva)}
           />
         ))}
       </div>
+
+      <DetalheSheet
+        open={detalhe !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto) setDetalhe(null);
+        }}
+        titulo={detalhe === "todos" ? "Produtos com venda" : `Curva ${detalhe ?? ""}`}
+        descricao={
+          detalhe === "todos"
+            ? "Todos os produtos faturados no período, do maior para o menor."
+            : detalhe === "A"
+              ? "Produtos que somam os primeiros 80% do faturamento."
+              : detalhe === "B"
+                ? "Produtos entre 80% e 95% do faturamento acumulado."
+                : "Produtos que formam os últimos 5% do faturamento."
+        }
+        busca={buscaDetalhe}
+        onBusca={setBuscaDetalhe}
+        placeholderBusca="Buscar por código, produto ou grupo..."
+        rodape={
+          <span>
+            {formatInt(produtosDetalhe.length)} produtos ·{" "}
+            <strong className="text-foreground">{formatCurrency(valorDetalhe)}</strong>
+            {dados.total > 0 && ` · ${((valorDetalhe / dados.total) * 100).toFixed(1)}% do faturamento`}
+          </span>
+        }
+      >
+        <Table>
+          <TableHeader className="sticky top-0 z-10 bg-background">
+            <TableRow className="border-border/60 hover:bg-transparent">
+              <TableHead className="text-[11px] uppercase text-muted-foreground">Código</TableHead>
+              <TableHead className="text-[11px] uppercase text-muted-foreground">Produto</TableHead>
+              <TableHead className="text-[11px] uppercase text-muted-foreground">Grupo</TableHead>
+              <TableHead className="text-right text-[11px] uppercase text-muted-foreground">Qtd</TableHead>
+              <TableHead className="text-right text-[11px] uppercase text-muted-foreground">Valor</TableHead>
+              <TableHead className="text-right text-[11px] uppercase text-muted-foreground">Part.</TableHead>
+              <TableHead className="text-right text-[11px] uppercase text-muted-foreground">Acum.</TableHead>
+              {detalhe === "todos" && (
+                <TableHead className="text-right text-[11px] uppercase text-muted-foreground">Curva</TableHead>
+              )}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {produtosDetalhe.length === 0 && <EmptyTableRow colSpan={detalhe === "todos" ? 8 : 7} />}
+            {produtosDetalhe.map((p) => (
+              <TableRow key={p.CODPROD} className="border-border/40 hover:bg-surface-elevated/60">
+                <TableCell className="tabular-nums text-muted-foreground">{p.CODPROD}</TableCell>
+                <TableCell className="max-w-[300px] truncate text-foreground" title={p.produto}>
+                  {p.produto}
+                </TableCell>
+                <TableCell className="max-w-[160px] truncate text-muted-foreground" title={p.grupo ?? ""}>
+                  {p.grupo ?? "—"}
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-muted-foreground">
+                  {formatInt(p.qtd)}
+                </TableCell>
+                <TableCell className="text-right font-medium tabular-nums text-foreground">
+                  {formatCurrency(p.valor)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-muted-foreground">
+                  {p.participacao_pct.toFixed(1)}%
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-muted-foreground">
+                  {p.acumulado_pct.toFixed(1)}%
+                </TableCell>
+                {detalhe === "todos" && (
+                  <TableCell className={cn("text-right text-sm font-semibold", CORES_CURVA[p.curva])}>
+                    {p.curva}
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </DetalheSheet>
 
       <PanelCard
         title="Curva ABC"

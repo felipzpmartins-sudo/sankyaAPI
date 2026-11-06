@@ -202,6 +202,97 @@ export function pedidosVsNota(args: Filtros & { limite?: number }): {
   };
 }
 
+export type SituacaoPedido = "faturado" | "parcial" | "sem_nota" | "encerrado";
+export type FiltroListaPedidos = "todos" | "com_nota" | "pendentes";
+
+/** Teto da lista de detalhe. Um ano inteiro da Maker fica bem abaixo disso. */
+const LIMITE_LISTA_PEDIDOS = 5_000;
+
+/**
+ * Lista de detalhe por trás dos cartões da tela Comercial. Usa exatamente o
+ * mesmo corte do `pedidosVsNota`, então a contagem de cada filtro bate com o
+ * número do cartão:
+ * - "todos": cartão "Pedidos de venda";
+ * - "com_nota": cartão "Viraram nota" (inclui o parcial, que já tem nota);
+ * - "pendentes": cartão "Pendentes no Sankhya".
+ */
+export function listarPedidos(args: Filtros & { situacao: FiltroListaPedidos }): {
+  periodo: PeriodoComercial;
+  situacao: FiltroListaPedidos;
+  total: number;
+  valor_total: number;
+  truncado: boolean;
+  pedidos: Array<{
+    NUNOTA: number;
+    parceiro: string | null;
+    vendedor: string | null;
+    valor: number;
+    DTNEG: string | null;
+    nota: number | null;
+    numero_nota: number | null;
+    DTFATUR: string | null;
+    situacao: SituacaoPedido;
+  }>;
+} {
+  const { where, params } = base(args, "p");
+  const filtro =
+    args.situacao === "com_nota"
+      ? "AND v.NUNOTA_NOTA IS NOT NULL"
+      : args.situacao === "pendentes"
+        ? `AND ${PENDENTE}`
+        : "";
+
+  const rows = getDb()
+    .prepare(
+      `SELECT
+         p.NUNOTA,
+         pa.NOMEPARC AS parceiro,
+         ve.APELIDO  AS vendedor,
+         p.VLRNOTA   AS valor,
+         p.DTNEG,
+         v.NUNOTA_NOTA AS nota,
+         n.NUMNOTA     AS numero_nota,
+         n.DTFATUR,
+         CASE
+           WHEN ${PENDENTE} AND v.NUNOTA_NOTA IS NULL THEN 'sem_nota'
+           WHEN ${PENDENTE} THEN 'parcial'
+           WHEN v.NUNOTA_NOTA IS NOT NULL THEN 'faturado'
+           ELSE 'encerrado'
+         END AS situacao
+       FROM pedidos p
+       ${VINCULO}
+       LEFT JOIN pedidos    n  ON n.NUNOTA   = v.NUNOTA_NOTA
+       LEFT JOIN parceiros  pa ON pa.CODPARC = p.CODPARC
+       LEFT JOIN vendedores ve ON ve.CODVEND = p.CODVEND
+       WHERE ${PEDIDO_DE_VENDA}
+         AND COALESCE(p.STATUSNOTA, '') <> 'C'
+         ${filtro}
+         AND ${where}
+       ORDER BY p.DTNEG DESC, p.NUNOTA DESC`,
+    )
+    .all(...params) as Array<{
+      NUNOTA: number;
+      parceiro: string | null;
+      vendedor: string | null;
+      valor: number;
+      DTNEG: string | null;
+      nota: number | null;
+      numero_nota: number | null;
+      DTFATUR: string | null;
+      situacao: SituacaoPedido;
+    }>;
+
+  const valorTotal = rows.reduce((soma, r) => soma + (r.valor ?? 0), 0);
+  return {
+    periodo: args.periodo,
+    situacao: args.situacao,
+    total: rows.length,
+    valor_total: round2(valorTotal),
+    truncado: rows.length > LIMITE_LISTA_PEDIDOS,
+    pedidos: rows.slice(0, LIMITE_LISTA_PEDIDOS).map((r) => ({ ...r, valor: round2(r.valor ?? 0) })),
+  };
+}
+
 /** Comparação entre vendedores pela ótica do pedido. */
 export function rankingVendedores(args: Filtros): {
   periodo: PeriodoComercial;

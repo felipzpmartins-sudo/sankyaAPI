@@ -87,6 +87,24 @@ test("pedidos: pendente segue o PENDENTE do Sankhya e separa o parcial", () => {
   assert.deepEqual(r.pedidos.map((p) => [p.NUNOTA, p.parcial]), [[2, false], [3, true]]);
 });
 
+test("lista de pedidos bate com cada cartao da tela comercial", () => {
+  const resumo = S.pedidosVsNota(filtros);
+  const todos = S.listarPedidos({ ...filtros, situacao: "todos" });
+  const comNota = S.listarPedidos({ ...filtros, situacao: "com_nota" });
+  const pendentes = S.listarPedidos({ ...filtros, situacao: "pendentes" });
+
+  assert.equal(todos.total, resumo.total_pedidos);
+  assert.equal(todos.valor_total, resumo.valor_total);
+  assert.equal(comNota.total, resumo.com_nota);
+  assert.equal(pendentes.total, resumo.pendentes);
+  assert.equal(pendentes.valor_total, resumo.valor_pendente);
+  assert.deepEqual(
+    todos.pedidos.map((p) => [p.NUNOTA, p.situacao]).sort(),
+    [[1, "faturado"], [2, "sem_nota"], [3, "parcial"]],
+  );
+  assert.deepEqual(comNota.pedidos.map((p) => p.NUNOTA).sort(), [1, 3]);
+});
+
 test("ranking de vendedores usa o mesmo corte de pedido de venda", () => {
   const r = S.rankingVendedores(filtros);
   assert.equal(r.total, 1800);

@@ -34,6 +34,7 @@ import {
 } from "../services/dashboard.js";
 import {
   curvaAbc,
+  listarPedidos,
   produtosSemVenda,
   pedidosVsNota,
   rankingProdutos,
@@ -467,6 +468,19 @@ function comercialArgs(query: unknown) {
 dashboardRouter.get("/vendedores/pedidos-vs-nota", (req, res, next) => {
   try {
     res.json(pedidosVsNota(comercialArgs(req.query)));
+  } catch (err) {
+    next(err);
+  }
+});
+
+const listaPedidosQuery = z.object({
+  situacao: z.enum(["todos", "com_nota", "pendentes"]).default("todos"),
+});
+
+dashboardRouter.get("/vendedores/pedidos", (req, res, next) => {
+  try {
+    const { situacao } = listaPedidosQuery.parse(req.query);
+    res.json(listarPedidos({ ...comercialArgs(req.query), situacao }));
   } catch (err) {
     next(err);
   }
