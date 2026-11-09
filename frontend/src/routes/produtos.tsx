@@ -37,7 +37,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { apiBlob, apiJson, empresaQuery } from "@/lib/api";
+import { apiBlob, apiJson, empresaQuery, vendedorQuery } from "@/lib/api";
 import {
   barTooltipCursor,
   chartTooltipItemStyle,
@@ -132,6 +132,7 @@ function ProdutosPage() {
 
   const query = {
     empresa: empresaQuery(filters.empresas),
+    vendedor: vendedorQuery(filters.vendedores),
     dataInicio: filters.dataInicio,
     dataFim: filters.dataFim,
   };

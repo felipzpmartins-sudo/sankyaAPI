@@ -99,7 +99,7 @@ function MultiSelect({
 }
 
 /** Telas em que o recorte por vendedor faz sentido. */
-const ROTAS_COM_VENDEDOR = new Set(["/", "/dre"]);
+const ROTAS_COM_VENDEDOR = new Set(["/", "/dre", "/comercial", "/produtos"]);
 
 export function GlobalFilters() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });

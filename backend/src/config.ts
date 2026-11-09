@@ -27,6 +27,9 @@ const schema = z.object({
   // `email:senha` separado por virgula. So cria o que ainda nao existe, e a
   // conta nasce com troca de senha obrigatoria no primeiro acesso.
   USUARIOS_INICIAIS: z.string().optional(),
+  // E-mails que podem gravar meta de vendedor, separados por virgula. Vazio,
+  // qualquer conta logada grava.
+  METAS_EDITORES: z.string().optional(),
   PORT: z.coerce.number().default(3000),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   CORS_ORIGINS: z

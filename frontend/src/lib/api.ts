@@ -65,6 +65,33 @@ export async function apiBlob(pathname: string, query?: ApiQuery): Promise<Blob>
   return response.blob();
 }
 
+/** Envia JSON (PUT/POST) e devolve a resposta já lida. */
+export async function apiSend<T>(
+  method: "PUT" | "POST",
+  pathname: string,
+  body: unknown,
+): Promise<T> {
+  const response = await fetch(apiUrl(pathname), {
+    method,
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify(body),
+  });
+  const data = (await response.json().catch(() => null)) as { message?: string } | null;
+  if (!response.ok) {
+    if (response.status === 401) clearStoredAuthToken();
+    throw new Error(data?.message ?? `Falha na API (${response.status})`);
+  }
+  return data as T;
+}
+
 export function empresaQuery(empresas: number[]): string {
   return empresas.length > 0 ? empresas.join(",") : "todas";
+}
+
+export function vendedorQuery(vendedores: number[]): string {
+  return vendedores.length > 0 ? vendedores.join(",") : "todos";
 }

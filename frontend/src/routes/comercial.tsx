@@ -10,13 +10,14 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { AlertTriangle, FileText, Receipt, Target, Users } from "lucide-react";
+import { AlertTriangle, FileText, Receipt, Users } from "lucide-react";
 
 import { DetalheSheet, combinaBusca } from "@/components/dashboard/DetalheSheet";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { PanelCard } from "@/components/dashboard/PanelCard";
 import { PeriodPresetToggle } from "@/components/dashboard/PeriodPresetToggle";
 import { QueryState } from "@/components/dashboard/QueryState";
+import { VendasPorVendedor } from "@/components/dashboard/VendasPorVendedor";
 import { EmptyTableRow } from "@/components/dashboard/EmptyTableRow";
 import {
   Table,
@@ -26,7 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { apiJson, empresaQuery } from "@/lib/api";
+import { apiJson, empresaQuery, vendedorQuery } from "@/lib/api";
 import {
   barTooltipCursor,
   chartTooltipItemStyle,
@@ -139,6 +140,7 @@ function ComercialPage() {
   const { filters, setFilters } = useFilters();
   const query = {
     empresa: empresaQuery(filters.empresas),
+    vendedor: vendedorQuery(filters.vendedores),
     dataInicio: filters.dataInicio,
     dataFim: filters.dataFim,
   };
@@ -390,6 +392,8 @@ function ComercialPage() {
         )}
       </DetalheSheet>
 
+      <VendasPorVendedor query={query} onVendedor={(vendedor) => abrirDetalhe("todos", vendedor)} />
+
       <PanelCard
         title="Pedidos pendentes"
         description={`${formatInt(dados.sem_nota)} sem nenhuma nota (${formatCurrency(dados.valor_sem_nota)}) · ${formatInt(dados.parciais)} parcialmente faturados`}
@@ -528,25 +532,6 @@ function ComercialPage() {
           </Table>
         </PanelCard>
       </div>
-
-      <PanelCard
-        title="Meta x realizado"
-        description="Aguardando cadastro das metas no Sankhya"
-      >
-        <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/5 px-4 py-3.5">
-          <Target className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-          <div className="text-sm leading-6 text-muted-foreground">
-            <p className="font-medium text-foreground">Nenhuma meta cadastrada no ERP.</p>
-            <p className="mt-1">
-              O módulo de metas do Sankhya está instalado com três configurações
-              (vendedor, grupo de produtos e produto), mas as tabelas de valor
-              estão vazias. Assim que o gerente cadastrar as metas por vendedor,
-              este painel passa a mostrar barra de progresso e quebra semanal sem
-              precisar de alteração aqui.
-            </p>
-          </div>
-        </div>
-      </PanelCard>
     </div>
   );
 }

@@ -39,8 +39,11 @@ import {
   pedidosVsNota,
   rankingProdutos,
   rankingVendedores,
+  vendasPorPeriodo,
   vendedoresPorProduto,
 } from "../services/comercial.js";
+import { gravarMetas, listarMetas, podeEditarMetas } from "../services/metas.js";
+import { getRequestUser } from "../auth.js";
 import { estoqueVisaoGeral, listarLocaisEstoque } from "../services/dashboard-estoque.js";
 import { empresaParam } from "../utils/empresa.js";
 import { vendedorParam } from "../utils/vendedor.js";
@@ -489,6 +492,64 @@ dashboardRouter.get("/vendedores/pedidos", (req, res, next) => {
 dashboardRouter.get("/vendedores/ranking-geral", (req, res, next) => {
   try {
     res.json(rankingVendedores(comercialArgs(req.query)));
+  } catch (err) {
+    next(err);
+  }
+});
+
+const vendasPeriodoQuery = z.object({
+  agrupamento: z.enum(["mes", "semana"]).default("mes"),
+});
+
+/** Tabela vendedor x mes (ou semana), com a meta de cada coluna. */
+dashboardRouter.get("/vendedores/vendas-periodo", (req, res, next) => {
+  try {
+    const { agrupamento } = vendasPeriodoQuery.parse(req.query);
+    res.json(vendasPorPeriodo({ ...comercialArgs(req.query), agrupamento }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+const anoMesParam = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Use o mes no formato AAAA-MM.");
+
+dashboardRouter.get("/vendedores/metas", (req, res, next) => {
+  try {
+    const { ano_mes } = z.object({ ano_mes: anoMesParam }).parse(req.query);
+    res.json({
+      ...listarMetas(ano_mes),
+      pode_editar: podeEditarMetas(getRequestUser(req)?.email),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const gravarMetasBody = z.object({
+  ano_mes: anoMesParam,
+  metas: z
+    .array(
+      z.object({
+        CODVEND: z.number().int().nonnegative(),
+        valor: z.number().nonnegative().max(1_000_000_000).nullable(),
+      }),
+    )
+    .max(2_000),
+});
+
+dashboardRouter.put("/vendedores/metas", (req, res, next) => {
+  try {
+    const email = getRequestUser(req)?.email ?? null;
+    if (!podeEditarMetas(email)) {
+      res.status(403).json({
+        error: "forbidden",
+        message: "Esta conta nao pode alterar metas de vendedor.",
+      });
+      return;
+    }
+    const body = gravarMetasBody.parse(req.body);
+    const resultado = gravarMetas(body.ano_mes, body.metas, email);
+    res.json({ ok: true, ...resultado, ...listarMetas(body.ano_mes), pode_editar: true });
   } catch (err) {
     next(err);
   }

@@ -9,32 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as ViaCertaRouteImport } from './routes/via-certa'
-import { Route as QualidadeRouteImport } from './routes/qualidade'
-import { Route as ProdutosRouteImport } from './routes/produtos'
-import { Route as DreRouteImport } from './routes/dre'
-import { Route as ComercialRouteImport } from './routes/comercial'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ComercialRouteImport } from './routes/comercial'
+import { Route as DreRouteImport } from './routes/dre'
+import { Route as ProdutosRouteImport } from './routes/produtos'
+import { Route as QualidadeRouteImport } from './routes/qualidade'
+import { Route as ViaCertaRouteImport } from './routes/via-certa'
 import { Route as ModulosModuloRouteImport } from './routes/modulos.$modulo'
 
-const ViaCertaRoute = ViaCertaRouteImport.update({
-  id: '/via-certa',
-  path: '/via-certa',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const QualidadeRoute = QualidadeRouteImport.update({
-  id: '/qualidade',
-  path: '/qualidade',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProdutosRoute = ProdutosRouteImport.update({
-  id: '/produtos',
-  path: '/produtos',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DreRoute = DreRouteImport.update({
-  id: '/dre',
-  path: '/dre',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ComercialRoute = ComercialRouteImport.update({
@@ -42,9 +27,24 @@ const ComercialRoute = ComercialRouteImport.update({
   path: '/comercial',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const DreRoute = DreRouteImport.update({
+  id: '/dre',
+  path: '/dre',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProdutosRoute = ProdutosRouteImport.update({
+  id: '/produtos',
+  path: '/produtos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QualidadeRoute = QualidadeRouteImport.update({
+  id: '/qualidade',
+  path: '/qualidade',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ViaCertaRoute = ViaCertaRouteImport.update({
+  id: '/via-certa',
+  path: '/via-certa',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ModulosModuloRoute = ModulosModuloRouteImport.update({
@@ -123,32 +123,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/via-certa': {
-      id: '/via-certa'
-      path: '/via-certa'
-      fullPath: '/via-certa'
-      preLoaderRoute: typeof ViaCertaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/qualidade': {
-      id: '/qualidade'
-      path: '/qualidade'
-      fullPath: '/qualidade'
-      preLoaderRoute: typeof QualidadeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/produtos': {
-      id: '/produtos'
-      path: '/produtos'
-      fullPath: '/produtos'
-      preLoaderRoute: typeof ProdutosRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/dre': {
-      id: '/dre'
-      path: '/dre'
-      fullPath: '/dre'
-      preLoaderRoute: typeof DreRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/comercial': {
@@ -158,11 +137,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ComercialRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/dre': {
+      id: '/dre'
+      path: '/dre'
+      fullPath: '/dre'
+      preLoaderRoute: typeof DreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/produtos': {
+      id: '/produtos'
+      path: '/produtos'
+      fullPath: '/produtos'
+      preLoaderRoute: typeof ProdutosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/qualidade': {
+      id: '/qualidade'
+      path: '/qualidade'
+      fullPath: '/qualidade'
+      preLoaderRoute: typeof QualidadeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/via-certa': {
+      id: '/via-certa'
+      path: '/via-certa'
+      fullPath: '/via-certa'
+      preLoaderRoute: typeof ViaCertaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/modulos/$modulo': {

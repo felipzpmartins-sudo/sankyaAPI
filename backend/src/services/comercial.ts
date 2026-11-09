@@ -2,6 +2,7 @@ import { getDb } from "../db/connection.js";
 import { type EmpresaFiltro, empresaToSqlClause } from "../utils/empresa.js";
 import { type VendedorFiltro, vendedorToSqlClause } from "../utils/vendedor.js";
 import { FATURAMENTO_TOPS, PEDIDO_VENDA_TOPS, inListClause } from "./operacoes.js";
+import { metasDosMeses } from "./metas.js";
 
 /**
  * Telas comerciais (vendedores e produtos).
@@ -708,5 +709,228 @@ export function produtosSemVenda(args: Filtros & { limite?: number }): {
     nunca_na_janela: produtos.filter((r) => !r.parou_de_vender).length,
     com_estoque: produtos.filter((r) => r.estoque > 0).length,
     produtos: produtos.slice(0, limite),
+  };
+}
+
+export type Agrupamento = "mes" | "semana";
+
+type Coluna = { chave: string; inicio: string; fim: string };
+type Celula = { pedidos: number; valor: number; meta: number | null; atingido_pct: number | null };
+
+/** Datas como texto ISO, sem fuso: a conta e de calendario, nao de instante. */
+function paraData(iso: string): Date {
+  const [a, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(a, m - 1, d));
+}
+function somaDias(iso: string, dias: number): string {
+  const d = paraData(iso);
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+function diasNoMes(anoMes: string): number {
+  const [a, m] = anoMes.split("-").map(Number);
+  return new Date(Date.UTC(a, m, 0)).getUTCDate();
+}
+/** Segunda-feira da semana da data. */
+function inicioDaSemana(iso: string): string {
+  const diaSemana = paraData(iso).getUTCDay(); // 0 = domingo
+  return somaDias(iso, -((diaSemana + 6) % 7));
+}
+
+/**
+ * Colunas da tabela. A ponta de cada coluna fica cortada no periodo, para a
+ * meta proporcional da semana nao contar dia que a pessoa nao pediu.
+ */
+function colunasDoPeriodo(periodo: PeriodoComercial, agrupamento: Agrupamento): Coluna[] {
+  const colunas: Coluna[] = [];
+  const { dataInicio, dataFim } = periodo;
+
+  if (agrupamento === "mes") {
+    let anoMes = dataInicio.slice(0, 7);
+    while (anoMes <= dataFim.slice(0, 7)) {
+      const primeiro = `${anoMes}-01`;
+      const ultimo = `${anoMes}-${String(diasNoMes(anoMes)).padStart(2, "0")}`;
+      colunas.push({
+        chave: anoMes,
+        inicio: primeiro < dataInicio ? dataInicio : primeiro,
+        fim: ultimo > dataFim ? dataFim : ultimo,
+      });
+      anoMes = somaDias(ultimo, 1).slice(0, 7);
+    }
+    return colunas;
+  }
+
+  let segunda = inicioDaSemana(dataInicio);
+  while (segunda <= dataFim) {
+    const domingo = somaDias(segunda, 6);
+    colunas.push({
+      chave: segunda,
+      inicio: segunda < dataInicio ? dataInicio : segunda,
+      fim: domingo > dataFim ? dataFim : domingo,
+    });
+    segunda = somaDias(segunda, 7);
+  }
+  return colunas;
+}
+
+/**
+ * Meta de uma coluna.
+ *
+ * - Mes: a meta cheia do mes, mesmo que o periodo pegue o mes pela metade —
+ *   e o numero que o gerente digitou e o que ele quer ver batido.
+ * - Semana: a meta mensal dividida pelos dias do mes, vezes os dias da semana
+ *   que caem no periodo. Semana que atravessa a virada do mes pega um pedaco
+ *   de cada meta.
+ *
+ * Sem nenhuma meta nos meses da coluna, devolve null (nao e meta zero).
+ */
+function metaDaColuna(
+  coluna: Coluna,
+  agrupamento: Agrupamento,
+  metas: Map<string, number> | undefined,
+): number | null {
+  if (!metas || metas.size === 0) return null;
+  if (agrupamento === "mes") return metas.get(coluna.chave) ?? null;
+
+  let soma = 0;
+  let achou = false;
+  for (let dia = coluna.inicio; dia <= coluna.fim; dia = somaDias(dia, 1)) {
+    const anoMes = dia.slice(0, 7);
+    const meta = metas.get(anoMes);
+    if (meta == null) continue;
+    achou = true;
+    soma += meta / diasNoMes(anoMes);
+  }
+  return achou ? round2(soma) : null;
+}
+
+function celula(pedidos: number, valor: number, meta: number | null): Celula {
+  return {
+    pedidos,
+    valor: round2(valor),
+    meta,
+    atingido_pct: meta != null && meta > 0 ? round2((valor / meta) * 100) : null,
+  };
+}
+
+function somaMeta(valores: Array<number | null>): number | null {
+  return valores.some((v) => v != null)
+    ? round2(valores.reduce<number>((s, v) => s + (v ?? 0), 0))
+    : null;
+}
+
+/**
+ * Quanto cada vendedor vendeu em cada mes (ou semana) do periodo, contra a
+ * meta. Mesmo corte do ranking de vendedores — pedido de venda, sem
+ * cancelado, pela data de negociacao — entao a coluna Total bate com o
+ * "Detalhe por vendedor" da mesma tela.
+ *
+ * Vendedor com meta e sem nenhum pedido no periodo tambem aparece: zerado
+ * contra a meta e justamente o caso que o gerente precisa ver.
+ */
+export function vendasPorPeriodo(args: Filtros & { agrupamento: Agrupamento }): {
+  periodo: PeriodoComercial;
+  agrupamento: Agrupamento;
+  colunas: Coluna[];
+  vendedores: Array<{ CODVEND: number; vendedor: string; celulas: Celula[]; total: Celula }>;
+  totais: { celulas: Celula[]; total: Celula };
+} {
+  const { where, params } = base(args, "p");
+  const colunas = colunasDoPeriodo(args.periodo, args.agrupamento);
+  const indice = new Map(colunas.map((c, i) => [c.chave, i]));
+
+  const chaveSql =
+    args.agrupamento === "mes"
+      ? "strftime('%Y-%m', p.DTNEG)"
+      : "date(p.DTNEG, '-' || ((CAST(strftime('%w', p.DTNEG) AS INTEGER) + 6) % 7) || ' days')";
+
+  const rows = getDb()
+    .prepare(
+      `SELECT
+         COALESCE(p.CODVEND, 0) AS CODVEND,
+         ${chaveSql} AS chave,
+         COUNT(*) AS pedidos,
+         COALESCE(SUM(p.VLRNOTA), 0) AS valor
+       FROM pedidos p
+       WHERE ${PEDIDO_DE_VENDA}
+         AND COALESCE(p.STATUSNOTA, '') <> 'C'
+         AND ${where}
+       GROUP BY COALESCE(p.CODVEND, 0), chave`,
+    )
+    .all(...params) as Array<{ CODVEND: number; chave: string; pedidos: number; valor: number }>;
+
+  // Meses que as colunas tocam — na semana que vira o mes, os dois.
+  const meses = [...new Set(colunas.flatMap((c) => [c.inicio.slice(0, 7), c.fim.slice(0, 7)]))];
+  const metas = metasDosMeses(meses);
+
+  const vazia = () => colunas.map(() => ({ pedidos: 0, valor: 0 }));
+  const vendas = new Map<number, Array<{ pedidos: number; valor: number }>>();
+  for (const r of rows) {
+    const i = indice.get(r.chave);
+    if (i == null) continue;
+    const linha = vendas.get(r.CODVEND) ?? vazia();
+    linha[i] = { pedidos: r.pedidos, valor: r.valor };
+    vendas.set(r.CODVEND, linha);
+  }
+
+  // Quem tem meta e nao vendeu nada entra zerado — respeitando o filtro de
+  // vendedor, para a lista nao trazer gente que a pessoa tirou do recorte.
+  const filtroVendedor = args.vendedor.modo === "lista" ? new Set(args.vendedor.ids) : null;
+  for (const codVend of metas.keys()) {
+    if (vendas.has(codVend)) continue;
+    if (filtroVendedor && !filtroVendedor.has(codVend)) continue;
+    vendas.set(codVend, vazia());
+  }
+
+  const nomes = new Map(
+    (getDb().prepare("SELECT CODVEND, APELIDO FROM vendedores").all() as Array<{
+      CODVEND: number;
+      APELIDO: string;
+    }>).map((v) => [v.CODVEND, v.APELIDO]),
+  );
+
+  const vendedores = [...vendas.entries()]
+    .map(([codVend, linha]) => {
+      const celulas = colunas.map((coluna, i) =>
+        celula(
+          linha[i].pedidos,
+          linha[i].valor,
+          metaDaColuna(coluna, args.agrupamento, metas.get(codVend)),
+        ),
+      );
+      return {
+        CODVEND: codVend,
+        vendedor: codVend === 0 ? "Sem vendedor" : (nomes.get(codVend) ?? `Vendedor ${codVend}`),
+        celulas,
+        total: celula(
+          linha.reduce((s, c) => s + c.pedidos, 0),
+          linha.reduce((s, c) => s + c.valor, 0),
+          somaMeta(celulas.map((c) => c.meta)),
+        ),
+      };
+    })
+    .sort((a, b) => b.total.valor - a.total.valor || a.CODVEND - b.CODVEND);
+
+  const celulasTotais = colunas.map((_, i) =>
+    celula(
+      vendedores.reduce((s, v) => s + v.celulas[i].pedidos, 0),
+      vendedores.reduce((s, v) => s + v.celulas[i].valor, 0),
+      somaMeta(vendedores.map((v) => v.celulas[i].meta)),
+    ),
+  );
+
+  return {
+    periodo: args.periodo,
+    agrupamento: args.agrupamento,
+    colunas,
+    vendedores,
+    totais: {
+      celulas: celulasTotais,
+      total: celula(
+        vendedores.reduce((s, v) => s + v.total.pedidos, 0),
+        vendedores.reduce((s, v) => s + v.total.valor, 0),
+        somaMeta(vendedores.map((v) => v.total.meta)),
+      ),
+    },
   };
 }

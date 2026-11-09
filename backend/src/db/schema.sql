@@ -477,3 +477,20 @@ CREATE TABLE IF NOT EXISTS usuarios (
   criado_em          TEXT NOT NULL,
   senha_alterada_em  TEXT
 );
+
+-- ----------------------------------------------------------------------------
+-- metas_vendedor: meta mensal de venda por vendedor, digitada no painel.
+--
+-- O modulo de metas do Sankhya esta instalado mas com as tabelas de valor
+-- vazias, entao a meta nasce aqui. Uma linha por vendedor e mes (YYYY-MM);
+-- apagar a meta e apagar a linha. alterado_por guarda o e-mail de quem
+-- gravou, para saber de onde veio cada numero.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS metas_vendedor (
+  CODVEND       INTEGER NOT NULL,
+  ano_mes       TEXT NOT NULL,
+  valor         REAL NOT NULL,
+  alterado_por  TEXT,
+  alterado_em   TEXT NOT NULL,
+  PRIMARY KEY (CODVEND, ano_mes)
+);
